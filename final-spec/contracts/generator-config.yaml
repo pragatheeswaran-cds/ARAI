@@ -117,8 +117,8 @@ consolidation_defaults:
   - ordinary_fit_preference
   reason_selection: uniform within applicable declared reason group; ordinary fit
     vs discretionary equal probability
-  claim_action_selection: nonreceipt vs contents equal probability; contents codes
-    uniform
+  claim_action_selection: superseded by amendment_1_4 deceptive_claims (one reason-code
+    mix; non-receipt exactly when the code is item_not_received)
   request_latency:
     honest: round(Beta(2,5)*captured_window)
     temporary_use: round(Beta(5,2)*captured_window)
@@ -181,8 +181,10 @@ amendment_1_1:
       order_date_offset_days:
       - 0
       - 2
-      lines: base basket law; the first line is the date's style
-      quantity: base quantity law; one unit of the first line is claimed
+      lines: base basket law; the date's style sits on a line at a uniform random position
+        (amendment_1_4)
+      quantity: base quantity law; one unit of the target line is claimed, or the whole
+        parcel under amendment_1_4 deceptive_claims
       sku_choice: uniform launched SKU of the date's style
       rules: ordinary pricing, discount, shipping, identifier usage and fulfilment
       layer: abuse; private order_truth only; separate keyed ID stream; unclaimed units
@@ -263,3 +265,33 @@ amendment_1_3:
     consolidation: one rule for every request; a header covers its first request date
       and the next day
     line_numbers: by request time
+amendment_1_4:
+  note: Added 2026-10-02 after the independent re-review of the regenerated worlds found
+    that the place, reason code and extent of a claim still revealed abuse without
+    behaviour. Every world generated earlier is void.
+  campaign_order:
+    target_line: the line carrying the campaign style is at a uniform random position
+      in the basket; the claim is on that line
+  deceptive_claims:
+    reason_code_mix:
+      item_not_received: 0.27
+      wrong_item_sent: 0.29
+      missing_parts: 0.29
+      empty_package: 0.15
+    reason_code_mix_basis: the mix of honest claims counted once per order and reason
+      code on training worlds W2101-W2105 (.274, .292, .292, .142)
+    action_type: deceptive_nonreceipt_claim exactly when the code is item_not_received,
+      otherwise deceptive_contents_claim
+    whole_parcel_claim_probability: 0.35
+    whole_parcel_basis: 35% of honest item_not_received claims on orders with two or
+      more delivered lines cover every delivered line (same worlds)
+    whole_parcel: applies to deceptive non-receipt claims on a solo opportunity or a
+      campaign order, not to a reused purchase; the claim then covers every unreserved
+      delivered unit of the order; each further sale line is a companion action with
+      its own claim delay and settlement draws, as each line of a genuinely lost parcel
+      has; companions never count towards style targeting truth
+  new_growth_tenure_days:
+  - 5
+  - 365
+  new_growth_tenure_basis: a 160-day cap doubled signups per month from April 2026;
+    with the cap at the length of the history window signups are flat

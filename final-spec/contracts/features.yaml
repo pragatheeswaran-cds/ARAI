@@ -1,4 +1,4 @@
-version: '1.1'
+version: '1.4'
 entity:
 - world_id
 - customer_id
@@ -64,23 +64,32 @@ ordered_features:
   definition: unmatured delivered units / all delivered units
   scope: all_delivered
   'null': null without delivered units
-- name: max_identifier_fanout
-  definition: max distinct account fanout of own observed IDs, capped25
-  scope: all_visible_orders
-  'null': 0 without orders
-- name: supported_neighbor_count
-  definition: unique adjacent accounts with >=2 valid shared types
-  scope: all_visible_orders
-  'null': 0 empty valid graph
 - name: coordinated_claim_share
   definition: fraction own transaction claim return lines with a supported neighbor
     claim on the same style (any SKU) <=7 calendar days apart; count own line once
   scope: all_visible_nonwithdrawn_requests
   'null': null without own claims
+- name: late_return_lines
+  definition: count of item-return lines (not transaction claims) requested at 75% to 100%
+    of the captured return window
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+evidence_only:
+  note: Computed with the features and shown to the analyst, never a model input (AM-26). Sharing an
+    identifier is not guilt; the model may use only what linked accounts do.
+  features:
+  - name: max_identifier_fanout
+    definition: max distinct account fanout of own observed IDs, capped25
+    scope: all_visible_orders
+    'null': 0 without orders
+  - name: supported_neighbor_count
+    definition: unique adjacent accounts with >=2 valid shared types
+    scope: all_visible_orders
+    'null': 0 empty valid graph
 preprocessing:
   fit_population: eligible training only
   impute: training median; all-null zero
-  missing_indicators: one per each of 18 features
+  missing_indicators: one per each of 17 features
   scaler: StandardScaler logistic only
 not_inputs:
 - IDs
@@ -91,4 +100,26 @@ not_inputs:
 - loyalty
 - free_text
 - disposition
+wardrobing_indicator:
+  note: Report-only and independent of the model score (AM-28). Integer points; the band follows the score.
+  late_return: an item-return line (not a transaction claim) requested at 75% to 100% of its captured
+    return window; a request after the window is not a late return
+  signals:
+  - name: repeat_late_returns
+    rule: late_return_lines >= 2
+    points: 50
+  - name: late_return
+    rule: late_return_lines >= 1
+    points: 25
+  - name: late_occasion_return
+    rule: at least one late return of occasion wear
+    points: 15
+  - name: late_return_share
+    rule: late_return_lines / item_return_lines >= 0.5
+    points: 10
+  bands:
+    elevated: 75
+    possible: 35
+  insufficient_evidence: no item-return line with valid timing; no score
+  incomplete: reserved; not produced by this rule, which needs no training reference
 formula_source: components/06-feature-engineering.md

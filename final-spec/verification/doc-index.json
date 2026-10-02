@@ -72,12 +72,12 @@
     "FEAT",
     [
       "Hand-calculated partial quantity, two-level shrinkage, sole buyer, single-SKU style/no peers and V=0 fixtures match.",
-      "Ordered 18-feature schema enforced; identity renaming preserving equality leaves features unchanged.",
+      "Ordered 17-feature schema enforced, with the two link measures kept out of the model matrix; identity renaming preserving equality leaves features unchanged.",
       "Eligibility threshold exactly three mature lines; recent requests affect composition but not mature rate.",
       "One shared type no edge; two edge; fanout26 value removed; empty vs failed graph distinguished.",
       "All six style states and signal boundaries correct; claims 7 days apart link and 8 do not; different SKUs of one style link; unsupported neighbors never link; low-link misses reported.",
-      "Wardrobing integer boundaries 45/65, a 45-point case without a timing signal (no band), zero-IQR, capped-latency and no-return fixtures match without mixing into model risk.",
-      "Changing private labels with operational inputs fixed changes no features or predictions.",
+      "Wardrobing integer boundaries 35/75, one late return without occasion wear or a half share (25 points, no band), the 75%/100% window boundaries, a request after the window, a claim that is not an item return, and no-return fixtures match without mixing into model risk.",
+      "Changing private labels with operational inputs fixed, or removing private truth altogether, changes no features or predictions.",
       "coordinated_claim_share matches the style-grain linked-claim rule on a hand-built fixture and counts each own line once."
     ]
   ],

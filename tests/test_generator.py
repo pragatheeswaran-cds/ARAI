@@ -117,12 +117,13 @@ def test_campaign_orders_are_private_and_only_hit_hot_list_styles(world):
     hot = set(product.loc[product["hot_listed"], "style_id"])
     style = world.tables["sku_master"].set_index("sku")["style_id"]
     lines = world.tables["sales_order_line"]
-    first_lines = lines[lines["order_id"].isin(campaign_orders) & (lines["order_line_no"] == 1)]
-    assert set(first_lines["sku"].map(style)) <= hot          # the first line is the target; other lines are ordinary
+    on_campaign = lines[lines["order_id"].isin(campaign_orders)].assign(hot=lambda f: f["sku"].map(style).isin(hot))
+    assert on_campaign.groupby("order_id")["hot"].any().all()  # one line is the target; other lines are ordinary
 
     actions = world.truth["action_truth"]
     coordinated = actions[actions["completed_action"] & actions["campaign_id"].notna()]
-    claimed = coordinated.merge(lines, on=LINE_KEY)["sku"].map(style)
+    target = coordinated[~coordinated["parcel_companion"]]     # a whole-parcel claim also covers the ordinary lines
+    claimed = target.merge(lines, on=LINE_KEY)["sku"].map(style)
     assert set(claimed) <= hot
     assert set(coordinated["action_type"]) <= {"deceptive_nonreceipt_claim", "deceptive_contents_claim"}
     assert coordinated["claim_source"].isin(["reused_purchase", "campaign_order"]).all()
@@ -272,6 +273,49 @@ def test_campaign_orders_have_ordinary_baskets():
     returns = world.tables["return_order_line"]
     on_campaign = returns[returns["order_id"].map(layer) == "campaign"]
     assert any(key not in abusive for key in zip(on_campaign["return_order_id"], on_campaign["return_line_no"]))
+
+
+def test_campaign_claims_are_not_tied_to_the_first_line():
+    world = generate_world(2101, 4000)
+    actions = world.truth["action_truth"]
+    lines = world.tables["sales_order_line"]
+    size = lines.groupby("order_id")["order_line_no"].size()
+    claims = actions[actions["completed_action"] & (actions["claim_source"] == "campaign_order") & ~actions["parcel_companion"]]
+    multi = claims[claims["order_id"].map(size) >= 2]
+    assert len(multi) > 15
+    assert 0.2 < (multi["order_line_no"] == 1).mean() < 0.8
+
+
+def test_deceptive_claims_share_the_honest_code_mix_and_can_cover_a_parcel():
+    world = generate_world(2101, 4000)
+    actions = world.truth["action_truth"]
+    done = actions[actions["completed_action"] & actions["action_type"].str.startswith("deceptive")]
+    returns = world.tables["return_order_line"].set_index(["return_order_id", "return_line_no"])
+    codes = pd.Series([returns.loc[(r, n), "reason_code"] for r, n in zip(done["return_order_id"], done["return_line_no"])],
+                      index=done.index)
+    assert ((codes == "item_not_received") == (done["action_type"] == "deceptive_nonreceipt_claim")).all()
+    first = ~done["parcel_companion"]
+    assert 0.15 < (codes[first] == "item_not_received").mean() < 0.40     # .27 by specification, not one half
+    # whole-parcel claims: every action of the claim is non-receipt, and a companion never stands alone
+    parcel = actions[actions["whole_parcel"]]
+    assert len(parcel) and (parcel["action_type"] == "deceptive_nonreceipt_claim").all()
+    companions = actions[actions["parcel_companion"]]
+    assert len(companions) and companions["whole_parcel"].all()
+    parents = set(actions.loc[actions["whole_parcel"] & ~actions["parcel_companion"], "action_id"])
+    assert set(companions["action_id"].str.rsplit("-L", n=1).str[0]) <= parents
+    # a whole-parcel claim takes every unit of the line it starts on
+    quantity = world.tables["sales_order_line"].set_index(LINE_KEY)["quantity"]
+    campaign_parcels = parcel[(parcel["claim_source"] == "campaign_order") & parcel["order_id"].notna()]
+    taken = campaign_parcels["allocated_unit_indices"].map(len).to_numpy()
+    assert (taken == quantity.loc[list(zip(campaign_parcels["order_id"], campaign_parcels["order_line_no"]))].to_numpy()).all()
+
+
+def test_signups_are_flat_across_the_history_window(world):
+    signup = world.tables["customer_master"]["signup_date"]
+    start = pd.Timestamp(world.context.s.history_start)
+    inside = signup[signup >= start]
+    first_half = (inside < start + pd.Timedelta(days=182)).mean()
+    assert 0.40 < first_half < 0.60
 
 
 def test_household_co_orders_follow_a_member_order_with_the_same_style(world):

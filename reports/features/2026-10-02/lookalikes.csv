@@ -1,0 +1,9 @@
+group,customers
+eligible honest customers,53434
+honest ring members (no completed action yet),298
+honest with any claim line,10356
+honest repeat claimants (two or more claim lines),3897
+eligible abusers,3181
+abusers with two or more claim lines,1790
+abusers with exactly one completed action,921
+abusers with no claim line (temporary use only),800

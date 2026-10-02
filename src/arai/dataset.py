@@ -13,25 +13,38 @@ import pandas as pd
 
 from arai import features as F
 from arai import paths
-from arai.generator import load_world
+from arai.generator.assemble import OPERATIONAL_TABLES
 
 MODEL_FEATURES = F.feature_order()
+EVIDENCE_FEATURES = F.evidence_features()
 
 
 def feature_dir(world_id: str, artifact_root: Path | None = None) -> Path:
     return Path(artifact_root or paths.ARTIFACT_ROOT) / "features" / world_id
 
 
-def reference_from_worlds(world_ids: list) -> F.Reference:
+def load_operational(world_id: str, artifact_root: Path | None = None) -> tuple:
+    """(tables, manifest) of a stored world. Private truth is never opened on this path."""
+    base = Path(artifact_root or paths.ARTIFACT_ROOT) / "worlds" / world_id
+    manifest = json.loads((base / "operational" / "manifest.json").read_text(encoding="utf-8"))
+    tables = {name: pd.read_parquet(base / "parquet" / f"{name}.parquet") for name in OPERATIONAL_TABLES}
+    return tables, manifest
+
+
+def snapshot_date(manifest: dict):
+    return pd.Timestamp(manifest["cutoff"][:10]).date()
+
+
+def reference_from_worlds(world_ids: list, artifact_root: Path | None = None) -> F.Reference:
     """Frozen training statistics from the named worlds (training worlds only)."""
-    worlds = [load_world(w) for w in world_ids]
-    return F.fit_reference([(w.tables, w.snapshot_date) for w in worlds])
+    worlds = [load_operational(w, artifact_root) for w in world_ids]
+    return F.fit_reference([(tables, snapshot_date(manifest)) for tables, manifest in worlds])
 
 
 def build_features(world_id: str, reference: F.Reference, artifact_root: Path | None = None) -> F.FeatureResult:
     """Compute and freeze the features and evidence of one world. Reads operational tables only."""
-    world = load_world(world_id, artifact_root=artifact_root)
-    result = F.compute_features(world.tables, world.snapshot_date, reference)
+    tables, manifest = load_operational(world_id, artifact_root)
+    result = F.compute_features(tables, snapshot_date(manifest), reference)
     out = feature_dir(world_id, artifact_root)
     out.mkdir(parents=True, exist_ok=True)
     result.features.assign(world_id=world_id).to_parquet(out / "features.parquet", index=False)
@@ -41,7 +54,7 @@ def build_features(world_id: str, reference: F.Reference, artifact_root: Path | 
     result.graph.edges.to_parquet(out / "edges.parquet", index=False)
     meta = {"world_id": world_id, "feature_order": MODEL_FEATURES, "fallback_uses": result.fallback_uses,
             "reference": reference.to_dict(), "dataset_manifest_sha256": hashlib.sha256(
-                json.dumps(world.manifest, sort_keys=True).encode()).hexdigest(),
+                json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
             "features_sha256": hashlib.sha256((out / "features.parquet").read_bytes()).hexdigest()}
     (out / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     return result

@@ -1,6 +1,6 @@
 {
   "date": "2026-10-02",
-  "specification": "1.2",
+  "specification": "1.4",
   "worlds": {
     "fixture": [
       "W2001",
@@ -32,87 +32,87 @@
   "validation_and_test_worlds_generated": false,
   "training_pooled": {
     "customers": 100000,
-    "eligible_customers": 53024,
-    "abusers_all": 3258,
-    "abusers_eligible": 2876,
-    "prevalence_eligible": 0.05423958961979481,
-    "excluded_abuse_share": 0.1172498465316145,
+    "eligible_customers": 56615,
+    "abusers_all": 3517,
+    "abusers_eligible": 3181,
+    "prevalence_eligible": 0.056186523006270424,
+    "excluded_abuse_share": 0.09553596815467728,
     "rule_precision_at_5pct": {
-      "rank by number of claims": 0.4015,
-      "rank by raw return rate": 0.2132
+      "rank by number of claims": 0.4245,
+      "rank by raw return rate": 0.2366
     },
     "segment_sizes_five_worlds": {
-      "legit_heavy_returner": 2308,
-      "defective_product_buyer": 5207,
-      "benign_household": 3222
+      "legit_heavy_returner": 2336,
+      "defective_product_buyer": 5406,
+      "benign_household": 3485
     }
   },
   "shortcut_auc_held_out": [
     {
       "population": "all customers",
       "customers": 50000,
-      "abusers": 1613,
-      "persona_only_auc": 0.652,
-      "order_count_only_auc": 0.733,
+      "abusers": 1748,
+      "persona_only_auc": 0.629,
+      "order_count_only_auc": 0.717,
       "raw_return_rate_auc": 0.854,
-      "claim_count_auc": 0.841
+      "claim_count_auc": 0.837
     },
     {
       "population": "eligible customers",
-      "customers": 26550,
-      "abusers": 1410,
-      "persona_only_auc": 0.534,
-      "order_count_only_auc": 0.57,
-      "raw_return_rate_auc": 0.786,
-      "claim_count_auc": 0.813
+      "customers": 28356,
+      "abusers": 1558,
+      "persona_only_auc": 0.545,
+      "order_count_only_auc": 0.562,
+      "raw_return_rate_auc": 0.792,
+      "claim_count_auc": 0.811
     }
   ],
   "style_signals": [
     {
       "signal": "targeting, linked share >= 0.05",
-      "truth_positive_styles": 38,
+      "truth_positive_styles": 39,
       "fired": 36,
-      "true_positives": 34,
+      "true_positives": 35,
       "fired_on_sub_threshold": 0,
-      "precision": 0.9444444444444444,
-      "recall": 0.8947368421052632,
+      "precision": 0.9722222222222222,
+      "recall": 0.8974358974358975,
       "recall_95": [
-        0.7586916879980553,
-        0.9582981020673341
+        0.7642084129775517,
+        0.9593873444171301
       ],
       "precision_95": [
-        0.8185502589238878,
-        0.9846303362329332
+        0.8582996626496918,
+        0.9950797197044302
       ]
     },
     {
       "signal": "targeting, linked share >= 0.075",
-      "truth_positive_styles": 38,
-      "fired": 33,
-      "true_positives": 33,
+      "truth_positive_styles": 39,
+      "fired": 34,
+      "true_positives": 34,
       "fired_on_sub_threshold": 0,
       "precision": 1.0,
-      "recall": 0.868421052631579,
+      "recall": 0.8717948717948718,
       "recall_95": [
-        0.7267282994850112,
-        0.9424621712426856
+        0.7329395096236953,
+        0.9439726505197168
       ],
       "precision_95": [
-        0.8957265699643882,
+        0.8984820937803899,
         1.0
       ]
     },
     {
       "signal": "targeting, linked share >= 0.1",
-      "truth_positive_styles": 38,
+      "truth_positive_styles": 39,
       "fired": 30,
       "true_positives": 30,
       "fired_on_sub_threshold": 0,
       "precision": 1.0,
-      "recall": 0.7894736842105263,
+      "recall": 0.7692307692307693,
       "recall_95": [
-        0.6365391162355784,
-        0.8892533964790407
+        0.6166343954261704,
+        0.8735433757121625
       ],
       "precision_95": [
         0.8864829086095221,
@@ -121,19 +121,19 @@
     },
     {
       "signal": "targeting, three linked claimants only",
-      "truth_positive_styles": 38,
-      "fired": 38,
-      "true_positives": 36,
+      "truth_positive_styles": 39,
+      "fired": 39,
+      "true_positives": 38,
       "fired_on_sub_threshold": 0,
-      "precision": 0.9473684210526315,
-      "recall": 0.9473684210526315,
+      "precision": 0.9743589743589743,
+      "recall": 0.9743589743589743,
       "recall_95": [
-        0.8271423311893115,
-        0.9854460975514631
+        0.8681871352137286,
+        0.9954594139347627
       ],
       "precision_95": [
-        0.8271423311893115,
-        0.9854460975514631
+        0.8681871352137286,
+        0.9954594139347627
       ]
     },
     {
@@ -174,8 +174,125 @@
   "artefact_audit": {
     "out_of_order_header_lines": 0,
     "largest_same_day_repeat_order_share": 0.0,
-    "linked_claimants": 566,
-    "honest_linked_claimants": 68
+    "rows": {
+      "claim lines": {
+        "honest": 20455.0,
+        "solo abuse": 6748.0,
+        "ring abuse": 2063.0
+      },
+      "claims: share with reason item_not_received": {
+        "honest": 0.3241,
+        "solo abuse": 0.2897,
+        "ring abuse": 0.2967
+      },
+      "claims: share with a reason that needs no item back": {
+        "honest": 0.4589,
+        "solo abuse": 0.4323,
+        "ring abuse": 0.4384
+      },
+      "claims on multi-line orders: share on the first line": {
+        "honest": 0.4296,
+        "solo abuse": 0.4406,
+        "ring abuse": 0.4383
+      },
+      "claims on multi-unit lines: share claiming every unit": {
+        "honest": 0.1152,
+        "solo abuse": 0.0729,
+        "ring abuse": 0.1106
+      },
+      "non-receipt on multi-line orders: share covering the whole order": {
+        "honest": 0.3665,
+        "solo abuse": 0.2171,
+        "ring abuse": 0.3444
+      },
+      "claims: median days after delivery": {
+        "honest": 5.0,
+        "solo abuse": 5.0,
+        "ring abuse": 5.0
+      },
+      "claims: 95th percentile days": {
+        "honest": 14.37,
+        "solo abuse": 13.675,
+        "ring abuse": 13.63
+      },
+      "claims: maximum days": {
+        "honest": 29.2,
+        "solo abuse": 26.0,
+        "ring abuse": 21.1
+      },
+      "claims: share more than 10 days after delivery": {
+        "honest": 0.1369,
+        "solo abuse": 0.1257,
+        "ring abuse": 0.1385
+      },
+      "claims: share on single-line orders": {
+        "honest": 0.3387,
+        "solo abuse": 0.4799,
+        "ring abuse": 0.5382
+      },
+      "claims: share on single-unit orders": {
+        "honest": 0.2906,
+        "solo abuse": 0.4342,
+        "ring abuse": 0.4971
+      },
+      "claims: share on lines delivered in the last 90 days": {
+        "honest": 0.226,
+        "solo abuse": 0.2146,
+        "ring abuse": 0.302
+      },
+      "claims: share on lines not yet mature": {
+        "honest": 0.0827,
+        "solo abuse": 0.0817,
+        "ring abuse": 0.1202
+      },
+      "requests: lines out of time order in their header": {
+        "honest": 0.0,
+        "solo abuse": 0.0,
+        "ring abuse": 0.0
+      },
+      "requests: share refunded": {
+        "honest": 0.922,
+        "solo abuse": 0.9642,
+        "ring abuse": 0.962
+      },
+      "requests: share rejected": {
+        "honest": 0.0347,
+        "solo abuse": 0.0183,
+        "ring abuse": 0.0215
+      },
+      "requests: share withdrawn (by design honest only)": {
+        "honest": 0.0278,
+        "solo abuse": 0.0,
+        "ring abuse": 0.0
+      },
+      "requests: share after the window (by design honest only)": {
+        "honest": 0.0165,
+        "solo abuse": 0.0,
+        "ring abuse": 0.0
+      },
+      "requests: share with more than one unit": {
+        "honest": 0.0196,
+        "solo abuse": 0.0051,
+        "ring abuse": 0.0089
+      }
+    },
+    "signups_per_month": {
+      "2025-09": 2557,
+      "2025-10": 3836,
+      "2025-11": 3589,
+      "2025-12": 3715,
+      "2026-01": 3824,
+      "2026-02": 3459,
+      "2026-03": 3932,
+      "2026-04": 3709,
+      "2026-05": 3461,
+      "2026-06": 3129,
+      "2026-07": 3264,
+      "2026-08": 2545,
+      "2026-09": 195
+    },
+    "linked_claimants": 638,
+    "honest_linked_claimants": 62
   },
   "w2507_allocation_independence": {
     "chi2": 0.24,

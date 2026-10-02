@@ -1,0 +1,208 @@
+"""Training dataset, model fitting and out-of-fold scoring (final-spec component 07).
+
+Five fixed candidates share the same eligible rows and ordered features. Everything learned (medians,
+indicators, scaler, estimator) is fitted on training worlds only, and inside each fold on that fold's
+training worlds only. The unsupervised candidates never see a label. Nothing here runs at inference.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import time
+import warnings
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import sklearn
+import skops
+import skops.io as sio
+from sklearn.ensemble import HistGradientBoostingClassifier, IsolationForest
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.impute import MissingIndicator, SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import FeatureUnion, Pipeline
+from sklearn.preprocessing import StandardScaler
+
+from arai import dataset, paths
+from arai.dataset import MODEL_FEATURES
+from arai.settings import load_settings
+
+FAMILIES = {"LogisticRegression": LogisticRegression, "HistGradientBoostingClassifier": HistGradientBoostingClassifier,
+            "IsolationForest": IsolationForest}
+VOLUME_FEATURES = ["mature_sale_lines", "log_order_count"]
+N_FOLDS = 5
+# serialised types the loader will accept; anything else in a bundle is refused (final-spec component 10)
+TRUSTED_TYPES = ["sklearn.pipeline.FeatureUnion"]
+
+
+@dataclass
+class Candidate:
+    id: str
+    ordinal: int
+    family: str
+    supervised: bool
+    params: dict
+    features: list = field(default_factory=lambda: list(MODEL_FEATURES))
+    selectable: bool = True                     # report-only references can never be selected
+
+
+def candidates(settings=None) -> list:
+    """The five registered candidates, exactly as contracts/experiment.yaml lists them."""
+    experiment = (settings or load_settings()).experiment
+    return [Candidate(c["id"], c["ordinal"], c["family"], c["supervised"], dict(c["params"])) for c in experiment["candidates"]]
+
+
+def volume_only_reference(settings=None) -> Candidate:
+    """Report-only: the logistic candidate's settings with order volume as its only input."""
+    logistic = next(c for c in candidates(settings) if c.id == "logreg_c1")
+    return Candidate("volume_only_logreg", 0, logistic.family, True, dict(logistic.params), list(VOLUME_FEATURES), selectable=False)
+
+
+def make_pipeline(candidate: Candidate) -> Pipeline:
+    """Training-median imputation, one missing-value indicator per feature, a scaler for logistic regression only."""
+    prepare = FeatureUnion([("impute", SimpleImputer(strategy="median", keep_empty_features=True)),
+                            ("missing", MissingIndicator(features="all"))])
+    steps = [("prepare", prepare)]
+    if candidate.family == "LogisticRegression":
+        steps.append(("scale", StandardScaler()))
+    steps.append(("model", FAMILIES[candidate.family](**candidate.params)))
+    return Pipeline(steps)
+
+
+def fit(candidate: Candidate, X: pd.DataFrame, y=None):
+    """Fit one pipeline; returns (pipeline, warnings). Unsupervised candidates are fitted without any label."""
+    pipeline = make_pipeline(candidate)
+    matrix = X[candidate.features].to_numpy(dtype=float)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        if candidate.supervised:
+            if y is None:
+                raise ValueError(f"{candidate.id} is supervised and needs labels")
+            pipeline.fit(matrix, np.asarray(y))
+        else:
+            pipeline.fit(matrix)                # no label reaches an unsupervised fit
+    return pipeline, [f"{w.category.__name__}: {w.message}" for w in caught]
+
+
+def raw_scores(candidate: Candidate, pipeline: Pipeline, X: pd.DataFrame) -> np.ndarray:
+    """Ranking score, higher = more suspicious: decision_function, or negative score_samples for isolation forests."""
+    matrix = X[candidate.features].to_numpy(dtype=float)
+    return pipeline.decision_function(matrix) if candidate.supervised else -pipeline.score_samples(matrix)
+
+
+def fold_map(world_ids: list) -> dict:
+    """Five folds grouped by world, two worlds held out per fold (sorted world order, consecutive pairs)."""
+    ordered = sorted(world_ids)
+    if len(ordered) != 2 * N_FOLDS:
+        raise ValueError("the reference procedure expects ten training worlds")
+    return {world: index // 2 for index, world in enumerate(ordered)}
+
+
+def out_of_fold(candidate: Candidate, frame: pd.DataFrame, folds: dict) -> tuple:
+    """Scores for every training row from a pipeline that never saw that row's world."""
+    scores = pd.Series(np.nan, index=frame.index)
+    notes = []
+    fold_of = frame["world_id"].map(folds)
+    for fold in range(N_FOLDS):
+        held_out = fold_of == fold
+        train = frame[~held_out]
+        assert not set(train["world_id"]) & set(frame.loc[held_out, "world_id"])
+        pipeline, caught = fit(candidate, train, train["y_abuse"] if candidate.supervised else None)
+        notes += caught
+        scores[held_out] = raw_scores(candidate, pipeline, frame[held_out])
+    return scores, notes
+
+
+def percentile(reference: np.ndarray, values) -> np.ndarray:
+    """Position of each value in the frozen training reference: 100*(less + half of equal)/count. Not a probability."""
+    reference = np.sort(np.asarray(reference, dtype=float))
+    values = np.asarray(values, dtype=float)
+    less = np.searchsorted(reference, values, side="left")
+    equal = np.searchsorted(reference, values, side="right") - less
+    return 100.0 * (less + 0.5 * equal) / len(reference)
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def training_frame(world_ids: list, artifact_root: Path | None = None, private_root: Path | None = None) -> pd.DataFrame:
+    """Eligible rows of the training worlds with their label. Labels are joined after features were frozen."""
+    frame = dataset.labelled(world_ids, artifact_root, private_root)
+    audit = frame.groupby("world_id").size()
+    if set(audit.index) != set(world_ids):
+        raise ValueError("training assembly does not contain exactly the requested worlds")
+    return frame[frame["eligible"]].reset_index(drop=True)
+
+
+def train_candidate(candidate: Candidate, frame: pd.DataFrame, folds: dict, out_dir: Path) -> dict:
+    """Out-of-fold scores, the final estimator fitted once on all training worlds, and the candidate record."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    started = time.time()
+    notes, rejection = [], None
+    if candidate.supervised:
+        reference, notes = out_of_fold(candidate, frame, folds)
+        reference_kind = "out-of-fold, 5 folds grouped by world"
+    pipeline, caught = fit(candidate, frame, frame["y_abuse"] if candidate.supervised else None)
+    notes += caught
+    final = raw_scores(candidate, pipeline, frame)
+    if not candidate.supervised:
+        reference, reference_kind = pd.Series(final, index=frame.index), "in-sample training scores (optimistic)"
+    if any("ConvergenceWarning" in note for note in notes):
+        rejection = "did not converge"
+    elif not (np.isfinite(reference).all() and np.isfinite(final).all()):
+        rejection = "non-finite score"
+
+    sio.dump(pipeline, out_dir / "model.skops")
+    scores = frame[["world_id", "customer_id"]].assign(reference_score=reference.to_numpy(), final_fit_score=final)
+    scores.to_parquet(out_dir / "training_scores.parquet", index=False)
+    pd.DataFrame({"score": np.sort(reference.to_numpy())}).to_parquet(out_dir / "reference_scores.parquet", index=False)
+    record = {
+        "candidate_id": candidate.id, "ordinal": candidate.ordinal, "family": candidate.family,
+        "supervised": candidate.supervised, "selectable": candidate.selectable, "features": candidate.features,
+        "params": {k: (v if isinstance(v, (int, float, str, bool, type(None))) else str(v))
+                   for k, v in pipeline.named_steps["model"].get_params().items()},
+        "preprocessing": [name for name, _ in pipeline.steps[:-1]], "reference_kind": reference_kind,
+        "training_rows": int(len(frame)), "training_positives": int(frame["y_abuse"].sum()),
+        "training_worlds": sorted(frame["world_id"].unique()), "folds": folds if candidate.supervised else None,
+        "duration_seconds": round(time.time() - started, 2), "warnings": sorted(set(notes)),
+        "status": "rejected" if rejection else "fitted", "rejection": rejection,
+        "model_sha256": _sha256(out_dir / "model.skops"),
+        "libraries": {"scikit-learn": sklearn.__version__, "skops": skops.__version__, "numpy": np.__version__},
+    }
+    (out_dir / "record.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def experiment_dir(experiment_id: str, artifact_root: Path | None = None) -> Path:
+    return Path(artifact_root or paths.ARTIFACT_ROOT) / "experiments" / experiment_id
+
+
+def train_experiment(experiment_id: str, train_worlds: list, artifact_root: Path | None = None,
+                     private_root: Path | None = None) -> dict:
+    """Fit every candidate and the volume-only reference on the training worlds and write their records."""
+    settings = load_settings()
+    out = experiment_dir(experiment_id, artifact_root)
+    frame = training_frame(train_worlds, artifact_root, private_root)
+    folds = fold_map(train_worlds)
+    features_sha = {w: json.loads((dataset.feature_dir(w, artifact_root) / "meta.json").read_text())["features_sha256"]
+                    for w in train_worlds}
+    records = [train_candidate(c, frame, folds, out / "candidates" / c.id) for c in candidates(settings)]
+    reference = train_candidate(volume_only_reference(settings), frame, folds, out / "references" / "volume_only_logreg")
+    config = {"experiment_id": experiment_id, "training_worlds": sorted(train_worlds), "folds": folds,
+              "feature_order": MODEL_FEATURES, "features_sha256": features_sha,
+              "experiment_config_sha256": hashlib.sha256(
+                  (settings.spec_root / "contracts" / "experiment.yaml").read_bytes()).hexdigest(),
+              "eligible_training_rows": int(len(frame)), "training_positives": int(frame["y_abuse"].sum())}
+    (out / "config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    return {"config": config, "candidates": records, "references": [reference]}
+
+
+def load_pipeline(path: Path) -> Pipeline:
+    """Load a fitted pipeline, refusing any serialised type outside the allow-list."""
+    unknown = [t for t in sio.get_untrusted_types(file=path) if t not in TRUSTED_TYPES and not t.startswith(("sklearn.", "numpy."))]
+    if unknown:
+        raise ValueError(f"model file contains types outside the allow-list: {unknown}")
+    return sio.load(path, trusted=sio.get_untrusted_types(file=path))

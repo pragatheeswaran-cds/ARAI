@@ -86,6 +86,8 @@ tables:
     - campaign_id
     - claim_source
     - uncompleted_reason
+    - whole_parcel
+    - parcel_companion
     nullable:
     - return_order_id
     - return_line_no
@@ -102,6 +104,10 @@ tables:
     - completed requires return line/time/allocated unit references
     - coordinated requires campaign/group, claim type and claim_source
     - uncompleted requires reason, never positive label
+    - whole_parcel marks every action of a deceptive non-receipt claim that covers the
+      whole parcel; parcel_companion marks its actions on sale lines other than the
+      one first chosen, which are excluded from style targeting truth and from counts
+      of opportunities
   customer_truth:
     key:
     - world_id

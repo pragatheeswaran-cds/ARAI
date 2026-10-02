@@ -4,7 +4,7 @@ Everything here reads the seven operational tables only. No private truth, perso
 value enters a feature; identifiers are used for equality alone. One row per customer and world.
 
 Outputs:
-- the 18 ordered model features of contracts/features.yaml,
+- the ordered model features of contracts/features.yaml,
 - the observed relationship graph (an edge needs two shared identifier types),
 - style and SKU evidence (quality and targeting signals),
 - the wardrobing indicator, which is independent of the model score.
@@ -38,32 +38,39 @@ STYLE_SUPPORT = 20              # mature sale lines a style or SKU needs before 
 QUALITY_DAMAGE_SHARE = 0.30
 TARGETING_LINKED_CLAIMERS = 3
 TARGETING_LINKED_SHARE = 0.075
+# a late return: an item return requested in the last quarter of its return window, and still inside it
+LATE_FROM, LATE_TO = 0.75, 1.0
 # wardrobing: integer points, never floating point (decimal weights miss the band boundaries)
-WARDROBING_POINTS = {"latency_z": 30, "median_window_ratio": 25, "occasion_return_share": 15,
-                     "discretionary_share": 20, "bracketing_share": 10}
-WARDROBING_ELEVATED, WARDROBING_POSSIBLE = 65, 45
-TIMING_SIGNALS = ("latency_z", "median_window_ratio")
+WARDROBING_POINTS = {"repeat_late_returns": 50, "late_return": 25, "late_occasion_return": 15, "late_return_share": 10}
+WARDROBING_ELEVATED, WARDROBING_POSSIBLE = 75, 35
+WARDROBING_SUPPORT = ["item_return_lines", "late_return_lines", "late_occasion_return_lines"]
+
+
+def _contract(spec_root=None) -> dict:
+    return yaml.safe_load(((spec_root or SPEC_ROOT) / "contracts" / "features.yaml").read_text(encoding="utf-8"))
 
 
 def feature_order(spec_root=None) -> list:
     """The ordered model features, read from the contract so code and contract cannot drift apart."""
-    contract = yaml.safe_load(((spec_root or SPEC_ROOT) / "contracts" / "features.yaml").read_text(encoding="utf-8"))
-    return [f["name"] for f in contract["ordered_features"]]
+    return [f["name"] for f in _contract(spec_root)["ordered_features"]]
+
+
+def evidence_features(spec_root=None) -> list:
+    """Measures computed with the features and shown to the analyst, but never given to a model."""
+    return [f["name"] for f in _contract(spec_root)["evidence_only"]["features"]]
 
 
 @dataclass
 class Reference:
-    """Statistics frozen from training worlds: fallbacks for peerless categories and the latency baseline."""
+    """Statistics frozen from training worlds: the fallback rate for a category with no peers in a snapshot."""
     category_rate: dict                  # category -> mature requested units / mature purchased units
-    latency_median: dict                 # category -> median capped days from delivery to request
-    latency_iqr: dict                    # category -> interquartile range of the same
 
     def to_dict(self) -> dict:
-        return {"category_rate": self.category_rate, "latency_median": self.latency_median, "latency_iqr": self.latency_iqr}
+        return {"category_rate": self.category_rate}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Reference":
-        return cls(dict(data["category_rate"]), dict(data["latency_median"]), dict(data["latency_iqr"]))
+        return cls(dict(data["category_rate"]))
 
 
 @dataclass
@@ -76,7 +83,7 @@ class Graph:
 
 @dataclass
 class FeatureResult:
-    features: pd.DataFrame               # one row per customer: the 18 features plus eligibility and support counts
+    features: pd.DataFrame               # one row per customer: model features, evidence, eligibility, support counts
     graph: Graph
     styles: pd.DataFrame
     skus: pd.DataFrame
@@ -113,24 +120,21 @@ def _prepare(tables: dict, cutoff) -> tuple:
                                               "return_window_days", "mature", "net_unit_value"]], on=LINE_KEY)
     requests["days"] = (requests["requested_at"].dt.normalize() - requests["delivered_date"]).dt.days
     requests["window_ratio"] = np.minimum(WINDOW_RATIO_CAP, requests["days"] / requests["return_window_days"])
-    requests["capped_days"] = np.minimum(requests["days"], WINDOW_RATIO_CAP * requests["return_window_days"])
     requests["is_claim"] = requests["reason_code"].isin(CLAIM_CODES)
+    requests["late_return"] = ~requests["is_claim"] & (requests["days"] >= 0) & \
+        requests["days"].between(LATE_FROM * requests["return_window_days"], LATE_TO * requests["return_window_days"])
     requests["request_day"] = requests["requested_at"].dt.normalize()
     return lines, requests, cutoff
 
 
 def fit_reference(worlds: list) -> Reference:
     """Frozen training statistics from (tables, cutoff) pairs. Training worlds only; never refit at inference."""
-    mature, latency = [], []
+    mature = []
     for tables, cutoff in worlds:
-        lines, requests, _ = _prepare(tables, cutoff)
+        lines, _, _ = _prepare(tables, cutoff)
         mature.append(lines.loc[lines["mature"], ["category", "quantity", "requested_units"]])
-        latency.append(requests[["category", "capped_days"]])
-    mature, latency = pd.concat(mature), pd.concat(latency)
-    totals = mature.groupby("category")[["requested_units", "quantity"]].sum()
-    spread = latency.groupby("category")["capped_days"].quantile([0.25, 0.5, 0.75]).unstack()
-    return Reference(category_rate=(totals["requested_units"] / totals["quantity"]).to_dict(),
-                     latency_median=spread[0.5].to_dict(), latency_iqr=(spread[0.75] - spread[0.25]).to_dict())
+    totals = pd.concat(mature).groupby("category")[["requested_units", "quantity"]].sum()
+    return Reference(category_rate=(totals["requested_units"] / totals["quantity"]).to_dict())
 
 
 # ------------------------------------------------------------------ graph
@@ -262,6 +266,13 @@ def compute_features(tables: dict, cutoff, reference: Reference | None = None) -
     out["late_window_share"] = _share(timed[timed["window_ratio"] >= 0.75].groupby("customer_id")["quantity_returned"].sum(), timed_units)
     out["median_window_ratio"] = timed.groupby("customer_id")["window_ratio"].median().reindex(out.index)
     out["occasion_return_share"] = unit_share(requests["is_occasion_wear"] == 1)
+    # late returns: item returns (never claims) requested in the last quarter of the window and still inside it
+    item_returns = timed[~timed["is_claim"]]
+    late = requests[requests["late_return"]]
+    count = lambda part: part.groupby("customer_id").size().reindex(out.index, fill_value=0).astype(int)
+    out["item_return_lines"] = count(item_returns)
+    out["late_return_lines"] = count(late)
+    out["late_occasion_return_lines"] = count(late[late["is_occasion_wear"] == 1])
     out["discretionary_share"] = unit_share(requests["reason_code"].isin(DISCRETIONARY_CODES))
 
     # trend: mature return rate of the last 90 delivery days minus the 90 before
@@ -285,17 +296,23 @@ def compute_features(tables: dict, cutoff, reference: Reference | None = None) -
     claims = linked_claims(requests, graph.neighbours)
     out["coordinated_claim_share"] = claims.groupby("customer_id")["linked"].mean().reindex(out.index)
 
-    features = out[feature_order()].copy()
+    chosen = feature_order() + evidence_features()
+    features = out[chosen].copy()                                     # model features first, then evidence-only link measures
+    for name in WARDROBING_SUPPORT:                                   # support counts, unless the contract makes one a feature
+        if name not in chosen:
+            features[name] = out[name]
     features["eligible"] = features["mature_sale_lines"] >= ELIGIBLE_MIN_LINES
     features["mature_purchased_units"] = N.reindex(out.index, fill_value=0).astype(int)
     features["mature_requested_units"] = R.reindex(out.index, fill_value=0).astype(int)
     features["all_requested_units"] = units.astype(int)
+    features["claim_lines"] = claims.groupby("customer_id").size().reindex(out.index, fill_value=0).astype(int)
+    features["timed_return_lines"] = timed.groupby("customer_id").size().reindex(out.index, fill_value=0).astype(int)
     features["expected_units"] = E.reindex(out.index)
     features = features.reset_index()
 
     lines = lines.merge(mature[LINE_KEY + ["p_expected"]], on=LINE_KEY, how="left")
     styles, skus = style_evidence(lines, requests, claims, reference)
-    wardrobing = wardrobing_indicator(features, requests, reference)
+    wardrobing = wardrobing_indicator(out[WARDROBING_SUPPORT].reset_index())
     return FeatureResult(features=features, graph=graph, styles=styles, skus=skus, wardrobing=wardrobing,
                          lines=lines, requests=requests.merge(claims[["return_order_id", "return_line_no", "linked", "linked_neighbours"]],
                                                               on=["return_order_id", "return_line_no"], how="left"),
@@ -343,34 +360,25 @@ def style_evidence(lines: pd.DataFrame, requests: pd.DataFrame, claims: pd.DataF
 
 
 # ------------------------------------------------------------------ wardrobing indicator
-def wardrobing_indicator(features: pd.DataFrame, requests: pd.DataFrame, reference: Reference | None) -> pd.DataFrame:
-    """Image-free behavioural indicator of temporary use. It cannot establish wear and never enters the model score."""
-    out = features[["customer_id", "median_window_ratio", "occasion_return_share", "discretionary_share", "bracketing_share"]].copy()
-    if reference is not None and len(requests):
-        median = requests["category"].map(reference.latency_median).astype(float)
-        iqr = requests["category"].map(reference.latency_iqr).astype(float)
-        z = (requests["capped_days"] - median) / np.maximum(1.0, iqr)
-        latency = pd.DataFrame({"customer_id": requests["customer_id"], "z": z, "known": median.notna() & iqr.notna()})
-        per_customer = latency.groupby("customer_id").agg(latency_z=("z", "mean"), baseline_known=("known", "all"))
-        out = out.merge(per_customer, on="customer_id", how="left")
-        out.loc[out["baseline_known"] == False, "latency_z"] = np.nan          # noqa: E712  a missing baseline is not a zero
-    else:
-        out["latency_z"] = np.nan
-    has_requests = out["customer_id"].isin(requests["customer_id"])
+def wardrobing_indicator(counts: pd.DataFrame) -> pd.DataFrame:
+    """Image-free behavioural indicator of temporary use. It cannot establish wear and never enters the model score.
+
+    Built on item returns requested in the last quarter of the return window: once is common, repeatedly is not.
+    `counts` has customer_id, item_return_lines, late_return_lines and late_occasion_return_lines.
+    """
+    out = counts[["customer_id", *WARDROBING_SUPPORT]].copy()
+    has_returns = out["item_return_lines"] > 0
+    out["late_return_share"] = (out["late_return_lines"] / out["item_return_lines"].where(has_returns)).astype(float)
     fired = pd.DataFrame({
-        "latency_z": out["latency_z"] >= 1,
-        "median_window_ratio": out["median_window_ratio"] >= 0.75,
-        "occasion_return_share": out["occasion_return_share"] >= 0.5,
-        "discretionary_share": out["discretionary_share"] >= 0.5,
-        "bracketing_share": out["bracketing_share"] < 0.1,
+        "repeat_late_returns": out["late_return_lines"] >= 2,
+        "late_return": out["late_return_lines"] >= 1,
+        "late_occasion_return": out["late_occasion_return_lines"] >= 1,
+        "late_return_share": out["late_return_share"] >= 0.5,
     })
-    complete = out[list(WARDROBING_POINTS)].notna().all(axis=1)
     score = sum(fired[name].astype(int) * points for name, points in WARDROBING_POINTS.items())
-    timing = fired[list(TIMING_SIGNALS)].any(axis=1)
-    status = np.select([~has_requests, ~complete, timing & (score >= WARDROBING_ELEVATED), timing & (score >= WARDROBING_POSSIBLE)],
-                       ["insufficient_evidence", "incomplete", "elevated", "possible"], default="no_elevated_signal")
-    out["status"] = status
-    out["indicator_score"] = score.where(has_requests & complete).astype("Int64")
+    out["status"] = np.select([~has_returns, score >= WARDROBING_ELEVATED, score >= WARDROBING_POSSIBLE],
+                              ["insufficient_evidence", "elevated", "possible"], default="no_elevated_signal")
+    out["indicator_score"] = score.where(has_returns).astype("Int64")
     for name in WARDROBING_POINTS:
-        out["fired_" + name] = (fired[name] & has_requests & complete).to_numpy()
+        out["fired_" + name] = (fired[name] & has_returns).to_numpy()
     return out

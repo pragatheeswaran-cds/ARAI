@@ -135,7 +135,8 @@ def build_truth(ctx: Context, profiles, rel, orders, lines, unit_facts, campaign
 
     action = pd.DataFrame(actions, columns=["action_id", "cust", "action_type", "order_id", "order_line_no",
                                             "allocated_unit_indices", "completed_action", "coordination_group_id",
-                                            "campaign_id", "claim_source", "uncompleted_reason", "style_idx"])
+                                            "campaign_id", "claim_source", "uncompleted_reason", "style_idx",
+                                            "whole_parcel", "parcel_companion"])
     placed = events[events["kind"] == "abuse"].set_index("event_id") if len(events) else pd.DataFrame()
     def lookup(column):
         return [placed[column].get(a) if c else None for a, c in zip(action["action_id"], action["completed_action"])]
@@ -147,7 +148,8 @@ def build_truth(ctx: Context, profiles, rel, orders, lines, unit_facts, campaign
         "return_order_id": lookup("return_order_id"), "return_line_no": pd.array(lookup("return_line_no"), dtype="Int64"),
         "requested_at": lookup("requested_at"), "available_at": lookup("requested_at"),
         "coordination_group_id": action["coordination_group_id"], "campaign_id": action["campaign_id"],
-        "claim_source": action["claim_source"], "uncompleted_reason": action["uncompleted_reason"]})
+        "claim_source": action["claim_source"], "uncompleted_reason": action["uncompleted_reason"],
+        "whole_parcel": action["whole_parcel"].astype(bool), "parcel_companion": action["parcel_companion"].astype(bool)})
 
     completed = action[action["completed_action"].astype(bool)]
     flags = {t: np.zeros(ctx.n, dtype=bool) for t in (NONRECEIPT, CONTENTS, TEMPORARY)}
@@ -165,7 +167,8 @@ def build_truth(ctx: Context, profiles, rel, orders, lines, unit_facts, campaign
 
     # style truth: planned and completed targeting per group, graded by distinct completing accounts
     planned = campaign_truth.groupby("target_style_id")["coordination_group_id"].agg(lambda g: sorted(set(g))).to_dict()
-    coordinated_actions = completed[completed["campaign_id"].notna()]
+    # a whole-parcel claim's lines on other sale lines are not purchases of the target style
+    coordinated_actions = completed[completed["campaign_id"].notna() & ~completed["parcel_companion"].astype(bool)]
     accounts = {}
     for style, group, cust in zip(coordinated_actions["style_idx"], coordinated_actions["coordination_group_id"],
                                   coordinated_actions["cust"]):

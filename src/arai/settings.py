@@ -68,6 +68,7 @@ class Settings:
     defaults: dict          # generator-config.yaml consolidation_defaults
     amendment: dict         # generator-config.yaml amendment_1_1
     amendment3: dict        # generator-config.yaml amendment_1_3
+    amendment4: dict        # generator-config.yaml amendment_1_4
     policy: dict            # generator-policy.yaml
     profiles: dict          # assets/profile-config.yaml
     festive_windows: list   # assets/festive-windows.yaml
@@ -120,6 +121,7 @@ def load_settings(seed: int | None = None, spec_root: Path | None = None, overri
         defaults=config["consolidation_defaults"],
         amendment=config["amendment_1_1"],
         amendment3=config["amendment_1_3"],
+        amendment4=config["amendment_1_4"],
         policy=_load(root / "contracts" / "generator-policy.yaml"),
         profiles=_load(root / "assets" / "profile-config.yaml"),
         festive_windows=_load(root / "assets" / "festive-windows.yaml")["windows"],

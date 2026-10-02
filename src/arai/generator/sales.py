@@ -101,20 +101,25 @@ def _order_chunk(ctx: Context, rel: Relationships, i: int, days: np.ndarray, rng
     return order, line
 
 
-def draw_basket(ctx: Context, rng, order_date, festive: bool, first_style: int):
-    """One ordinary basket whose first line is a launched SKU of `first_style` (None if that style has none yet)."""
+def draw_basket(ctx: Context, rng, order_date, festive: bool, target_style: int):
+    """One ordinary basket with a launched SKU of `target_style` on a line at a uniform random position.
+
+    Returns None if that style has no launched SKU yet. `target_position` is the zero-based index of that line.
+    """
     cat, accepted = ctx.catalog, ctx.s.accepted
     n = int(min(6, 1 + rng.poisson(0.6)))
     u = rng.random((n, 5))
     choices = np.flatnonzero(cat.styles["first_launch"].to_numpy().astype("datetime64[D]") <= order_date)
     style = choices[(u[:, 0] * len(choices)).astype(int)]
-    style[0] = first_style
+    position = int(rng.integers(n))
+    style[position] = target_style
     sku = choose_skus(ctx, style, np.full(n, order_date), u[:, 1])
-    if sku[0] < 0:
+    if sku[position] < 0:
         return None
     quantity = np.array(accepted["quantity_values"])[_pick(u[:, 2], accepted["quantity_probabilities"])]
     discount, total = price_lines(ctx, sku, quantity, np.full(n, festive), u[:, 3], u[:, 4])
-    return {"sku_idx": sku, "style_idx": style, "quantity": quantity, "discount_p": discount, "total_p": total}
+    return {"sku_idx": sku, "style_idx": style, "quantity": quantity, "discount_p": discount, "total_p": total,
+            "target_position": position}
 
 
 def build_base_orders(ctx: Context, profiles: pd.DataFrame, rel: Relationships):

@@ -25,9 +25,7 @@ def expectation_fixture():
     return make_tables(SKUS, orders, lines, returns)
 
 
-REFERENCE = F.Reference(category_rate={"Shirt": 0.2, "Jeans": 0.2, "Jacket": 0.15},
-                        latency_median={"Shirt": 5.0, "Jeans": 5.0, "Jacket": 5.0},
-                        latency_iqr={"Shirt": 4.0, "Jeans": 4.0, "Jacket": 0.0})
+REFERENCE = F.Reference(category_rate={"Shirt": 0.2, "Jeans": 0.2, "Jacket": 0.15})
 
 
 def test_two_level_expectation_matches_hand_calculation():
@@ -55,7 +53,10 @@ def test_a_category_without_peers_needs_the_frozen_reference():
 def test_feature_schema_is_the_ordered_contract():
     result = F.compute_features(expectation_fixture(), CUTOFF, REFERENCE)
     order = F.feature_order()
-    assert len(order) == 18 and list(result.features.columns[1:19]) == order
+    assert len(order) == 17 and list(result.features.columns[1:18]) == order
+    # raw link structure is evidence for the analyst, never a model input
+    assert F.evidence_features() == ["max_identifier_fanout", "supported_neighbor_count"]
+    assert not set(F.evidence_features()) & set(order)
 
 
 def test_renaming_identifiers_changes_no_feature():
@@ -164,38 +165,124 @@ def test_style_without_support_or_returns_has_its_own_state():
     assert pd.isna(styles.loc["S3", "damage_share"])
 
 
-def _wardrobing(latency_z, ratio, occasion, discretionary, bracketing, has_request=True):
-    features = pd.DataFrame({"customer_id": ["c1"], "median_window_ratio": [ratio], "occasion_return_share": [occasion],
-                             "discretionary_share": [discretionary], "bracketing_share": [bracketing]})
-    days = 5.0 + 4.0 * latency_z                                  # reference: median 5 days, IQR 4 days for shirts
-    requests = pd.DataFrame({"customer_id": ["c1"] if has_request else [], "category": ["Shirt"] if has_request else [],
-                             "capped_days": [days] if has_request else []})
-    return F.wardrobing_indicator(features, requests, REFERENCE).iloc[0]
+def _wardrobing(item_lines, late, late_occasion=0):
+    counts = pd.DataFrame({"customer_id": ["c1"], "item_return_lines": [item_lines], "late_return_lines": [late],
+                           "late_occasion_return_lines": [late_occasion]})
+    return F.wardrobing_indicator(counts).iloc[0]
 
 
-def test_wardrobing_bands_use_integer_points_and_need_a_timing_signal():
-    assert _wardrobing(1.0, 0.2, 0.9, 0.1, 0.5)["indicator_score"] == 45         # 30 + 15: the sum floating point missed
-    assert _wardrobing(1.0, 0.2, 0.9, 0.1, 0.5)["status"] == "possible"
-    assert _wardrobing(1.0, 0.8, 0.1, 0.1, 0.0)["indicator_score"] == 65 and _wardrobing(1.0, 0.8, 0.1, 0.1, 0.0)["status"] == "elevated"
-    no_timing = _wardrobing(0.0, 0.2, 0.9, 0.9, 0.0)                              # 15 + 20 + 10 = 45 points, no timing signal
-    assert no_timing["indicator_score"] == 45 and no_timing["status"] == "no_elevated_signal"
-    assert _wardrobing(0.99, 0.74, 0.9, 0.9, 0.0)["status"] == "no_elevated_signal"
-    assert _wardrobing(1.0, 0.2, 0.9, 0.1, 0.5, has_request=False)["status"] == "insufficient_evidence"
-    incomplete = _wardrobing(1.0, 0.8, 0.9, 0.9, np.nan)
-    assert incomplete["status"] == "incomplete" and pd.isna(incomplete["indicator_score"])
+def test_wardrobing_bands_follow_late_item_returns_with_integer_points():
+    assert _wardrobing(0, 0)["status"] == "insufficient_evidence" and pd.isna(_wardrobing(0, 0)["indicator_score"])
+    assert _wardrobing(4, 0)["indicator_score"] == 0 and _wardrobing(4, 0)["status"] == "no_elevated_signal"
+    one = _wardrobing(4, 1)                                  # one late return among four: 25 points, no band
+    assert one["indicator_score"] == 25 and one["status"] == "no_elevated_signal"
+    assert _wardrobing(2, 1)["indicator_score"] == 35 and _wardrobing(2, 1)["status"] == "possible"      # half are late
+    assert _wardrobing(3, 1)["indicator_score"] == 25                                                      # a third is not half
+    occasion = _wardrobing(4, 1, late_occasion=1)            # the late return was occasion wear: 25 + 15
+    assert occasion["indicator_score"] == 40 and occasion["status"] == "possible"
+    two = _wardrobing(8, 2)                                  # two late returns: 50 + 25, whatever else was returned
+    assert two["indicator_score"] == 75 and two["status"] == "elevated"
+    assert _wardrobing(2, 2, late_occasion=2)["indicator_score"] == 100
+    assert bool(two["fired_repeat_late_returns"]) and not bool(two["fired_late_return_share"])
 
 
-def test_wardrobing_latency_uses_capped_days_and_a_floor_on_the_spread():
-    features = pd.DataFrame({"customer_id": ["c1"], "median_window_ratio": [0.1], "occasion_return_share": [0.0],
-                             "discretionary_share": [0.0], "bracketing_share": [0.5]})
-    jacket = pd.DataFrame({"customer_id": ["c1"], "category": ["Jacket"], "capped_days": [6.0]})     # IQR 0 -> divide by one day
-    assert F.wardrobing_indicator(features, jacket, REFERENCE).iloc[0]["latency_z"] == pytest.approx(1.0)
-    unknown = pd.DataFrame({"customer_id": ["c1"], "category": ["Dress"], "capped_days": [6.0]})     # no training baseline
-    assert F.wardrobing_indicator(features, unknown, REFERENCE).iloc[0]["status"] == "incomplete"
-    late = make_tables(SKUS, [simple_order("O1", "c1")], [("O1", 1, "A", 1, "delivered", DAY)],
-                       [("R1", 1, "O1", 1, 1, "wrong_size", "2026-06-01 10:00", "rejected")])
-    request = F.compute_features(late, CUTOFF, REFERENCE).requests.iloc[0]
-    assert request["window_ratio"] == 2.0 and request["capped_days"] == 60                # capped at twice the 30-day window
+def test_a_late_return_is_an_item_return_in_the_last_quarter_of_its_window():
+    # 30-day window, delivered 2026-01-10: day 22 is before the last quarter, 23 and 30 are inside it, 31 is too late
+    orders = [simple_order(f"O{i}", f"c{i}") for i in range(1, 6)]
+    lines = [(f"O{i}", 1, "A", 1, "delivered", DAY) for i in range(1, 6)]
+    returns = [("R1", 1, "O1", 1, 1, "didnt_suit", "2026-02-01 10:00", "refunded"),          # day 22
+               ("R2", 1, "O2", 1, 1, "didnt_suit", "2026-02-02 10:00", "refunded"),          # day 23 (ratio .767)
+               ("R3", 1, "O3", 1, 1, "didnt_suit", "2026-02-09 10:00", "refunded"),          # day 30: the last day
+               ("R4", 1, "O4", 1, 1, "didnt_suit", "2026-02-10 10:00", "rejected"),          # day 31: after the window
+               ("R5", 1, "O5", 1, 1, "item_not_received", "2026-02-05 10:00", "refunded")]   # a claim is not an item return
+    result = F.compute_features(make_tables(SKUS, orders, lines, returns), CUTOFF, REFERENCE)
+    late = result.wardrobing.set_index("customer_id")["late_return_lines"]
+    assert late.to_dict() == {"c1": 0, "c2": 1, "c3": 1, "c4": 0, "c5": 0}
+    assert result.wardrobing.set_index("customer_id").loc["c5", "status"] == "insufficient_evidence"
+    f = result.features.set_index("customer_id")
+    assert f.loc["c4", "late_window_share"] == 1 and f.loc["c4", "median_window_ratio"] == pytest.approx(31 / 30)
+    very_late = make_tables(SKUS, [simple_order("O1", "c1")], [("O1", 1, "A", 1, "delivered", DAY)],
+                            [("R1", 1, "O1", 1, 1, "wrong_size", "2026-06-01 10:00", "rejected")])
+    assert F.compute_features(very_late, CUTOFF, REFERENCE).requests.iloc[0]["window_ratio"] == 2.0     # capped at twice the window
+
+
+def test_withdrawn_requests_are_ignored_everywhere():
+    orders = [simple_order("O1", "c1"), simple_order("O2", "c2")]
+    lines = [("O1", 1, "A", 1, "delivered", DAY), ("O1", 2, "B", 1, "delivered", DAY), ("O2", 1, "A", 1, "delivered", DAY)]
+    returns = [("R1", 1, "O1", 1, 1, "didnt_suit", "2026-02-05 10:00", "withdrawn"),
+               ("R1", 2, "O1", 2, 1, "wrong_size", "2026-01-12 10:00", "refunded")]
+    result = F.compute_features(make_tables(SKUS, orders, lines, returns), CUTOFF, REFERENCE)
+    f = result.features.set_index("customer_id").loc["c1"]
+    assert f["raw_return_rate"] == 0.5 and f["discretionary_share"] == 0 and f["all_requested_units"] == 1
+    assert result.wardrobing.set_index("customer_id").loc["c1", "late_return_lines"] == 0
+    assert len(result.requests) == 1
+
+
+def test_trend_compares_the_last_90_delivery_days_with_the_90_before():
+    # cutoff 2026-09-09: delivery on 2026-06-12 is 89 days back (recent), 2026-06-11 is 90 days back (earlier window)
+    skus = [("A", "S1", "Shirt", "M", 0, 7), ("B", "S1", "Shirt", "L", 0, 7)]
+    orders = [simple_order("O1", "c1"), simple_order("O2", "c1", date="2026-01-02"), simple_order("O3", "c2")]
+    lines = [("O1", 1, "A", 1, "delivered", "2026-06-12"), ("O2", 1, "A", 1, "delivered", "2026-06-11"),
+             ("O3", 1, "A", 1, "delivered", "2026-06-12")]
+    returns = [("R1", 1, "O1", 1, 1, "wrong_size", "2026-06-13 10:00", "refunded")]
+    f = F.compute_features(make_tables(skus, orders, lines, returns), CUTOFF, REFERENCE).features.set_index("customer_id")
+    assert f.loc["c1", "trend_90d"] == 1.0              # recent rate 1/1 minus earlier rate 0/1
+    assert pd.isna(f.loc["c2", "trend_90d"])            # nothing delivered in the earlier window: null, not zero
+
+
+def test_requested_refund_ratio_uses_net_value_after_discount():
+    tables = make_tables(SKUS, [simple_order("O1", "c1")], [("O1", 1, "A", 2, "delivered", DAY), ("O1", 2, "B", 1, "delivered", DAY)],
+                         [("R1", 1, "O1", 1, 1, "wrong_size", "2026-01-12 10:00", "refunded")])
+    tables["sales_order_line"].loc[tables["sales_order_line"]["order_line_no"] == 1, ["line_discount", "line_total"]] = [400.0, 1600.0]
+    f = F.compute_features(tables, CUTOFF, REFERENCE).features.set_index("customer_id")
+    assert f.loc["c1", "requested_refund_ratio"] == pytest.approx(800.0 / 2600.0)       # one unit at 800 of 1,600 + 1,000
+
+
+def test_coordinated_claim_share_counts_each_own_line_once():
+    # c1 has two supported neighbours claiming on the same style in the same week, and a second claim nobody shares
+    orders = [("O1", "c1", "2026-01-01", "A1", "D1", "P1"), ("O2", "c2", "2026-01-01", "A1", "D1", "P2"),
+              ("O3", "c3", "2026-01-01", "A1", "D1", "P3"), ("O4", "c1", "2026-01-02", "A1", "D1", "P1")]
+    lines = [("O1", 1, "A", 1, "delivered", DAY), ("O2", 1, "A", 1, "delivered", DAY), ("O3", 1, "B", 1, "delivered", DAY),
+             ("O4", 1, "D", 1, "delivered", DAY)]
+    returns = [("R1", 1, "O1", 1, 1, "item_not_received", "2026-01-12 10:00", "refunded"),
+               ("R2", 1, "O2", 1, 1, "wrong_item_sent", "2026-01-13 10:00", "refunded"),
+               ("R3", 1, "O3", 1, 1, "missing_parts", "2026-01-14 10:00", "refunded"),
+               ("R4", 1, "O4", 1, 1, "item_not_received", "2026-01-12 10:00", "refunded")]
+    result = F.compute_features(make_tables(SKUS, orders, lines, returns), CUTOFF, REFERENCE)
+    assert result.features.set_index("customer_id").loc["c1", "coordinated_claim_share"] == 0.5   # one of two lines, once
+    own = result.requests[result.requests["customer_id"] == "c1"].set_index("order_id")
+    assert own.loc["O1", "linked_neighbours"] == 2 and not own.loc["O4", "linked"]
+
+
+def _share_tables(claim_lines, linked):
+    """One style, 40 buyers of SKU A, `claim_lines` single claims of which the first `linked` come from one linked group."""
+    orders, lines, returns = [], [], []
+    for i in range(40):
+        ring = i < linked
+        orders.append((f"O{i}", f"c{i}", "2026-01-01", "RING" if ring else f"A{i}", "RINGDEV" if ring else f"D{i}", f"P{i}"))
+        lines.append((f"O{i}", 1, "A", 1, "delivered", DAY))
+        if i < claim_lines:
+            returns.append((f"R{i}", 1, f"O{i}", 1, 1, "item_not_received", "2026-01-12 10:00", "refunded"))
+    return make_tables(SKUS, orders, lines, returns)
+
+
+def test_style_signal_boundaries():
+    at = F.compute_features(_share_tables(40, 3), CUTOFF, REFERENCE).styles.set_index("style_id").loc["S1"]
+    assert at["linked_claim_share"] == pytest.approx(0.075) and at["targeting_signal"]          # exactly .075 with three claimants
+    below = F.compute_features(_share_tables(40, 2), CUTOFF, REFERENCE).styles.set_index("style_id").loc["S1"]
+    assert below["linked_claimers"] == 2 and not below["targeting_signal"]                       # two claimants never fire
+
+    def quality_style(complaints, others):
+        orders = [simple_order(f"O{i}", f"c{i}") for i in range(20)]
+        lines = [(f"O{i}", 1, "A", 1, "delivered", DAY) for i in range(20)]
+        reasons = ["poor_quality"] * complaints + ["wrong_size"] * others
+        returns = [(f"R{i}", 1, f"O{i}", 1, 1, reason, "2026-01-12 10:00", "refunded") for i, reason in enumerate(reasons)]
+        return F.compute_features(make_tables(SKUS, orders, lines, returns), CUTOFF, REFERENCE).styles.set_index("style_id").loc["S1"]
+
+    quality = quality_style(3, 7)
+    assert quality["damage_share"] == pytest.approx(0.3) and quality["quality_signal"]          # exactly 3 of 10 requested units
+    under = quality_style(2, 8)
+    assert under["damage_share"] == pytest.approx(0.2) and not under["quality_signal"]
 
 
 def test_features_never_read_private_truth(world):
@@ -205,3 +292,19 @@ def test_features_never_read_private_truth(world):
     lines = world.tables["sales_order_line"]
     assert len(result.lines) == len(lines)                           # returns aggregated before the join: no duplicated exposure
     assert summary_rate.dropna().between(0, 1).all() and result.fallback_uses == 0
+
+
+def test_features_are_built_without_private_truth_and_ignore_it(world, tmp_path, monkeypatch):
+    """FEAT-AC-07: with operational inputs fixed, private truth can be absent or changed and no feature moves."""
+    from arai import dataset, paths
+    from arai.generator.world import write_world
+
+    write_world(world, artifact_root=tmp_path / "artifacts", private_root=tmp_path / "private")
+    reference = dataset.reference_from_worlds([world.world_id], artifact_root=tmp_path / "artifacts")
+    first = dataset.build_features(world.world_id, reference, artifact_root=tmp_path / "artifacts").features
+    # change every label and then remove private truth altogether: the feature path never opens it
+    truth = pd.read_parquet(tmp_path / "private" / world.world_id / "customer_truth.parquet")
+    truth.assign(y_abuse=1 - truth["y_abuse"]).to_parquet(tmp_path / "private" / world.world_id / "customer_truth.parquet")
+    monkeypatch.setattr(paths, "PRIVATE_TRUTH_ROOT", tmp_path / "nowhere")
+    second = dataset.build_features(world.world_id, reference, artifact_root=tmp_path / "artifacts").features
+    pd.testing.assert_frame_equal(first, second)

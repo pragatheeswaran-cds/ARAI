@@ -1,6 +1,6 @@
 {
   "date": "2026-10-02",
-  "specification": "1.3",
+  "specification": "1.4",
   "training_worlds": [
     "W2101",
     "W2102",
@@ -13,56 +13,217 @@
     "W2109",
     "W2110"
   ],
+  "model_features": [
+    "mature_sale_lines",
+    "log_order_count",
+    "raw_return_rate",
+    "expected_return_rate",
+    "residual_z",
+    "claim_share",
+    "requested_refund_ratio",
+    "damage_reason_share",
+    "bracketing_share",
+    "late_window_share",
+    "median_window_ratio",
+    "occasion_return_share",
+    "discretionary_share",
+    "trend_90d",
+    "open_window_share",
+    "coordinated_claim_share",
+    "late_return_lines"
+  ],
   "customers": 100000,
-  "eligible": 53024,
-  "eligible_abusers": 2876,
+  "eligible": 56615,
+  "eligible_abusers": 3181,
   "category_fallback_uses": 0,
   "univariate_auc": {
-    "mature_sale_lines": 0.5675,
-    "log_order_count": 0.5707,
-    "raw_return_rate": 0.7858,
-    "expected_return_rate": 0.5006,
-    "residual_z": 0.7865,
-    "claim_share": 0.7834,
-    "requested_refund_ratio": 0.7922,
-    "damage_reason_share": 0.5103,
-    "bracketing_share": 0.5115,
-    "late_window_share": 0.6292,
-    "median_window_ratio": 0.4901,
-    "occasion_return_share": 0.6128,
-    "discretionary_share": 0.394,
-    "trend_90d": 0.4901,
-    "open_window_share": 0.5251,
-    "max_identifier_fanout": 0.7098,
-    "supported_neighbor_count": 0.6576,
-    "coordinated_claim_share": 0.5972
+    "mature_sale_lines": 0.5617,
+    "log_order_count": 0.5642,
+    "raw_return_rate": 0.7935,
+    "expected_return_rate": 0.505,
+    "residual_z": 0.7927,
+    "claim_share": 0.7836,
+    "requested_refund_ratio": 0.8004,
+    "damage_reason_share": 0.5099,
+    "bracketing_share": 0.5079,
+    "late_window_share": 0.6231,
+    "median_window_ratio": 0.4873,
+    "occasion_return_share": 0.6193,
+    "discretionary_share": 0.3924,
+    "trend_90d": 0.4917,
+    "open_window_share": 0.5238,
+    "coordinated_claim_share": 0.605,
+    "late_return_lines": 0.6325,
+    "max_identifier_fanout": 0.7135,
+    "supported_neighbor_count": 0.6594
   },
   "auc_of_missing": {
-    "claim_share": 0.4004,
-    "damage_reason_share": 0.4004,
-    "late_window_share": 0.4004,
-    "median_window_ratio": 0.4004,
-    "occasion_return_share": 0.4004,
-    "discretionary_share": 0.4004,
-    "trend_90d": 0.4601,
-    "coordinated_claim_share": 0.2225
+    "claim_share": 0.3995,
+    "damage_reason_share": 0.3995,
+    "late_window_share": 0.3995,
+    "median_window_ratio": 0.3995,
+    "occasion_return_share": 0.3995,
+    "discretionary_share": 0.3995,
+    "trend_90d": 0.4632,
+    "coordinated_claim_share": 0.2227
   },
   "wardrobing": [
     {
       "band": "elevated",
-      "flagged": 598,
-      "true_temporary_use": 143,
-      "precision": 0.2391304347826087,
-      "recall": 0.12894499549143373,
-      "temporary_use_customers": 1109
+      "flagged": 419,
+      "true_temporary_use": 394,
+      "precision": 0.9403341288782816,
+      "recall": 0.32137030995106036,
+      "temporary_use_customers": 1226
     },
     {
       "band": "elevated or possible",
-      "flagged": 1678,
-      "true_temporary_use": 280,
-      "precision": 0.16686531585220502,
-      "recall": 0.25247971145175835,
-      "temporary_use_customers": 1109
+      "flagged": 988,
+      "true_temporary_use": 693,
+      "precision": 0.701417004048583,
+      "recall": 0.5652528548123981,
+      "temporary_use_customers": 1226
     }
-  ]
+  ],
+  "wardrobing_false_alerts": [
+    {
+      "honest_group": "any late item return",
+      "customers": 955,
+      "alerted": 289,
+      "alert_rate": 0.30261780104712044
+    },
+    {
+      "honest_group": "size bracketers",
+      "customers": 11171,
+      "alerted": 82,
+      "alert_rate": 0.0073404350550532625
+    },
+    {
+      "honest_group": "all honest eligible",
+      "customers": 53434,
+      "alerted": 289,
+      "alert_rate": 0.005408541378148744
+    }
+  ],
+  "auc_by_abuse_type": {
+    "abuser: claims and temporary use (93)": {
+      "mature_sale_lines": 0.6594,
+      "log_order_count": 0.6531,
+      "raw_return_rate": 0.8724,
+      "expected_return_rate": 0.5235,
+      "residual_z": 0.8956,
+      "claim_share": 0.91,
+      "requested_refund_ratio": 0.8792,
+      "damage_reason_share": 0.5934,
+      "bracketing_share": 0.5506,
+      "late_window_share": 0.8228,
+      "median_window_ratio": 0.6342,
+      "occasion_return_share": 0.6821,
+      "discretionary_share": 0.4082,
+      "trend_90d": 0.4566,
+      "open_window_share": 0.5368,
+      "coordinated_claim_share": 0.5048,
+      "late_return_lines": 0.8432,
+      "max_identifier_fanout": 0.5266,
+      "supported_neighbor_count": 0.5307
+    },
+    "abuser: ring claims (1012)": {
+      "mature_sale_lines": 0.5212,
+      "log_order_count": 0.5224,
+      "raw_return_rate": 0.8358,
+      "expected_return_rate": 0.525,
+      "residual_z": 0.8314,
+      "claim_share": 0.9513,
+      "requested_refund_ratio": 0.8363,
+      "damage_reason_share": 0.4996,
+      "bracketing_share": 0.4994,
+      "late_window_share": 0.5271,
+      "median_window_ratio": 0.2731,
+      "occasion_return_share": 0.6452,
+      "discretionary_share": 0.2707,
+      "trend_90d": 0.5052,
+      "open_window_share": 0.5159,
+      "coordinated_claim_share": 0.7499,
+      "late_return_lines": 0.5228,
+      "max_identifier_fanout": 0.9433,
+      "supported_neighbor_count": 0.8295
+    },
+    "abuser: solo claims (1018)": {
+      "mature_sale_lines": 0.5793,
+      "log_order_count": 0.5838,
+      "raw_return_rate": 0.7786,
+      "expected_return_rate": 0.4937,
+      "residual_z": 0.7795,
+      "claim_share": 0.9406,
+      "requested_refund_ratio": 0.7575,
+      "damage_reason_share": 0.5122,
+      "bracketing_share": 0.5102,
+      "late_window_share": 0.5179,
+      "median_window_ratio": 0.302,
+      "occasion_return_share": 0.5139,
+      "discretionary_share": 0.3053,
+      "trend_90d": 0.5011,
+      "open_window_share": 0.5305,
+      "coordinated_claim_share": 0.5014,
+      "late_return_lines": 0.5038,
+      "max_identifier_fanout": 0.5429,
+      "supported_neighbor_count": 0.5303
+    },
+    "abuser: temporary use (1058)": {
+      "mature_sale_lines": 0.5749,
+      "log_order_count": 0.5775,
+      "raw_return_rate": 0.7605,
+      "expected_return_rate": 0.4951,
+      "residual_z": 0.7593,
+      "claim_share": 0.5157,
+      "requested_refund_ratio": 0.8003,
+      "damage_reason_share": 0.6246,
+      "bracketing_share": 0.5102,
+      "late_window_share": 0.8265,
+      "median_window_ratio": 0.835,
+      "occasion_return_share": 0.7398,
+      "discretionary_share": 0.5488,
+      "trend_90d": 0.4815,
+      "open_window_share": 0.5238,
+      "coordinated_claim_share": 0.5004,
+      "late_return_lines": 0.8427,
+      "max_identifier_fanout": 0.6743,
+      "supported_neighbor_count": 0.6322
+    }
+  },
+  "lookalikes": [
+    {
+      "group": "eligible honest customers",
+      "customers": 53434
+    },
+    {
+      "group": "honest ring members (no completed action yet)",
+      "customers": 298
+    },
+    {
+      "group": "honest with any claim line",
+      "customers": 10356
+    },
+    {
+      "group": "honest repeat claimants (two or more claim lines)",
+      "customers": 3897
+    },
+    {
+      "group": "eligible abusers",
+      "customers": 3181
+    },
+    {
+      "group": "abusers with two or more claim lines",
+      "customers": 1790
+    },
+    {
+      "group": "abusers with exactly one completed action",
+      "customers": 921
+    },
+    {
+      "group": "abusers with no claim line (temporary use only)",
+      "customers": 800
+    }
+  ],
+  "one_action_share_of_abusers": 0.2895315938384156
 }

@@ -98,6 +98,12 @@ def distributions(world) -> dict:
     }
 
 
+def _opportunities(world) -> pd.DataFrame:
+    """Abusive actions counted once per opportunity: the further lines of a whole-parcel claim are left out."""
+    actions = world.truth["action_truth"]
+    return actions[~actions["parcel_companion"]] if "parcel_companion" in actions else actions
+
+
 def _requests(world) -> pd.DataFrame:
     """Return lines with sale-line context, reason group, timing and private intent."""
     t = world.tables
@@ -188,7 +194,7 @@ def eligibility(world) -> dict:
     summary = diagnostics.customer_summary(world)
     eligible = summary[summary["eligible"]]
     excluded = summary[~summary["eligible"]]
-    actions = world.truth["action_truth"]
+    actions = _opportunities(world)
     completed = actions[actions["completed_action"]]
     by_type = completed.merge(summary[["customer_id", "eligible"]], on="customer_id").groupby("action_type")["eligible"] \
         .agg(completed_actions="size", on_eligible_customers="sum")
@@ -208,7 +214,7 @@ def eligibility(world) -> dict:
 
 def opportunities(world) -> pd.DataFrame:
     """Abusive opportunities drawn, completed and blocked, by scope and action type (actions, not customers)."""
-    actions = world.truth["action_truth"].copy()
+    actions = _opportunities(world).copy()
     actions["scope"] = np.where(actions["campaign_id"].notna(), "ring campaign", "solo")
     actions["outcome"] = np.where(actions["completed_action"], "completed", actions["uncompleted_reason"])
     return pd.crosstab([actions["scope"], actions["action_type"]], actions["outcome"], margins=True, margins_name="all")
@@ -313,7 +319,7 @@ def ingredient_support(world) -> pd.DataFrame:
 def action_rates(world) -> dict:
     """Per-account action rates and how often a propensity account ends up acting at all."""
     profile = world.truth["customer_profile"]
-    done = world.truth["action_truth"].query("completed_action").groupby("customer_id").size()
+    done = _opportunities(world).query("completed_action").groupby("customer_id").size()
     rates = pd.concat([profile.loc[profile["claim_propensity"], "claim_action_rate"],
                        profile.loc[profile["temporary_use_propensity"], "temporary_use_action_rate"]])
     propensity = profile[profile["claim_propensity"] | profile["temporary_use_propensity"]]
@@ -348,7 +354,7 @@ def hot_list_coverage(world) -> pd.DataFrame:
     """Per hot-list style: rings that planned, rings that completed, completing accounts and claim sources."""
     product = world.truth["product_truth"]
     hot = product[product["hot_listed"]].copy()
-    actions = world.truth["action_truth"]
+    actions = _opportunities(world)
     coordinated = actions[actions["campaign_id"].notna()].merge(
         world.truth["campaign"][["campaign_id", "target_style_id"]], on="campaign_id")
     stats_ = coordinated.groupby("target_style_id").agg(
@@ -464,7 +470,7 @@ def stress_metrics(world) -> dict:
     segments = benign_segments(world)
     summary = diagnostics.customer_summary(world)
     eligible = summary[summary["eligible"]]
-    completed = truth["action_truth"]["completed_action"].sum()
+    completed = _opportunities(world)["completed_action"].sum()
     return {
         "propensity_share": round(float(len(propensity) / len(profile)), 4),
         "mean_action_rate": round(float(rates.mean()), 4) if len(rates) else None,
@@ -505,6 +511,7 @@ def collect(world, settings) -> dict:
         "timing": active[["intent", "group", "window_ratio"]].assign(world_id=world.world_id),
         "stress": stress_metrics(world),
         "audit": artefact_audit(world), "orders": order_artefacts(world), "linked": linked_claimants(world),
+        "claims_monthly": claims_by_month(world),
         "gate_preview": rule_gate_preview(world).assign(world_id=world.world_id),
         "opportunity": opportunity_prevalence(world),
     }
@@ -560,10 +567,25 @@ def request_kinds(world) -> pd.DataFrame:
                                 np.where(requests["campaign_id"].notna(), "ring abuse", "solo abuse"))
     lines = world.tables["sales_order_line"]
     shape = lines.groupby("order_id").agg(order_lines=("sku", "size"), order_units=("quantity", "sum"))
-    requests = requests.merge(shape, on="order_id")
+    delivered = lines[lines["line_status"] == "delivered"].groupby("order_id").size().rename("delivered_lines")
+    requests = requests.merge(shape, on="order_id").merge(delivered, on="order_id") \
+        .merge(lines[LINE_KEY + ["quantity"]].rename(columns={"quantity": "line_quantity"}), on=LINE_KEY)
     cutoff = pd.Timestamp(world.snapshot_date)
     requests["days_before_cutoff"] = (cutoff - requests["delivered_date"]).dt.days
     return requests
+
+
+def nonreceipt_orders(requests: pd.DataFrame) -> pd.DataFrame:
+    """Orders with a non-receipt claim and two or more delivered lines: does the claim cover every delivered line?
+
+    One row per order and kind of request. An order claimed in part by an abuser and in part honestly is rare
+    and appears once under each kind.
+    """
+    claims = requests[(requests["reason_code"] == "item_not_received") & (requests["delivered_lines"] >= 2)]
+    per_order = claims.groupby(["order_id", "kind"]).agg(claimed_lines=("order_line_no", "nunique"),
+                                                         delivered_lines=("delivered_lines", "first")).reset_index()
+    per_order["whole_order"] = per_order["claimed_lines"] == per_order["delivered_lines"]
+    return per_order
 
 
 def artefact_audit(world) -> pd.DataFrame:
@@ -576,8 +598,18 @@ def artefact_audit(world) -> pd.DataFrame:
     claims = requests[requests["group"] == "transaction claim"]
     ordered = requests.sort_values(["return_order_id", "return_line_no"])
     out_of_order = ordered["requested_at"] < ordered.groupby("return_order_id")["requested_at"].shift()
+    multi_line = claims[claims["order_lines"] >= 2]
+    multi_unit = claims[claims["line_quantity"] >= 2]
+    parcels = nonreceipt_orders(requests)
     rows = {
         "claim lines": claims.groupby("kind").size(),
+        "claims: share with reason item_not_received": claims.groupby("kind")["reason_code"].apply(lambda s: (s == "item_not_received").mean()),
+        "claims: share with a reason that needs no item back": claims.groupby("kind")["reason_code"].apply(
+            lambda s: s.isin(["item_not_received", "empty_package"]).mean()),
+        "claims on multi-line orders: share on the first line": multi_line.groupby("kind")["order_line_no"].apply(lambda s: (s == 1).mean()),
+        "claims on multi-unit lines: share claiming every unit": multi_unit.groupby("kind").apply(
+            lambda g: (g["quantity_returned"] == g["line_quantity"]).mean(), include_groups=False),
+        "non-receipt on multi-line orders: share covering the whole order": parcels.groupby("kind")["whole_order"].mean(),
         "claims: median days after delivery": claims.groupby("kind")["days"].median(),
         "claims: 95th percentile days": claims.groupby("kind")["days"].quantile(0.95),
         "claims: maximum days": claims.groupby("kind")["days"].max(),
@@ -591,7 +623,7 @@ def artefact_audit(world) -> pd.DataFrame:
         "requests: share rejected": requests.groupby("kind")["line_status"].apply(lambda s: (s == "rejected").mean()),
         "requests: share withdrawn (by design honest only)": requests.groupby("kind")["line_status"].apply(lambda s: (s == "withdrawn").mean()),
         "requests: share after the window (by design honest only)": requests.groupby("kind")["window_ratio"].apply(lambda s: (s > 1).mean()),
-        "requests: share with more than one unit (by design honest only)": requests.groupby("kind")["quantity_returned"].apply(lambda s: (s > 1).mean()),
+        "requests: share with more than one unit": requests.groupby("kind")["quantity_returned"].apply(lambda s: (s > 1).mean()),
     }
     table = pd.DataFrame(rows).T.reindex(columns=["honest", "solo abuse", "ring abuse"])
     return table
@@ -612,9 +644,18 @@ def order_artefacts(world) -> dict:
     monthly = pd.crosstab(month, orders["kind"])
     per_customer_day = orders.groupby(["customer_id", "order_date"]).size()
     quarter = orders[orders["kind"] != "campaign order"].groupby(orders["order_date"].dt.to_period("Q")).size()
-    return {"by_kind": by_kind.round(3), "monthly": monthly,
+    signup = world.tables["customer_master"]["signup_date"]
+    signups = signup[signup >= orders["order_date"].min()].dt.to_period("M").value_counts().sort_index()
+    return {"by_kind": by_kind.round(3), "monthly": monthly, "signups_monthly": signups,
             "same_day_repeat_order_share": float((per_customer_day > 1).sum() / len(orders)),
             "last_to_first_full_quarter_ratio": float(quarter.iloc[-2] / quarter.iloc[1]) if len(quarter) >= 4 else None}
+
+
+def claims_by_month(world) -> pd.DataFrame:
+    """Transaction-claim lines per request month, by kind of request: does one kind pile up late in the year?"""
+    requests = request_kinds(world)
+    claims = requests[requests["group"] == "transaction claim"]
+    return pd.crosstab(claims["requested_at"].dt.to_period("M"), claims["kind"])
 
 
 def linked_claimants(world) -> dict:
@@ -654,7 +695,7 @@ def opportunity_prevalence(world) -> pd.DataFrame:
     delivered = world.tables["sales_order_line"].query("line_status == 'delivered'")["order_id"].unique()
     relevant = orders[(orders["layer"] == "base") & orders["order_id"].isin(delivered)].groupby("customer_id").size()
     propensity = propensity.assign(relevant_orders=propensity["customer_id"].map(relevant).fillna(0).astype(int))
-    actions = world.truth["action_truth"]
+    actions = _opportunities(world)
     drawn = actions.groupby("customer_id").size()
     done = actions[actions["completed_action"]].groupby("customer_id").size()
     propensity["opportunities"] = propensity["customer_id"].map(drawn).fillna(0).astype(int)

@@ -55,3 +55,9 @@ Limits are unchanged: nothing is built or measured. The thresholds and distribut
 - The package verifier passes after the rebuild; all YAML contracts and assets parse; 101 acceptance criteria.
 - The generator was changed to match and all fixture, training and stress worlds were regenerated and validated. The exploration's artefact audit confirms no claim-timing range, header line order or same-day order separates honest from abusive requests.
 - Evidence in the acceptance register was re-recorded against the regenerated worlds. No validation or test world exists, and no feature, model, API, database or application has been built.
+
+## Amendment 1.4 checks (2026-10-02)
+
+- The package verifier passes after the rebuild; all YAML contracts and assets parse; 101 acceptance criteria.
+- The generator was changed to match and all fixture, training and stress worlds were regenerated and validated. The exploration's artefact audit shows honest, solo-abuse and ring-abuse claims within a few points of each other on reason code, claim line and timing.
+- Features (17 model features, 2 evidence-only measures), the five candidates and the two report-only references were built and trained on training worlds; the gate dry run and the calibration disclosure are recorded. Evidence in the acceptance register was recorded against the regenerated worlds. No validation, test or demo world existed at this point.

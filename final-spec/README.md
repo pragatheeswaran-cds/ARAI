@@ -1,6 +1,6 @@
 # ARAI - portable development specification
 
-Version **1.3** - Consolidated 2026-09-26, amended 2026-10-02 - **Implementation baseline**
+Version **1.4** - Consolidated 2026-09-26, amended 2026-10-02 - **Implementation baseline**
 
 Each component has its own specification and acceptance criteria. This folder is the authoritative development package; no previous version, original laptop path or sibling archive is required.
 
@@ -11,6 +11,8 @@ Amendment 1.1 (2026-10-02) records the changes agreed in the user's review of ve
 Amendment 1.2 (2026-10-02) follows the first generator run and the exploration of the development worlds: longer tenures for established personas, ring campaigns that start at ring formation, three scope clarifications, the confirmed style-targeting threshold and the first evidence in the acceptance register. See the amendment 1.2 section of the decision provenance.
 
 Amendment 1.3 (2026-10-02) follows an independent review of that exploration: one timing law for every claim, ordinary baskets for ring orders, return lines numbered by time, annual order targets, ring activity spread over the window and correlated honest claims. Worlds generated under 1.2 are void.
+
+Amendment 1.4 (2026-10-02) follows a second review of the data, the first gate dry run and a review of the features: raw link measures are evidence only, a count of late item returns is the 17th feature, the wardrobing indicator is rebuilt on late returns, deceptive claims match honest ones in reason code, line and extent, and difficulty calibration is closed with its outcome disclosed. Worlds generated under 1.3 are void.
 
 ## Start on any system
 
