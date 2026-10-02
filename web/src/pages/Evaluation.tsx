@@ -171,13 +171,14 @@ function TruthReveal({ experimentId }: { experimentId: string }) {
     // the export lists abusers first, so paging stops at the first page that reaches honest customers
     const examples: TruthExample[] = [];
     let cursor: string | null = null;
+    let world: string | null = null;
     for (let page = 0; page < 200; page++) {
       const result = await api.truth(experimentId, cursor);
+      world = result.world_id;
       examples.push(...result.items);
       cursor = result.next_cursor;
       if (!cursor || result.items.some((item) => item.y_abuse === 0)) break;
     }
-    const world = examples[0]?.customer_id.split("-")[0];
     let selected: Set<string> | null = null;
     let ruleSelected: Set<string> | null = null;
     if (run && run.status === "succeeded" && run.world_id === world) {
@@ -254,7 +255,7 @@ function TruthReveal({ experimentId }: { experimentId: string }) {
 
 export function Evaluation() {
   const { experimentId = "" } = useParams();
-  const state = useLoad(() => api.experiment(experimentId), [experimentId]);
+  const state = useLoad(() => (experimentId === "none" ? Promise.resolve(null) : api.experiment(experimentId)), [experimentId]);
   const experiment = state.data;
   if (experimentId === "none") {
     return (
@@ -275,6 +276,10 @@ export function Evaluation() {
   const budgets = ["1% review budget", "5% review budget", "10% review budget"];
   const testMetrics = experiment ? byScope(experiment.sensitivity_metrics, "final test worlds") : [];
   const worlds = experiment ? Array.from(new Set(experiment.per_world_metrics.map((m) => m.scope.split(",")[0]))) : [];
+  const ablation = experiment ? experiment.reference_metrics.filter((m) => m.scope.startsWith("timing-feature ablation")) : [];
+  const noTiming = ablation.find((m) => m.name.endsWith("without any timing feature")) ?? null;
+  const ablationRule = ablation.find((m) => m.name.startsWith("return-rate rule")) ?? null;
+  const target = experiment?.reference_metrics.find((m) => m.name === "difficulty target check: best supervised precision") ?? null;
   return (
     <>
       <PageTitle title="Evaluation">
@@ -295,8 +300,24 @@ export function Evaluation() {
               value={summary.selected_model_id ? "Yes" : "No"}
               note={summary.selected_model_id ? `Bundle ${summary.selected_model_id.slice(0, 16)}...` : "The return-rate baseline is active"}
             />
-            <Stat name="World protocol" value="10 / 5 / 5" note="Training / validation / test worlds" />
+            <Stat
+              name="Without timing features"
+              value={percent(noTiming?.value)}
+              note="Same model family, training worlds. The figure to quote as robust; details in the difficulty panel below."
+            />
           </div>
+          <Callout>
+            <strong>Read this first.</strong> Simulated data only. The model's precision leans on when in the return window items come back, which
+            this simulation makes sharper than real behaviour would be: without any timing feature it is {percent(noTiming?.value)} against{" "}
+            {percent(ablationRule?.value)} for the rule on training worlds.{" "}
+            {target && target.value !== null && target.lower_95 !== null && (
+              <>
+                The development target of {percent(target.lower_95, 0)} to {percent(target.upper_95, 0)} for the best model was{" "}
+                <strong>{target.value < target.lower_95 ? "not met" : "met"}</strong> ({percent(target.value)} on training worlds), and no
+                difficulty setting was changed to reach it.
+              </>
+            )}
+          </Callout>
           <Panel title="How often each ranking is right">
             <p className="muted">Measured on: {scope}.</p>
             <PrecisionChart data={data} />
@@ -414,7 +435,18 @@ export function Evaluation() {
               <MetricList
                 metrics={experiment.reference_metrics
                   .filter((m) => m.scope.startsWith("difficulty calibration") || m.scope.startsWith("timing-feature ablation"))
-                  .map((m) => (m.scope.startsWith("difficulty") ? { ...m, name: `${m.name} (target ${percent(m.lower_95, 0)} to ${percent(m.upper_95, 0)})`, lower_95: null, upper_95: null } : m))}
+                  .map((m) =>
+                    m.scope.startsWith("difficulty") && m.value !== null && m.lower_95 !== null && m.upper_95 !== null
+                      ? {
+                          ...m,
+                          name: `${m.name}: target ${percent(m.lower_95, 0)} to ${percent(m.upper_95, 0)}, ${
+                            m.value < m.lower_95 ? "NOT MET (below)" : m.value > m.upper_95 ? "NOT MET (above)" : "met"
+                          }`,
+                          lower_95: null,
+                          upper_95: null,
+                        }
+                      : m,
+                  )}
               />
               <Row name="Calibration levers changed">{experiment.difficulty_calibration.calibrated ? experiment.difficulty_calibration.levers.join(", ") : "None"}</Row>
               <Callout>

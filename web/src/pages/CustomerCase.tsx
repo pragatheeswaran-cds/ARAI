@@ -17,6 +17,40 @@ function signalValue(signal: Signal): string {
   return signal.denominator === null ? `${value} ${signal.unit}` : `${value} / ${number(signal.denominator)} ${signal.unit.replace(/^(units )?of /, "")}`;
 }
 
+/** One neutral sentence per fact: what the record shows and what it does not. It states measurements, never a conclusion. */
+function Summary({ data }: { data: Case }) {
+  const value = (code: string) => data.signals.find((s) => s.code === code)?.value ?? null;
+  const rate = value("raw_return_rate");
+  const expected = value("expected_return_rate");
+  const claims = value("claim_lines") ?? 0;
+  const late = value("late_return_lines") ?? 0;
+  const matched = data.neighbors.reduce((sum, n) => sum + n.coordinated_claim_matches, 0);
+  const facts = [
+    rate === null
+      ? "No mature purchase yet, so there is no return rate."
+      : `Return rate ${percent(rate, 0)} against ${percent(expected, 0)} expected for the products bought.`,
+    claims ? `${claims} transaction claim line(s): requests that say an item never arrived or arrived wrong.` : "No transaction claim.",
+    late ? `${late} item return(s) made in the last quarter of the return window.` : "No item return late in the window.",
+    data.neighbors.length
+      ? `${data.neighbors.length} account(s) share two identifier types with this one; ${
+          matched ? `${matched} of this customer's claims were matched by a linked account on the same style within 7 days` : "none of their claims match this customer's"
+        }.`
+      : "No account shares two identifier types with this one.",
+  ];
+  return (
+    <Panel title="What the record shows">
+      <ul className="facts">
+        {facts.map((fact) => (
+          <li key={fact}>{fact}</li>
+        ))}
+      </ul>
+      <p className="muted">
+        The return-rate rule reads only the first line. The model also weighs the other three. Neither is a finding about this customer.
+      </p>
+    </Panel>
+  );
+}
+
 function Evidence({ data, runId }: { data: Case; runId: string }) {
   const byCode = Object.fromEntries(data.signals.map((s) => [s.code, s]));
   const order = ["mature_requested_units", "expected_requested_units", "raw_return_rate", "expected_return_rate", "residual_z", "claim_lines",
@@ -259,6 +293,8 @@ export function CustomerCase() {
                 key={name}
                 type="button"
                 role="tab"
+                id={`tab-${name}`}
+                aria-controls="case-panel"
                 aria-selected={tab === name}
                 className={tab === name ? "active" : ""}
                 onClick={() => setParams(name === "evidence" ? {} : { tab: name }, { replace: true })}
@@ -268,10 +304,13 @@ export function CustomerCase() {
               </button>
             ))}
           </div>
-          {tab === "evidence" && <Evidence data={data} runId={runId} />}
-          {tab === "timeline" && <Timeline data={data} runId={runId} />}
-          {tab === "relationships" && <Relationships data={data} runId={runId} />}
-          {tab === "notes" && <Notes data={data} runId={runId} onAppended={state.reload} />}
+          <div id="case-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
+            {tab === "evidence" && <Summary data={data} />}
+            {tab === "evidence" && <Evidence data={data} runId={runId} />}
+            {tab === "timeline" && <Timeline data={data} runId={runId} />}
+            {tab === "relationships" && <Relationships data={data} runId={runId} />}
+            {tab === "notes" && <Notes data={data} runId={runId} onAppended={state.reload} />}
+          </div>
         </>
       )}
     </>

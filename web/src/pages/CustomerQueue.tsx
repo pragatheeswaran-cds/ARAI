@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { ApiError, api, type Customer, type CustomerFilters } from "../api";
 import { useWorkspace } from "../App";
@@ -34,19 +34,22 @@ export function CustomerQueue() {
   const [error, setError] = useState<ApiError | null>(null);
   const [searchText, setSearchText] = useState(filters.search);
 
+  const current = useRef(key);
+  current.current = key;
   const load = (after: string | null) => {
     setLoading(true);
     setError(null);
     let cancelled = false;
+    const issuedFor = key; // a page that arrives after the filters changed belongs to the old list and is dropped
     api.customers(runId, filters, after).then(
       (page) => {
-        if (cancelled) return;
+        if (cancelled || issuedFor !== current.current) return;
         setItems((previous) => (after ? [...previous, ...page.items] : page.items));
         setCursor(page.next_cursor);
         setLoading(false);
       },
       (failure) => {
-        if (cancelled) return;
+        if (cancelled || issuedFor !== current.current) return;
         setError(failure instanceof ApiError ? failure : new ApiError(0, null));
         setLoading(false);
       },

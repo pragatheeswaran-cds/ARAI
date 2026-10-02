@@ -127,6 +127,8 @@ export function Datasets() {
   const { health, runs, reload } = useWorkspace();
   const datasets = useLoad(() => allPages<Dataset>((cursor) => api.datasets(cursor)), []);
   const [error, setError] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState(false);
+  const keys = useRef(new Map<string, string>()); // one idempotency key per intended submission, reused if it is retried
   const active = runs.some((run) => run.status === "queued" || run.status === "running");
   useEffect(() => {
     if (!active) return;
@@ -135,12 +137,19 @@ export function Datasets() {
   }, [active, reload]);
 
   const submit = async (datasetId: string, modelId?: string) => {
+    if (busy) return; // a double click is one submission
+    const slot = `${datasetId}|${modelId ?? "active"}`;
+    if (!keys.current.has(slot)) keys.current.set(slot, newKey());
+    setBusy(true);
     setError(null);
     try {
-      await api.submitRun(datasetId, newKey(), modelId);
+      await api.submitRun(datasetId, keys.current.get(slot)!, modelId);
+      keys.current.delete(slot); // accepted: the next click is a new submission
       reload();
     } catch (failure) {
       setError(failure instanceof ApiError ? failure : new ApiError(0, null));
+    } finally {
+      setBusy(false);
     }
   };
   const ready = !!health?.scoring_ready;
@@ -201,7 +210,7 @@ export function Datasets() {
                     </td>
                     <td title={dataset.manifest_hash}>{shortId(dataset.manifest_hash, 16)}</td>
                     <td>
-                      <button type="button" className="primary" disabled={!ready} onClick={() => submit(dataset.dataset_id)}>
+                      <button type="button" className="primary" disabled={!ready || busy} onClick={() => submit(dataset.dataset_id)}>
                         Score with the active bundle
                       </button>
                       {!ready && <small>Blocked: no valid scoring bundle.</small>}

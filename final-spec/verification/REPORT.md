@@ -67,3 +67,8 @@ Limits are unchanged: nothing is built or measured. The thresholds and distribut
 - The package verifier passes after the rebuild; the OpenAPI contract (1.2.0) validates as OpenAPI 3.0; 101 acceptance criteria.
 - Bundles, storage, batch scoring and the API were built against the contract; every response body in the service tests is validated against the bundled OpenAPI schemas.
 - No validation, test or demo world existed at this point.
+
+## Amendment 1.6 checks (2026-10-02)
+
+- The package verifier passes after the rebuild; the OpenAPI contract validates; 101 acceptance criteria.
+- Implementation evidence is recorded in the acceptance register for every criterion that was exercised; the criteria not exercised stay NOT_RUN or PARTIAL with the gap named. The specification package itself contains no code or results; they are in the code repository's records.

@@ -9,6 +9,7 @@ import base64
 import functools
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -41,8 +42,24 @@ def encode_cursor(context: dict, position) -> str:
     return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
 
 
-def decode_cursor(cursor: str | None, context: dict):
-    """The position stored in a cursor, after checking it was issued for this exact list and filter set."""
+def _valid_position(position, kind: str) -> bool:
+    if kind == "int":
+        return isinstance(position, int) and not isinstance(position, bool) and position >= 0
+    if kind == "text":
+        return isinstance(position, str) and 0 < len(position) <= 200
+    if kind == "time_id":
+        if not (isinstance(position, list) and len(position) == 2 and all(isinstance(p, str) for p in position)):
+            return False
+        try:
+            datetime.fromisoformat(position[0])
+        except ValueError:
+            return False
+        return True
+    return False
+
+
+def decode_cursor(cursor: str | None, context: dict, kind: str):
+    """The position stored in a cursor, after checking it was issued for this list and has the shape this list uses."""
     if cursor is None:
         return None
     try:
@@ -52,6 +69,8 @@ def decode_cursor(cursor: str | None, context: dict):
         raise BadCursor("The cursor is not valid.") from None
     if issued_for != _context(context):
         raise BadCursor("The cursor belongs to a different list or filter set.")
+    if not _valid_position(position, kind):
+        raise BadCursor("The cursor is not valid.")
     return position
 
 
@@ -262,10 +281,11 @@ def truth_page(artifact_root: Path, experiment_id: str, after: int | None, limit
     """Synthetic truth for the demonstration world, exported offline for the evaluation page only."""
     path = Path(artifact_root) / "experiments" / experiment_id / "published" / "truth.parquet"
     if not path.is_file():
-        return [], None
+        return [], None, None
     frame = pd.read_parquet(path)
     start = 0 if after is None else after
     page = frame.iloc[start:start + limit]
     items = [{"customer_id": r["customer_id"], "y_abuse": int(r["y_abuse"]),
               "action_types": [t for t in str(r["action_types"]).split("|") if t]} for _, r in page.iterrows()]
-    return items, (start + limit if start + limit < len(frame) else None)
+    world = str(frame["customer_id"].iloc[0]).rsplit("-", 1)[0] if len(frame) else None
+    return items, (start + limit if start + limit < len(frame) else None), world

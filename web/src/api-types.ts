@@ -498,6 +498,7 @@ export interface components {
         };
         TruthPage: {
             synthetic_only: boolean;
+            world_id: string | null;
             items: components["schemas"]["TruthExample"][];
             next_cursor: string | null;
         };

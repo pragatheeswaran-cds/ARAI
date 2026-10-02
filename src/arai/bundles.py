@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 from dataclasses import dataclass
@@ -26,13 +27,21 @@ import skops.io as sio
 from arai import features as F
 from arai import paths
 
+log = logging.getLogger("arai.bundles")
 BUNDLE_SCHEMA = "1.0"
 BASELINE_KIND = "baseline_fallback"
 ADAPTERS = {"supervised": "decision_function", "unsupervised": "negative_score_samples", BASELINE_KIND: "raw_return_rate"}
 BASELINE_LABEL = "Return-rate reference percentile"
 CODE_FILES = ("features.py", "dataset.py", "modeling.py", "bundles.py", "ranking.py")
-# serialised types the loader accepts beyond scikit-learn's and numpy's own; anything else is refused
-TRUSTED_TYPES = ["sklearn.pipeline.FeatureUnion"]
+# The only serialised types a model file may contain beyond skops' built-in safe set. This is an exact list: a
+# name that merely starts with "sklearn." or "numpy." is refused (numpy and scikit-learn both contain callables
+# that execute code). It covers the three registered families and nothing else.
+TRUSTED_TYPES = frozenset({
+    "numpy.dtype",
+    "sklearn.pipeline.FeatureUnion",
+    "sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor",
+    "sklearn.tree._tree.Tree",
+})
 
 
 class BundleError(Exception):
@@ -60,10 +69,10 @@ class Bundle:
 def load_pipeline(path: Path):
     """Load a fitted pipeline, refusing any serialised type outside the allow-list."""
     found = sio.get_untrusted_types(file=path)
-    unknown = [t for t in found if t not in TRUSTED_TYPES and not t.startswith(("sklearn.", "numpy."))]
+    unknown = sorted(set(found) - TRUSTED_TYPES)
     if unknown:
         raise BundleError(f"model file contains types outside the allow-list: {unknown}")
-    return sio.load(path, trusted=found)
+    return sio.load(path, trusted=sorted(TRUSTED_TYPES))
 
 
 def percentile(reference: np.ndarray, values) -> np.ndarray:
@@ -186,6 +195,9 @@ def load_bundle(model_id: str, artifact_root: Path | None = None) -> Bundle:
     for name, digest in files["files"].items():
         if not (directory / name).is_file() or _sha256(directory / name) != digest:
             raise BundleError(f"{model_id}: {name} is missing or altered")
+    lock = paths.REPO_ROOT / "uv.lock"
+    if manifest.get("dependency_lock_sha256") and lock.exists() and _sha256(lock) != manifest["dependency_lock_sha256"]:
+        log.warning("bundle %s was built under a different dependency lock; library versions are checked next", model_id)
     libraries = manifest["libraries"]
     if libraries["scikit-learn"] != sklearn.__version__ or libraries["skops"] != skops.__version__:
         raise BundleError(f"{model_id}: built with scikit-learn {libraries['scikit-learn']} / skops {libraries['skops']}, "

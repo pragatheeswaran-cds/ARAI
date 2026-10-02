@@ -1,6 +1,6 @@
 # React/Vite frontend and analyst workflows
 
-Version 1.1 (amended 2026-10-02) | Implementation baseline | Component UI
+Version 1.6 (amended 2026-10-02) | Implementation baseline | Component UI
 
 ## Requirements and boundary
 
@@ -14,7 +14,7 @@ Case shows observed-vs-expected quantities/denominators, timeline, style links, 
 
 Style queue primary; quality/targeting/mixed/no-elevated-signal/insufficient/no-return states, continuous axes (damage share, claim share, linked-claim share, linked claimants), support, customer links, SKU drill-down. Product evidence never clears customer automatically. All products apparel/INR.
 
-Evaluation: baseline/all candidates, coverage/gates/rejection reasons, selection separate from final-test status, benign FPR/denominators, action recall,1/5/10% sensitivity, uncertainty, report-only style/wardrobing, report-only references (analyst rulebook, volume-only), the error account and the difficulty-calibration disclosure. Truth reveal only here and labelled simulation.
+Evaluation opens with the caveats before any result: simulated data, the precision without any timing feature, and whether the development target was met. Case pages state in plain words what the record shows and does not show (return rate against expected, claims, late returns, linked accounts with matching claims) without a conclusion. Evaluation: baseline/all candidates, coverage/gates/rejection reasons, selection separate from final-test status, benign FPR/denominators, action recall,1/5/10% sensitivity, uncertainty, report-only style/wardrobing, report-only references (analyst rulebook, volume-only), the error account and the difficulty-calibration disclosure. Truth reveal only here and labelled simulation.
 
 Dataset page shows manifest validation/cutoff/history/schema; run progress/errors/retry/hash; no training button. Persistent baseline banner and label; missing bundle blocks run. Loading/empty/error/insufficient-evidence states on every data surface. Labelled keyboard controls/focus/table headers, non-color status labels, responsive layout required.
 

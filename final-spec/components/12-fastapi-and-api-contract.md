@@ -1,6 +1,6 @@
 # FastAPI and API contract
 
-Version 1.5 (amended 2026-10-02) | Implementation baseline | Component API
+Version 1.6 (amended 2026-10-02) | Implementation baseline | Component API
 
 ## Requirements and boundary
 
@@ -10,7 +10,7 @@ Upload exactly seven named CSV parts plus manifest JSON string. Reject private/u
 
 world_id/content immutable. Idempotency scope endpoint+dataset for inference; endpoint+world/customer for notes; key<=128 with canonical payload hash. Repeat same returns original resource; changed body409. Customer ID must belong to run world.
 
-Stable cursor tied to run+normalized filters+sort; invalid/context-changed422. Customer order rank then unranked ID; styles by style_id. Default limit50,max100; empty items=[]/next_cursor=null. The customer queue comparison filter (all, model_only, baseline_only, both) partitions eligible customers by model versus return-rate-rule selection. Filters change display only, not run score/selection.
+Stable cursor tied to run+normalized filters+sort; invalid/context-changed/misshapen422. TruthPage names the world it reveals (world_id). Customer order rank then unranked ID; styles by style_id. Default limit50,max100; empty items=[]/next_cursor=null. The customer queue comparison filter (all, model_only, baseline_only, both) partitions eligible customers by model versus return-rate-rule selection. Filters change display only, not run score/selection.
 
 Run carries warnings recorded at scoring (fewer than 500 eligible customers, or a category fallback was used). ExperimentSummary carries selected_candidate_id (the registered candidate) beside selected_model_id (the promoted bundle, null unless promoted). A nullable enumeration lists null among its values. Review fields reviewer_name/disposition/note/idempotency_key; dispositions needs_investigation,likely_legitimate,unresolved. Append-only, server timestamp, immutable origin run/model. Free-text attribution is not authenticated identity.
 

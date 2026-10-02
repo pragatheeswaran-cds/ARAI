@@ -65,8 +65,8 @@ def test_any_mismatch_is_refused_before_use(root, monkeypatch, damage):
         manifest["feature_reference"]["category_rate"]["Shirt"] = 0.99
         (directory / "bundle.json").write_text(json.dumps(manifest))
     elif damage == "extra_type":
-        monkeypatch.setattr(bundles, "TRUSTED_TYPES", [])
-        monkeypatch.setattr(bundles.sio, "get_untrusted_types", lambda file: ["os.system"])
+        # a name inside numpy's own namespace is still refused: the allow-list is exact, not a prefix
+        monkeypatch.setattr(bundles.sio, "get_untrusted_types", lambda file: ["numpy.dtype", "numpy.testing._private.utils.runstring"])
     elif damage == "library":
         monkeypatch.setattr(sklearn, "__version__", "0.0.1")
     elif damage == "schema":
@@ -142,3 +142,14 @@ def test_activation_is_atomic_versioned_and_never_falls_back_silently(root):
     (bundles.bundle_root(root) / model_id / "model.skops").write_bytes(b"corrupt")
     with pytest.raises(bundles.BundleError):
         bundles.resolve_active(root)
+
+
+def test_the_allow_list_is_exact_and_covers_what_the_candidates_serialise(root):
+    import skops.io as sio
+
+    for candidate in ("logreg_c1", "iforest_256"):
+        found = set(sio.get_untrusted_types(file=_experiment(root) / "candidates" / candidate / "model.skops"))
+        assert found <= bundles.TRUSTED_TYPES, found - bundles.TRUSTED_TYPES
+    assert all(not name.endswith(".") and name.count(".") >= 1 for name in bundles.TRUSTED_TYPES)
+    for hostile in ("numpy.testing._private.utils.runstring", "sklearn.utils.something", "builtins.eval", "os.system"):
+        assert hostile not in bundles.TRUSTED_TYPES

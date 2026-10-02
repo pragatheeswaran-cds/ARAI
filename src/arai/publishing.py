@@ -162,14 +162,17 @@ def build_report(experiment_dir: Path, promoted_model_id: str | None) -> dict:
 
     style_metrics, wardrobing_metrics = _evidence_metrics((validation or {}).get("evidence_report_only"), "validation worlds; report only")
     coverage = source["coverage"]
-    limitations = [f"{coverage['abusers_excluded']} of {coverage['abusers_all']} abusers have fewer than three mature sale lines and are "
-                   "outside the ranking.", "Simulated data from one generator: results show stability across simulated worlds, not "
+    where = "validation worlds" if validation else "training worlds"
+    limitations = [f"{coverage['abusers_excluded']} of {coverage['abusers_all']} abusers on the {where} have fewer than three mature sale "
+                   "lines and are outside the ranking.", "Simulated data from one generator: results show stability across simulated worlds, not "
                    "performance on real returns.",
                    "The result leans on when in the return window items come back, which the simulation makes sharper than real "
                    "behaviour would be; the precision without any timing feature is the figure to quote as robust.",
                    "The heavy-returner group is defined on return rate itself, so that gate leg cannot fail for a model and is not evidence."]
     limitations += [f"Segment {SEGMENT_LABELS[s]} has fewer than 200 members." for s in coverage["segments_below_minimum"]]
     if test:
+        limitations.insert(1, f"{test['coverage']['abusers_excluded']} of {test['coverage']['abusers_all']} abusers on the final test "
+                              "worlds are outside the ranking for the same reason.")
         limitations += [f"Final test: segment {SEGMENT_LABELS[s]} has fewer than 200 members." for s in test["coverage_limitations"]]
     if validation is None:
         limitations.append("Validation has not been run: every figure shown is a gate dry run on training worlds.")

@@ -90,12 +90,34 @@ class Service:
 
     def __init__(self, config: ServiceConfig):
         self.config, self.store = config, Store(config.database_url)
+        self._active_cache: tuple | None = None
+        self.worker_thread = None
+
+    def _active_signature(self, pointer: dict | None) -> tuple:
+        """What the active state looks like on disk: the pointer and every file of the bundles it names."""
+        root = Path(self.config.artifact_root)
+        entries = []
+        for path in [root / "active" / "active.json", *sorted(p for name in (pointer or {}).get("ids", [])
+                                                              for p in (root / "bundles" / name).glob("*"))]:
+            if path.is_file():
+                stat = path.stat()
+                entries.append((str(path), stat.st_mtime_ns, stat.st_size))
+        return tuple(entries)
 
     # the active bundle, verified; the pointer file is the authority and the database mirrors it
     def sync_active(self) -> dict:
         pointer = bundles.read_active(self.config.artifact_root)
         if pointer is None:
+            self._active_cache = None
             return {"pointer": None, "bundle": None, "error": "no bundle has been activated"}
+        signature = self._active_signature({"ids": [i for i in (pointer["baseline_id"], pointer["model_id"]) if i]})
+        if self._active_cache and self._active_cache[0] == signature:
+            return self._active_cache[1]
+        state = self._verify_active(pointer)
+        self._active_cache = (signature, state) if state["error"] is None else None
+        return state
+
+    def _verify_active(self, pointer: dict) -> dict:
         try:
             baseline = bundles.load_bundle(pointer["baseline_id"], self.config.artifact_root)
             model = bundles.load_bundle(pointer["model_id"], self.config.artifact_root) if pointer["model_id"] else None
@@ -121,19 +143,25 @@ class Service:
 
     def run_body(self, row: dict) -> dict:
         """A run as the contract shows it, with the warnings recorded when it was scored."""
-        directory = scoring.output_dir(self.config.artifact_root, row["id"])
-        if row["status"] == "succeeded" and scoring.is_complete(directory):
-            return run_body(row, views.run_summary(str(directory))["warnings"])
+        row = self._current(row)
+        if row["status"] == "succeeded":
+            return run_body(row, views.run_summary(str(scoring.output_dir(self.config.artifact_root, row["id"])))["warnings"])
         return run_body(row)
 
+    def _current(self, row: dict) -> dict:
+        """A succeeded run whose published files have disappeared is recorded and shown as failed, never as succeeded."""
+        if row["status"] == "succeeded" and not scoring.is_complete(scoring.output_dir(self.config.artifact_root, row["id"])):
+            self.store.mark_output_missing(row["id"])
+            return self.store.get_run(row["id"])
+        return row
+
     def succeeded_run(self, run_id: str) -> tuple:
-        run = self.store.get_run(run_id)
+        run = self._current(self.store.get_run(run_id))
+        if run["error_code"] == "output_missing":
+            raise ApiError(409, "run_output_missing", "The results of this run are no longer available. Submit a retry.")
         if run["status"] != "succeeded":
             raise ApiError(409, "run_not_ready", f"Run {run_id} is {run['status']}; results exist only for succeeded runs.")
-        directory = scoring.output_dir(self.config.artifact_root, run_id)
-        if not scoring.is_complete(directory):
-            raise ApiError(409, "run_output_missing", "The results of this run are not available. Submit a retry.")
-        return run, directory
+        return run, scoring.output_dir(self.config.artifact_root, run_id)
 
 
 def create_app(config: ServiceConfig | None = None, with_worker: bool = False, static_dir: Path | None = None) -> FastAPI:
@@ -155,7 +183,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         stop = None
         if with_worker:                                   # local profile: the one worker lives in this process
             worker.reconcile(config, service.store)
-            _, stop = worker.start_thread(config, service.store)
+            service.worker_thread, stop = worker.start_thread(config, service.store)
         yield
         if stop:
             stop.set()
@@ -183,7 +211,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         except Exception:                                           # noqa: BLE001  never leak a stack, path or secret
             log.exception("request_id=%s unhandled error", request.state.request_id)
             return error_response(500, "internal_error", "Unexpected error. Quote the request id when reporting it.",
-                                  request.state.request_id)
+                                  request.state.request_id, headers={"x-request-id": request.state.request_id})
         response.headers["x-request-id"] = request.state.request_id
         return response
 
@@ -223,6 +251,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     def health():
         state = service.sync_active()
         pointer, bundle = state["pointer"], state["bundle"]
+        if service.worker_thread is not None and not service.worker_thread.is_alive():
+            bundle = None                                 # the in-process worker has stopped: runs would queue forever
         return {"alive": True, "scoring_ready": bundle is not None,
                 "promoted_model_ready": bool(bundle is not None and pointer and pointer["model_id"]),
                 "model_kind": bundle.kind if bundle is not None else None}
@@ -235,8 +265,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     @api.get("/datasets")
     def list_datasets(cursor: str | None = None, limit: int = limit_query):
         context = {"list": "datasets"}
-        after = views.decode_cursor(cursor, context)
-        rows = service.store.list_datasets(tuple(after) if after else None, limit + 1)
+        after = views.decode_cursor(cursor, context, "time_id")
+        rows = service.store.list_datasets((datetime.fromisoformat(after[0]), after[1]) if after else None, limit + 1)
         following = views.encode_cursor(context, [rows[limit - 1]["created_at"].isoformat(), rows[limit - 1]["id"]]) if len(rows) > limit else None
         return {"items": [dataset_body(r) for r in rows[:limit]], "next_cursor": following}
 
@@ -312,8 +342,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     @api.get("/runs")
     def list_runs(cursor: str | None = None, limit: int = limit_query, dataset_id: str | None = None):
         context = {"list": "runs", "dataset_id": dataset_id}
-        after = views.decode_cursor(cursor, context)
-        rows = service.store.list_runs(dataset_id, tuple(after) if after else None, limit + 1)
+        after = views.decode_cursor(cursor, context, "time_id")
+        rows = service.store.list_runs(dataset_id, (datetime.fromisoformat(after[0]), after[1]) if after else None, limit + 1)
         following = views.encode_cursor(context, [rows[limit - 1]["created_at"].isoformat(), rows[limit - 1]["id"]]) if len(rows) > limit else None
         return {"items": [service.run_body(r) for r in rows[:limit]], "next_cursor": following}
 
@@ -335,7 +365,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         filters = {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
                    "evidence": evidence, "disposition": disposition, "comparison": comparison}
         context = {"list": "customers", "run_id": run_id, **filters}
-        after = views.decode_cursor(cursor, context)
+        after = views.decode_cursor(cursor, context, "int")
         items, following = views.customer_queue(directory, filters, service.store.latest_dispositions(run["world_id"]), after, limit)
         return {"items": items, "next_cursor": views.encode_cursor(context, following) if following is not None else None}
 
@@ -361,7 +391,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     def list_reviews(run_id: str, customer_id: str, cursor: str | None = None, limit: int = limit_query):
         run, _ = _case_customer(run_id, customer_id)
         context = {"list": "reviews", "world_id": run["world_id"], "customer_id": customer_id}
-        after = views.decode_cursor(cursor, context)
+        after = views.decode_cursor(cursor, context, "time_id")
         rows = service.store.list_reviews(run["world_id"], customer_id, (datetime.fromisoformat(after[0]), after[1]) if after else None,
                                           limit + 1)
         following = views.encode_cursor(context, [rows[limit - 1]["created_at"].isoformat(), rows[limit - 1]["id"]]) if len(rows) > limit else None
@@ -385,7 +415,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                                    "no_return_evidence"] = "all"):
         _, directory = service.succeeded_run(run_id)
         context = {"list": "styles", "run_id": run_id, "state": state}
-        after = views.decode_cursor(cursor, context)
+        after = views.decode_cursor(cursor, context, "text")
         items, following = views.style_queue(directory, state, after, limit)
         return {"items": items, "next_cursor": views.encode_cursor(context, following) if following is not None else None}
 
@@ -401,7 +431,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     @api.get("/experiments")
     def list_experiments(cursor: str | None = None, limit: int = limit_query):
         context = {"list": "experiments"}
-        after = views.decode_cursor(cursor, context)
+        after = views.decode_cursor(cursor, context, "text")
         rows = service.store.list_experiments(after, limit + 1)
         items = [views.experiment_report(config.artifact_root, r["report_key"])["summary"] for r in rows[:limit]]
         return {"items": items, "next_cursor": views.encode_cursor(context, rows[limit - 1]["id"]) if len(rows) > limit else None}
@@ -414,9 +444,9 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     def get_evaluation_truth(experiment_id: str, cursor: str | None = None, limit: int = limit_query):
         service.store.get_experiment(experiment_id)
         context = {"list": "truth", "experiment_id": experiment_id}
-        after = views.decode_cursor(cursor, context)
-        items, following = views.truth_page(config.artifact_root, experiment_id, after, limit)
-        return {"synthetic_only": True, "items": items,
+        after = views.decode_cursor(cursor, context, "int")
+        items, following, world = views.truth_page(config.artifact_root, experiment_id, after, limit)
+        return {"synthetic_only": True, "world_id": world, "items": items,
                 "next_cursor": views.encode_cursor(context, following) if following is not None else None}
 
     app.include_router(api)

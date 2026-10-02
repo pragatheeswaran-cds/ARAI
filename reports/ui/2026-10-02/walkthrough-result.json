@@ -40,7 +40,7 @@
     {
       "check": "no training, refund, block or delete control exists",
       "ok": true,
-      "detail": "validate and register score with the active bundle view results"
+      "detail": "validate and register score with the active bundle view results view results retry with the same dataset and bundle"
     },
     {
       "check": "upload refuses a wrong file set before sending",
@@ -55,7 +55,7 @@
     {
       "check": "queue route carries the run",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-1d5269359a02442c931a/customers"
+      "detail": "http://127.0.0.1:8000/runs/run-e866c36e81b44e07ac34/customers"
     },
     {
       "check": "queue opens on the review set",
@@ -70,7 +70,7 @@
     {
       "check": "keyboard filter change updates the address",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-1d5269359a02442c931a/customers?show=all"
+      "detail": "http://127.0.0.1:8000/runs/run-e866c36e81b44e07ac34/customers?show=all"
     },
     {
       "check": "comparison filter lists rule-only selections",
@@ -90,7 +90,7 @@
     {
       "check": "case opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-1d5269359a02442c931a/customers/W2401-C06860"
+      "detail": "http://127.0.0.1:8000/runs/run-e866c36e81b44e07ac34/customers/W2401-C06860"
     },
     {
       "check": "case shows observed and expected with denominators",
@@ -115,17 +115,17 @@
     {
       "check": "case tab timeline opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-1d5269359a02442c931a/customers/W2401-C06860?tab=timeline"
+      "detail": "http://127.0.0.1:8000/runs/run-e866c36e81b44e07ac34/customers/W2401-C06860?tab=timeline"
     },
     {
       "check": "case tab relationships opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-1d5269359a02442c931a/customers/W2401-C06860?tab=relationships"
+      "detail": "http://127.0.0.1:8000/runs/run-e866c36e81b44e07ac34/customers/W2401-C06860?tab=relationships"
     },
     {
       "check": "case tab notes opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-1d5269359a02442c931a/customers/W2401-C06860?tab=notes"
+      "detail": "http://127.0.0.1:8000/runs/run-e866c36e81b44e07ac34/customers/W2401-C06860?tab=notes"
     },
     {
       "check": "note appended and shown with its origin run",
@@ -165,7 +165,7 @@
     {
       "check": "browser back returns to the style",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-1d5269359a02442c931a/styles/BA-SHT-03"
+      "detail": "http://127.0.0.1:8000/runs/run-e866c36e81b44e07ac34/styles/BA-SHT-03"
     },
     {
       "check": "evaluation shows selection separately from the final test",

@@ -1,6 +1,6 @@
 # ARAI - portable development specification
 
-Version **1.5** - Consolidated 2026-09-26, amended 2026-10-02 - **Implementation baseline**
+Version **1.6** - Consolidated 2026-09-26, amended 2026-10-02 - **Implementation baseline**
 
 Each component has its own specification and acceptance criteria. This folder is the authoritative development package; no previous version, original laptop path or sibling archive is required.
 
@@ -15,6 +15,8 @@ Amendment 1.3 (2026-10-02) follows an independent review of that exploration: on
 Amendment 1.4 (2026-10-02) follows a second review of the data, the first gate dry run and a review of the features: raw link measures are evidence only, a count of late item returns is the 17th feature, the wardrobing indicator is rebuilt on late returns, deceptive claims match honest ones in reason code, line and extent, and difficulty calibration is closed with its outcome disclosed. Worlds generated under 1.3 are void.
 
 Amendment 1.5 (2026-10-02) follows a third review, made before any validation world existed: the dependence of the result on the simulated return-timing law is disclosed with an ablation, the experiment order is enforced in code with provenance in every record, and the API contract moves to 1.2.0. No world or model changed.
+
+Amendment 1.6 (2026-10-02) records the outcome (selection on validation, the final test passed once) and the decisions from the reviews of the serving side and the front end: an exact allow-list for serialised types, safer startup reconciliation, and caveats shown first on the evaluation page.
 
 ## Start on any system
 

@@ -204,18 +204,22 @@ class Store:
             db.execute("""UPDATE runs SET status = 'failed', completed_at = now(), error_code = %s, error_message = %s, error_request_id = %s
                           WHERE id = %s AND status = 'running'""", (code, message, request_id, run_id))
 
-    def interrupt_running(self) -> list:
-        """At startup every run still marked running belongs to a process that died: mark it interrupted."""
+    def interrupt_running(self, worker_id: str) -> list:
+        """At startup a run this worker still holds as running belongs to its own earlier process, which died.
+
+        Runs held by another worker identity are left alone: they may be running right now.
+        """
         with self.transaction() as db:
             rows = db.execute("""UPDATE runs SET status = 'interrupted', completed_at = now(), error_code = 'interrupted',
                                      error_message = 'The scoring process stopped before this run finished. Submit a retry.',
                                      error_request_id = id
-                                 WHERE status = 'running' RETURNING id""").fetchall()
+                                 WHERE status = 'running' AND claimed_by = %s RETURNING id""", (worker_id,)).fetchall()
         return [row["id"] for row in rows]
 
-    def succeeded_runs(self) -> list:
+    def run_statuses(self) -> dict:
+        """Every run this database knows, with its status."""
         with self.transaction() as db:
-            return db.execute("SELECT id, output_key FROM runs WHERE status = 'succeeded'").fetchall()
+            return {row["id"]: row["status"] for row in db.execute("SELECT id, status FROM runs").fetchall()}
 
     def mark_output_missing(self, run_id: str) -> None:
         with self.transaction() as db:

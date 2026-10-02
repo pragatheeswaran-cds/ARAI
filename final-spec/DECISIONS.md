@@ -158,3 +158,16 @@ A third independent review (records/2026-10-02-training-critic-review.md in the 
 | AM-34 | A whole-parcel claim is one opportunity, completed when any of its actions is completed | Counting only the first line, which left a positive customer with zero counted actions in four cases over ten worlds | 08 evaluation, private-truth.yaml |
 
 The heavy-returner leg of the gate is circular (the segment is defined on the quantity the baseline ranks by). The gate is unchanged; the leg is reported and not presented as evidence.
+
+## Amendment 1.6 (2026-10-02)
+
+Validation, selection and the single final test were run under 1.5 and are recorded in the code repository (records/2026-10-02-validation-and-selection.md, records/2026-10-02-final-test.md): hgb_leaf15 was selected at .707 against .243 for the return-rate rule on validation and passed the final test at .715 against .239. Two further independent reviews covered the serving side and the front end (records/2026-10-02-serving-critic-review.md, records/2026-10-02-frontend-critic-review.md). The items below are implementation decisions from those reviews, recorded for the user's confirmation. No world, feature, model, gate or result changed.
+
+| ID | Decision | Supersedes | Final owner |
+|---|---|---|---|
+| AM-35 | The serialised-type allow-list is an exact set of type names; bundles are integrity-checked, not signed, so the artifact root is an operator-only location | An allow-list by name prefix, which a hostile model file passed | 10 artifacts |
+| AM-36 | Startup reconciliation acts only on runs held by this worker identity and on directories of runs its own database knows; a succeeded run whose files are gone is reported as failed at once; the worker loop survives transient errors | Reconciliation that deleted every directory not marked succeeded, which destroyed another deployment's run when two stacks shared one artifact root (observed, then fixed) | 11 inference, 14 storage |
+| AM-37 | API contract additions within 1.2.0: TruthPage.world_id; cursor positions are type-checked | A truth page that did not name its world; forged cursors returning 500 | 12 API, openapi.yaml |
+| AM-38 | The evaluation page leads with its caveats (simulated data, precision without timing features, development target not met); case pages state what the record shows in plain words | Caveats placed at the bottom of a long page | 13 UI |
+
+Open for the project owner, unchanged by this amendment: the 0.75-0.85 development target was not met (AM-30); the result leans on the simulated return-timing law (AM-31); no VM deployment was made (OPS-AC-05 not run).

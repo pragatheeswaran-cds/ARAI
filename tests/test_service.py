@@ -415,11 +415,26 @@ def test_a_crash_publishes_nothing_and_restart_keeps_notes_and_bindings(client, 
     worker.process_one(env["config"], store)
     assert client.get(f"{API}/runs/{retry.json()['run_id']}").json()["status"] == "succeeded"
 
-    # a succeeded run whose files vanish is reported as failed after restart, never as succeeded with nothing behind it
+    # a directory that belongs to no run in this database (another deployment sharing the root) is never deleted
+    foreign = scoring.output_dir(env["root"], "run-of-another-deployment")
+    shutil.copytree(scoring.output_dir(env["root"], first["run_id"]), foreign)
+    stray = scoring.staging_dir(env["root"], "run-of-another-deployment-2")
+    stray.mkdir()
+    report = worker.reconcile(env["config"], store)
+    assert foreign.is_dir() and stray.is_dir() and sorted(report["unknown"]) == [".staging-run-of-another-deployment-2", "run-of-another-deployment"]
+    assert report["removed"] == []
+
+    # a succeeded run whose files vanish is shown as failed at once, never as succeeded with nothing behind it
     shutil.rmtree(scoring.output_dir(env["root"], first["run_id"]))
-    assert worker.reconcile(env["config"], store)["output_missing"] == [first["run_id"]]
+    assert client.get(f"{API}/runs/{first['run_id']}/customers").status_code == 409
     gone = client.get(f"{API}/runs/{first['run_id']}").json()
     assert gone["status"] == "failed" and gone["error"]["error_code"] == "output_missing"
+    listed = {r["run_id"]: r["status"] for r in client.get(f"{API}/runs").json()["items"]}
+    assert listed[first["run_id"]] == "failed"
+    # and a restart finds the same thing for a run nobody has looked at
+    retried = retry.json()["run_id"]
+    shutil.rmtree(scoring.output_dir(env["root"], retried))
+    assert worker.reconcile(env["config"], store)["output_missing"] == [retried]
 
 
 def test_a_failed_stage_fails_the_run_with_a_safe_error(client, env, written, monkeypatch):
@@ -527,3 +542,188 @@ def test_no_eligible_customer_is_a_valid_empty_ranking(env):
     assert output.customers["rank"].isna().all() and not output.customers["selected_for_review"].any()
     assert output.neighbors.empty and output.summary["graph_edges"] == 0                        # an empty graph is valid
     assert output.summary["warnings"]                                                           # and the small population is flagged
+
+
+def test_artifacts_move_to_another_root_without_stored_paths(client, env, written, tmp_path):
+    """Keys in the database are relative to the artifact root, so the root can be copied elsewhere and served from there."""
+    run = scored_run(client, env, written)
+    first = client.get(f"{API}/runs/{run['run_id']}/customers", params={"limit": 20}).json()
+    relocated = tmp_path / "moved somewhere else" / "artifacts"
+    shutil.copytree(env["root"], relocated)
+    store = Store(env["config"].database_url)
+    assert store.get_dataset(run["dataset_id"])["artifact_key"] == f"datasets/{run['dataset_id']}"      # no absolute path stored
+    assert store.get_run(run["run_id"])["output_key"] == f"runs/{run['run_id']}"
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=relocated)
+    with TestClient(create_app(config)) as moved:
+        assert moved.get(f"{API}/health").json()["promoted_model_ready"]
+        assert moved.get(f"{API}/runs/{run['run_id']}/customers", params={"limit": 20}).json() == first
+        again = moved.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "after-move"})
+        assert again.status_code == 202
+        assert worker.process_one(config, store) == again.json()["run_id"]
+        assert moved.get(f"{API}/runs/{again.json()['run_id']}").json()["status"] == "succeeded"
+
+
+# ------------------------------------------------------------------ gaps named by the serving review
+def test_upload_over_the_size_limit_is_refused_with_413(client, written, monkeypatch):
+    from arai.service import datasets
+    monkeypatch.setattr(datasets, "MAX_UPLOAD_BYTES", 1000)
+    manifest = (written["operational"] / "manifest.json").read_text(encoding="utf-8")
+    response = client.post(f"{API}/datasets", data={"manifest": manifest}, files=upload_parts(written))
+    assert response.status_code == 413
+    conforms("Error", response.json())
+    assert client.get(f"{API}/datasets").json()["items"] == []
+
+
+def test_forged_and_misshapen_cursors_are_refused_not_crashed(client, env, written):
+    from arai.service import views
+    run = scored_run(client, env, written)
+    filters = {"review_only": True, "eligibility": "all", "search": None, "evidence": None, "disposition": "all", "comparison": "all"}
+    context = {"list": "customers", "run_id": run["run_id"], **filters}
+    for position in ("abc", -5, 1.5, [1, 2], None, True):
+        forged = views.encode_cursor(context, position)
+        response = client.get(f"{API}/runs/{run['run_id']}/customers", params={"cursor": forged})
+        assert response.status_code == 422 and response.json()["error_code"] == "invalid_cursor", position
+    forged = views.encode_cursor({"list": "runs", "dataset_id": None}, "abc")
+    assert client.get(f"{API}/runs", params={"cursor": forged}).status_code == 422
+    forged = views.encode_cursor({"list": "runs", "dataset_id": None}, ["not-a-time", "x"])
+    assert client.get(f"{API}/runs", params={"cursor": forged}).status_code == 422
+
+
+def test_runs_and_reviews_page_without_gaps_or_duplicates(client, env, written):
+    first = scored_run(client, env, written, key="p1")
+    second = scored_run(client, env, written, key="p2", model_id=env["baseline_id"])
+    third = scored_run(client, env, written, key="p3")
+    seen, cursor = [], None
+    for _ in range(5):
+        page = client.get(f"{API}/runs", params={"limit": 1, **({"cursor": cursor} if cursor else {})}).json()
+        seen += [r["run_id"] for r in page["items"]]
+        cursor = page["next_cursor"]
+        if not cursor:
+            break
+    assert seen == [third["run_id"], second["run_id"], first["run_id"]]                        # newest first, each once
+    customer = client.get(f"{API}/runs/{first['run_id']}/customers", params={"limit": 1}).json()["items"][0]["customer_id"]
+    url = f"{API}/runs/{first['run_id']}/customers/{customer}/reviews"
+    for i in range(3):
+        assert client.post(url, json={"reviewer_name": "A", "disposition": "unresolved", "note": f"note {i}", "idempotency_key": f"k{i}"}).status_code == 201
+    notes, cursor = [], None
+    for _ in range(5):
+        page = client.get(url, params={"limit": 1, **({"cursor": cursor} if cursor else {})}).json()
+        notes += [n["note"] for n in page["items"]]
+        cursor = page["next_cursor"]
+        if not cursor:
+            break
+    assert notes == ["note 0", "note 1", "note 2"]                                             # oldest first, each once
+
+
+def test_the_login_refusal_is_a_contract_error_body(env, monkeypatch):
+    monkeypatch.setenv("BASIC_AUTH_USER", "judge")
+    monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=())
+    with TestClient(create_app(config)) as vm:
+        denied = vm.post(f"{API}/runs", json={"dataset_id": "x", "idempotency_key": "k"})
+        assert denied.status_code == 401
+        conforms("Error", denied.json())
+
+
+def test_the_worker_loop_survives_a_database_error(env):
+    store = Store(env["config"].database_url)
+    store.migrate()
+    calls, stop = [], threading.Event()
+
+    class Flaky(Store):
+        def claim_next_run(self, worker_id):
+            calls.append(worker_id)
+            if len(calls) == 1:
+                raise RuntimeError("database briefly unreachable")
+            stop.set()
+            return None
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], poll_seconds=0.01)
+    thread = threading.Thread(target=worker.run_forever, args=(config, Flaky(env["config"].database_url), stop))
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive() and len(calls) >= 2                       # the first error did not end the loop
+
+
+def test_restart_interrupts_only_runs_this_worker_held(client, env, written):
+    dataset = register(client, written)
+    run = client.post(f"{API}/runs", json={"dataset_id": dataset["dataset_id"], "idempotency_key": "held"}).json()
+    store = Store(env["config"].database_url)
+    assert store.claim_next_run("worker-A")["id"] == run["run_id"]         # worker A is scoring it right now
+    other = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], worker_id="worker-B")
+    assert worker.reconcile(other, store)["interrupted"] == []             # worker B starting up must not touch it
+    assert client.get(f"{API}/runs/{run['run_id']}").json()["status"] == "running"
+    same = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], worker_id="worker-A")
+    assert worker.reconcile(same, store)["interrupted"] == [run["run_id"]]  # worker A restarting: its own run was lost
+
+
+def test_a_registered_dataset_whose_files_vanished_is_restored_by_the_same_upload(client, env, written):
+    dataset = register(client, written)
+    shutil.rmtree(env["root"] / "datasets" / dataset["dataset_id"])
+    again = register(client, written)                                       # identical content: same resource, files written again
+    assert again == dataset and (env["root"] / "datasets" / dataset["dataset_id"] / "parquet").is_dir()
+    run = client.post(f"{API}/runs", json={"dataset_id": dataset["dataset_id"], "idempotency_key": "restored"}).json()
+    worker.process_one(env["config"], Store(env["config"].database_url))
+    assert client.get(f"{API}/runs/{run['run_id']}").json()["status"] == "succeeded"
+
+
+def test_health_is_not_ready_when_the_in_process_worker_has_stopped(env):
+    app = create_app(env["config"])
+    with TestClient(app) as local:
+        assert local.get(f"{API}/health").json()["scoring_ready"]
+        dead = threading.Thread(target=lambda: None)
+        dead.start()
+        dead.join()
+        app.state.service.worker_thread = dead
+        assert not local.get(f"{API}/health").json()["scoring_ready"]
+
+
+# ------------------------------------------------------------------ the published experiment report
+REAL_EXPERIMENT = None
+try:
+    from arai import paths as _paths
+    _candidate = _paths.ARTIFACT_ROOT / "experiments" / "EXP-20261002-01"
+    if (_candidate / "reports" / "test.json").is_file() and (_candidate / "published" / "truth.parquet").is_file():
+        REAL_EXPERIMENT = _candidate
+except Exception:                                                           # noqa: BLE001
+    REAL_EXPERIMENT = None
+
+
+@pytest.mark.skipif(REAL_EXPERIMENT is None, reason="needs the generated experiment under data/artifacts (not in git)")
+def test_the_published_experiment_matches_the_contract_and_the_offline_reports(env):
+    from arai import publishing
+    report = publishing.build_report(REAL_EXPERIMENT, "m-example")
+    conforms("Experiment", report)
+    validation = json.loads((REAL_EXPERIMENT / "reports" / "validation.json").read_text())
+    card = {row["ranking"]: row for row in validation["scorecard"]}
+    precision = {m["name"]: m for m in report["baseline_metrics"]}["precision"]
+    assert precision["value"] == pytest.approx(card["raw_return_rate"]["precision"], abs=1e-9)
+    assert precision["numerator"] == card["raw_return_rate"]["true_positives"] and precision["denominator"] == card["raw_return_rate"]["k"]
+    for metric in report["error_account"] + report["wardrobing_metrics"]:
+        if metric["denominator"]:                                           # a share is exactly its numerator over its denominator
+            assert metric["value"] == pytest.approx(metric["numerator"] / metric["denominator"])
+        else:
+            assert metric["name"].endswith("(count)") or metric["value"] is None or metric["numerator"] is None
+    names = [m["name"] for m in report["reference_metrics"]]
+    assert any("without any timing feature" in n for n in names) and any("difficulty target check" in n for n in names)
+    assert not report["difficulty_calibration"]["calibrated"] and report["summary"]["final_test_status"] == "passed"
+
+    published = env["root"] / "experiments" / "EXP-20261002-01" / "published"
+    published.mkdir(parents=True)
+    (published / "experiment.json").write_text(json.dumps(report))
+    shutil.copyfile(REAL_EXPERIMENT / "published" / "truth.parquet", published / "truth.parquet")
+    with TestClient(create_app(env["config"])) as served:
+        listing = served.get(f"{API}/experiments").json()
+        conforms("ExperimentSummaryPage", listing)
+        assert "EXP-20261002-01" in [e["experiment_id"] for e in listing["items"]]
+        conforms("Experiment", served.get(f"{API}/experiments/EXP-20261002-01").json())
+        truth = served.get(f"{API}/experiments/EXP-20261002-01/truth", params={"limit": 100}).json()
+        conforms("TruthPage", truth)
+        assert truth["synthetic_only"] and truth["world_id"] == "W2401" and truth["next_cursor"]
+        assert all(e["y_abuse"] == 1 for e in truth["items"])               # abusers first
+        second = served.get(f"{API}/experiments/EXP-20261002-01/truth", params={"limit": 100, "cursor": truth["next_cursor"]}).json()
+        assert not {e["customer_id"] for e in truth["items"]} & {e["customer_id"] for e in second["items"]}
+        assert served.get(f"{API}/experiments/EXP-TEST/truth").status_code == 404     # trained here but never published
+        (published / "truth.parquet").unlink()                              # published without a truth export: an empty page
+        empty = served.get(f"{API}/experiments/EXP-20261002-01/truth").json()
+        conforms("TruthPage", empty)
+        assert empty["items"] == [] and empty["world_id"] is None and empty["next_cursor"] is None

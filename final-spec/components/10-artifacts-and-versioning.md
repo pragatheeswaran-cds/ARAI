@@ -1,12 +1,12 @@
 # Artifacts, reproducibility and baseline bundle
 
-Version 1.4 (amended 2026-10-02) | Implementation baseline | Component ART
+Version 1.6 (amended 2026-10-02) | Implementation baseline | Component ART
 
 ## Requirements and boundary
 
 Bundle includes estimator/preprocessing, ordered feature schema, category return fallbacks, sorted score reference, adapter, full params, training/code/config/lock hashes and cutoff. Separate immutable selection/test reports reference model hash; do not mutate fitted artifact or create circular hashes.
 
-Use skops only after compatibility check in pinned environment. JSON/Parquet for metadata/reference. Explicit allow-list of serialized types; locally produced verified hashes only. API cannot upload model binaries. Reject signature/type/schema/library mismatch before use.
+Use skops only after compatibility check in pinned environment. JSON/Parquet for metadata/reference. Explicit allow-list of serialized types, as an exact set of type names and never a name prefix (numpy and scikit-learn both contain callables that execute code); locally produced verified hashes only. Hashes give integrity, not authenticity: the artifact root must be writable only by the operator. API cannot upload model binaries. Reject signature/type/schema/library mismatch before use.
 
 Baseline bundle is trained-statistics-only, before comparison, no candidate dependency: category fallbacks, sorted eligible training raw_return_rate. Score=raw_return_rate; reference percentile=100*(count_less+.5*count_equal)/reference_count. Supervised raw adapter decision_function; IF negative score_samples. Percentile not probability; label baseline score as Return-rate reference percentile. Every run also ranks eligible customers by raw_return_rate so model and baseline selections can be compared (component 11). Rulebook percentiles and volume-only coefficients live in a separate offline evaluation-reference artifact that serving never loads.
 

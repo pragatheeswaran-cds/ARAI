@@ -92,7 +92,7 @@ export const api = {
   experiments: () => request<Page<ExperimentSummary>>("/experiments", undefined, { limit: 100 }),
   experiment: (id: string) => request<Experiment>(`/experiments/${encodeURIComponent(id)}`),
   truth: (id: string, cursor?: string | null) =>
-    request<{ synthetic_only: boolean } & Page<TruthExample>>(`/experiments/${encodeURIComponent(id)}/truth`, undefined, { cursor, limit: 100 }),
+    request<{ synthetic_only: boolean; world_id: string | null } & Page<TruthExample>>(`/experiments/${encodeURIComponent(id)}/truth`, undefined, { cursor, limit: 100 }),
 };
 
 /** Every page of a cursor-paged list (bounded, so a mistake cannot loop forever). */

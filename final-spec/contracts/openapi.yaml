@@ -1803,10 +1803,14 @@ components:
       additionalProperties: false
       required:
       - synthetic_only
+      - world_id
       - items
       - next_cursor
       properties:
         synthetic_only: *id011
+        world_id:
+          type: string
+          nullable: true
         items:
           type: array
           items:

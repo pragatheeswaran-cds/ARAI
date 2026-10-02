@@ -142,3 +142,5 @@ ul.plain li { padding: 4px 0; }
   .shell { display: block; }
   .panel { break-inside: avoid; }
 }
+
+ul.facts { margin: 0 0 12px; padding-left: 20px; line-height: 1.9; }
