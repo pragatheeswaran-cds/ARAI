@@ -227,7 +227,8 @@ def test_validation_needs_a_recorded_dry_run_and_the_test_needs_a_frozen_selecti
         experiment.final_test("EXP-T", artifact_root=tmp_path)
     out = tmp_path / "experiments" / "EXP-T"
     (out / "reports").mkdir(parents=True)
-    (out / "selection.json").write_text(json.dumps({"selected_model_id": None, "selection_status": "no_selected_model"}))
+    unselected = {"selected_model_id": None, "selection_status": "no_selected_model", "final_test_status": "not_run"}
+    (out / "selection.json").write_text(json.dumps(unselected))
     with pytest.raises(RuntimeError, match="no model was selected"):
         experiment.final_test("EXP-T", artifact_root=tmp_path)                  # fallback, never a fabricated promotion
     (out / "reports" / "dry_run.json").write_text("{}")
@@ -235,7 +236,28 @@ def test_validation_needs_a_recorded_dry_run_and_the_test_needs_a_frozen_selecti
         experiment.validate("EXP-T", artifact_root=tmp_path)
     with pytest.raises(RuntimeError, match="frozen selection"):
         experiment.train("EXP-T", artifact_root=tmp_path)
-    (out / "selection.json").write_text(json.dumps({"selected_model_id": "hgb_leaf15"}))
-    (out / "reports" / "test.json").write_text("{}")
+
+
+def test_the_final_test_runs_once_and_survives_a_crash_between_its_two_records(tmp_path):
+    out = tmp_path / "experiments" / "EXP-T"
+    (out / "reports").mkdir(parents=True)
+    selected = {"selected_model_id": "hgb_leaf15", "selected_model_sha256": "0" * 64, "final_test_status": "not_run",
+                "frozen_at": "2026-10-02T00:00:00Z"}
+    # the report was written and the process died before the selection record was updated: finish the record, score nothing
+    (out / "selection.json").write_text(json.dumps(selected))
+    (out / "reports" / "test.json").write_text(json.dumps({"final_test_status": "failed", "recorded_at": "2026-10-02T10:00:00Z"}))
+    assert experiment.final_test("EXP-T", artifact_root=tmp_path)["final_test_status"] == "failed"
+    record = json.loads((out / "selection.json").read_text())
+    assert record["final_test_status"] == "failed" and record["tested_at"] == "2026-10-02T10:00:00Z"
     with pytest.raises(RuntimeError, match="runs once"):
         experiment.final_test("EXP-T", artifact_root=tmp_path)                  # no second look, no runner-up
+    (out / "reports" / "test.json").unlink()                                    # deleting the report does not buy another run
+    with pytest.raises(RuntimeError, match="does not run twice"):
+        experiment.final_test("EXP-T", artifact_root=tmp_path)
+    # a model file that is not the one frozen at selection is refused before anything is scored
+    (out / "selection.json").write_text(json.dumps(selected))
+    (out / "candidates" / "hgb_leaf15").mkdir(parents=True)
+    (out / "candidates" / "hgb_leaf15" / "model.skops").write_bytes(b"not the frozen model")
+    with pytest.raises(RuntimeError, match="differs from the one frozen"):
+        experiment.final_test("EXP-T", artifact_root=tmp_path)
+    assert not (out / "reports" / "test.json").exists()

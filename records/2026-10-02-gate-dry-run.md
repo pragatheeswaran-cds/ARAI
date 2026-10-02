@@ -2,7 +2,8 @@
 
 Experiment `EXP-20261002-01`, specification v1.4 (components 05, 07, 09). Source: `src/arai/modeling.py`,
 `src/arai/selection.py`, `src/arai/experiment.py`; machine-readable result in
-`data/artifacts/experiments/EXP-20261002-01/reports/dry_run.json` (recorded 2026-10-02T16:09:15Z).
+`data/artifacts/experiments/EXP-20261002-01/reports/dry_run.json` (first recorded 2026-10-02T16:09:15Z; recorded again
+at 16:46:16Z with provenance, at commit `4da2cbd`, with identical numbers).
 
 **This is a diagnostic on training worlds. It selects nothing.** It was recorded before any validation, test or
 demo world was generated. The gate rule, the review budget, the tie rule and the segment definitions used here

@@ -31,43 +31,53 @@ def _metric(name, value, numerator=None, denominator=None, lower=None, upper=Non
             "lower_95": number(lower), "upper_95": number(upper), "scope": scope}
 
 
+SPREAD_NOTE = "; lower and upper are the spread over resampled whole worlds, not a significance test"
+CIRCULAR_NOTE = "; this group is defined on return rate, the quantity the rule ranks by, so it is reported and is not evidence"
+
+
 def _ranking_metrics(confusion: dict, scope: str, interval: dict | None = None) -> list:
     """Precision, recall, segment rates and recall by kind of abuse for one ranking at one budget."""
     interval = interval or {}
     out = [_metric("precision", confusion["precision"], confusion["true_positives"], confusion["k"],
-                   interval.get("lower_95"), interval.get("upper_95"), scope),
+                   interval.get("lower_95"), interval.get("upper_95"), scope + (SPREAD_NOTE if interval else "")),
            _metric("recall", confusion["recall"], confusion["true_positives"], confusion["positives"], scope=scope)]
     for segment in SEGMENTS:
+        note = CIRCULAR_NOTE if segment == "legit_heavy_returner" else ""
         out.append(_metric(f"review rate, {SEGMENT_LABELS[segment]}", confusion[segment + "_fpr"], confusion[segment + "_selected"],
-                           confusion[segment + "_size"], scope=scope))
+                           confusion[segment + "_size"], scope=scope + note))
     for action in (*ACTION_TYPES, "coordinated_action_flag"):
         out.append(_metric(f"recall, {action.replace('_', ' ').replace(' flag', '')}", confusion["recall_" + action], scope=scope))
     return out
 
 
+def _share(name, numerator, denominator, scope) -> dict:
+    return _metric(name, numerator / denominator if denominator else None, numerator, denominator, scope=scope)
+
+
 def _account_metrics(account: dict | None, scope: str) -> list:
+    """The error account. A total is a count with no denominator; every split is a share with both."""
     if not account:
         return []
     fp, fn, diff = account["false_positives"], account["false_negatives"], account["model_versus_baseline"]
-    out = [_metric("false positives", fp["false_positives"], scope=scope)]
-    for key, label in (("legit_heavy_returner", "heavy returner"), ("defective_product_buyer", "defective-product buyer"),
-                       ("benign_household", "household member"), ("repeat_genuine_claimant", "repeat genuine claimant"),
-                       ("none_of_these", "none of these groups")):
-        out.append(_metric(f"false positives: {label}", fp[key], fp[key], fp["false_positives"], scope=scope + "; groups overlap"))
-    out.append(_metric("false negatives", fn["false_negatives"], scope=scope))
+    out = [_metric("false positives (count)", fp["false_positives"], scope=scope)]
+    for key, label in (("legit_heavy_returner", "heavy returners"), ("defective_product_buyer", "defective-product buyers"),
+                       ("benign_household", "household members"), ("repeat_genuine_claimant", "repeat genuine claimants"),
+                       ("none_of_these", "in none of these groups")):
+        out.append(_share(f"share of false positives who are {label}", fp[key], fp["false_positives"], scope + "; groups overlap"))
+    out.append(_metric("false negatives (count)", fn["false_negatives"], scope=scope))
     for action in ACTION_TYPES:
-        out.append(_metric(f"false negatives: {action.replace('_', ' ')}", fn[action], fn[action], fn["false_negatives"],
-                           scope=scope + "; action types overlap"))
+        out.append(_share(f"share of false negatives with a {action.replace('_', ' ')}", fn[action], fn["false_negatives"],
+                          scope + "; action types overlap"))
     for bucket in ("1", "2-3", "4+"):
-        out.append(_metric(f"missed abusers with {bucket} completed action(s)", fn[f"completed_actions_{bucket}"],
-                           fn[f"completed_actions_{bucket}"], fn[f"positives_with_{bucket}_actions"], scope=scope))
-    out += [_metric("selected by the model, not by the return-rate rule", diff["selected_by_model_only"], scope=scope),
-            _metric("of which abusers", diff["of_which_abusers"], diff["of_which_abusers"], diff["selected_by_model_only"], scope=scope),
-            _metric("selected by the return-rate rule, not by the model", diff["selected_by_baseline_only"], scope=scope),
-            _metric("of which honest", diff["of_which_honest"], diff["of_which_honest"], diff["selected_by_baseline_only"], scope=scope)]
+        out.append(_share(f"abusers with {bucket} completed action(s) who were missed", fn[f"completed_actions_{bucket}"],
+                          fn[f"positives_with_{bucket}_actions"], scope))
+    out += [_metric("selected by the model and not by the return-rate rule (count)", diff["selected_by_model_only"], scope=scope),
+            _share("share of model-only selections who are abusers", diff["of_which_abusers"], diff["selected_by_model_only"], scope),
+            _metric("selected by the return-rate rule and not by the model (count)", diff["selected_by_baseline_only"], scope=scope),
+            _share("share of rule-only selections who are honest", diff["of_which_honest"], diff["selected_by_baseline_only"], scope)]
     for segment in SEGMENTS:
-        out.append(_metric(f"rule-only selections: {SEGMENT_LABELS[segment]}", diff[f"baseline_only_{segment}"],
-                           diff[f"baseline_only_{segment}"], diff["selected_by_baseline_only"], scope=scope))
+        out.append(_share(f"share of rule-only selections who are {SEGMENT_LABELS[segment]}", diff[f"baseline_only_{segment}"],
+                          diff["selected_by_baseline_only"], scope + "; groups overlap"))
     return out
 
 
@@ -87,8 +97,7 @@ def _evidence_metrics(evidence: dict | None, scope: str) -> tuple:
                        _metric(f"wardrobing {label}: recall", e["recall"], e["true_positives"], e["temporary_use_customers"], scope=scope)]
     for key, label in (("honest_late_returners", "honest customers with a late request"), ("honest_size_bracketers", "honest size bracketers")):
         e = evidence["wardrobing_false_alerts"][key]
-        wardrobing.append(_metric(f"wardrobing alerts among {label}", e["alerted"] / e["customers"] if e["customers"] else None,
-                                  e["alerted"], e["customers"], scope=scope))
+        wardrobing.append(_share(f"wardrobing alerts among {label}", e["alerted"], e["customers"], scope))
     return styles, wardrobing
 
 
@@ -125,6 +134,15 @@ def build_report(experiment_dir: Path, promoted_model_id: str | None) -> dict:
                 lower=calibration["best_supervised_target"][0], upper=calibration["best_supervised_target"][1],
                 scope="difficulty calibration; training worlds out of fold; lower and upper are the target band, not an interval")]
 
+    ablation_path = experiment_dir / "reports" / "timing_ablation.json"
+    if ablation_path.is_file():                       # AM-31: how much of the result the timing features carry
+        ablation = json.loads(ablation_path.read_text(encoding="utf-8"))
+        for row in ablation["variants"]:
+            references.append(_metric(f"{ablation['candidate_id']} precision, {row['variant']}", row["precision"], row["true_positives"],
+                                      row["k"], scope="timing-feature ablation; training worlds out of fold, 5% review budget"))
+        references.append(_metric("return-rate rule precision", ablation["baseline_precision"],
+                                  scope="timing-feature ablation; training worlds out of fold, 5% review budget"))
+
     per_world, sensitivity = [], []
     for ranking, rows in source["per_world"].items():
         for row in rows:
@@ -146,7 +164,10 @@ def build_report(experiment_dir: Path, promoted_model_id: str | None) -> dict:
     coverage = source["coverage"]
     limitations = [f"{coverage['abusers_excluded']} of {coverage['abusers_all']} abusers have fewer than three mature sale lines and are "
                    "outside the ranking.", "Simulated data from one generator: results show stability across simulated worlds, not "
-                   "performance on real returns."]
+                   "performance on real returns.",
+                   "The result leans on when in the return window items come back, which the simulation makes sharper than real "
+                   "behaviour would be; the precision without any timing feature is the figure to quote as robust.",
+                   "The heavy-returner group is defined on return rate itself, so that gate leg cannot fail for a model and is not evidence."]
     limitations += [f"Segment {SEGMENT_LABELS[s]} has fewer than 200 members." for s in coverage["segments_below_minimum"]]
     if test:
         limitations += [f"Final test: segment {SEGMENT_LABELS[s]} has fewer than 200 members." for s in test["coverage_limitations"]]
