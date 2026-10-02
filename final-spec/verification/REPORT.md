@@ -1,6 +1,6 @@
 # Package verification
 
-Date: 2026-09-26. These results concern the delivered documents and prototype, not the future system.
+Date: 2026-09-26, with an amendment section dated 2026-10-02 at the end. These results concern the delivered documents and prototype, not the future system. The sections before the amendment describe version 1.0 as checked on 2026-09-26; their counts (ninety criteria, 29 schemas) are the 1.0 values.
 
 ## Completed checks
 
@@ -29,3 +29,16 @@ The ZIP contains only the portable final-spec package. Authoring tools, installe
 ## Transfer rehearsal
 
 Final archive extracted into a separate directory containing spaces. The bundled integrity/link verifier passed from outside the extracted package root. This verifies relocation on the same Windows system, not execution on a second physical machine or another operating system.
+
+## Amendment 1.1 checks (2026-10-02)
+
+- Sixteen component specifications; 101 unique acceptance criteria in the register (eleven added), all runtime status NOT_RUN.
+- All YAML contracts and assets re-parsed with duplicate-key rejection.
+- OpenAPI3.0.3 structurally validated at version 1.1.0: 13 paths, 30 typed schemas; every required property is declared.
+- Eighteen unique ordered model features and 31 disjoint seeds, unchanged in number.
+- Catalog, profile, festival and reason-code assets are byte-identical to 1.0.
+- Wireframe script passes a syntax check; Edge Chromium 154.0.4258.48 headless file:// walkthrough passed 37 checks with no JavaScript errors and no HTTP(S) requests. It covers the model-versus-rule comparison lists and their neutral wording, the return-rate rank column, linked-claim style evidence, the sixth style state, report-only reference rows, fallback scenarios hiding the comparison, boundary states, note escaping and cross-run retention, and 390px layouts.
+- The five screenshots were recaptured from the amended wireframe.
+- Relative links and package hashes re-checked by the bundled verifier after the manifest was regenerated.
+
+Limits are unchanged: nothing is built or measured. The thresholds and distributions introduced by the amendment are engineering defaults, and the reasons given for several changes are estimates from configuration values. The 1.0 package remains available as ARAI-final-spec-v1.0.zip.

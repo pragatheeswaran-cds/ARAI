@@ -1,10 +1,12 @@
 # ARAI - portable development specification
 
-Version **1.0** - Consolidated 2026-09-26 - **Implementation baseline**
+Version **1.1** - Consolidated 2026-09-26, amended 2026-10-02 - **Implementation baseline**
 
 Each component has its own specification and acceptance criteria. This folder is the authoritative development package; no previous version, original laptop path or sibling archive is required.
 
 The user requested the final agreed component specs after reviewing v0.3.1 and authorized this work. This package carries forward the recorded v0.3 decisions and reviewed corrections, plus API/UI details now that the initial wireframe is supplied. [Decision provenance](DECISIONS.md) distinguishes consolidation defaults from historical decisions. No new historical signature or measured implementation success is asserted.
+
+Amendment 1.1 (2026-10-02) records the changes agreed in the user's review of version 1.0: ring purchases and graded style-targeting truth, linked-claim style evidence, calibrated and disclosed difficulty, report-only reference rankings, the rule-versus-model comparison in the API and UI, a gate dry run, integer wardrobing points and a lower quality threshold. [Decision provenance](DECISIONS.md) lists each change, what it supersedes and which values are still unmeasured engineering defaults. Components 04, 14 and 15 are unchanged from 1.0. The seven operational tables and manifest schema_version stay 1.0.
 
 ## Start on any system
 
@@ -52,6 +54,6 @@ Data schema/codebook own operational fields; features.yaml owns feature order; e
 
 ## Implementation sequence
 
-Small-world validation -> generator/truth diagnostics -> hand-checked features -> baseline end-to-end -> full training/comparison -> validation selection -> untouched final test -> analyst rehearsal. Local first, cloud optional.
+Small-world validation -> generator/truth diagnostics -> hand-checked features -> baseline end-to-end -> full training/comparison -> difficulty calibration and gate dry run on training worlds -> validation selection -> untouched final test -> analyst rehearsal. Local first, cloud optional.
 
 This is not an implemented generator, model, API or production UI. Select and lock exact compatible runtime versions at implementation bootstrap. Consolidation numeric defaults may change only with a dated development record before validation generation, never in response to sealed tests.

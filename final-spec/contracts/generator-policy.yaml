@@ -1,4 +1,4 @@
-spec_version: '1.0'
+spec_version: '1.1'
 status: IMPLEMENTATION BASELINE
 authority: components/02-synthetic-data-generation.md
 scope: Joint allocation; operational settings in generator-config.yaml.
@@ -26,7 +26,8 @@ overlay:
   invalid_probability_policy: fail_configuration_without_clipping
   exact_realized_quotas: false
 actions:
-  opportunity_probability_per_relevant_order: 0.2
+  opportunity_rate: per-account action_rate, Beta(1.2, 4.8), mean 0.2 (generator-config
+    amendment_1_1)
   private_unit_key:
   - order_id
   - order_line_no
@@ -38,7 +39,8 @@ actions:
   reserve_withdrawn_honest_units: true
   conflict_policy: keyed_random_winner_without_forced_replacement
   preserve_base_and_honest_events_when_abuse_disabled: true
-  campaign_purchase_policy: match_existing_compatible_purchases_or_record_uncompleted_opportunity
+  remove_campaign_orders_when_abuse_disabled: true
+  campaign_purchase_policy: reuse_compatible_purchase_else_place_abuse_layer_campaign_order
   random_streams: purpose_and_entity_keyed_independent_streams
   generator_request_availability: available_at_equals_requested_at
 target_truth:
@@ -46,8 +48,13 @@ target_truth:
   fields:
   - planned_targeted_by
   - completed_targeted_by
+  - hot_listed
+  - coordinated_claim_accounts_by_group
+  - targeting_level
   - targeted
-  positive: at_least_one_completed_coordinated_claim_visible_by_cutoff
+  positive: one_group_with_at_least_3_accounts_completing_coordinated_claims_visible_by_cutoff
+  sub_threshold: completed coordinated claims below the account minimum; reported
+    separately, never positive
   detector_thresholds_define_truth: false
 verification:
   persona_auc_half_for_completed_labels_required: false

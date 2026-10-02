@@ -1,4 +1,4 @@
-version: '1.0'
+version: '1.1'
 status: IMPLEMENTATION BASELINE
 snapshot_date: '2026-09-09'
 history_start: '2025-09-10'
@@ -140,10 +140,55 @@ stress_seeds:
   2502: ordinary propensity x0.8
   2503: defect incidence x2
   2504: household share x2
-  2505: action probability x0.5
-  2506: action probability x2
+  2505: per-account action rate x0.5
+  2506: per-account action rate x2
   2507: actionable persona multipliers all 1
 risk_reference:
   supervised: 5-fold grouped by world; fold-local preprocessing/fallback fitting
   unsupervised: in-sample training scores
   baseline: training raw_return_rate
+references:
+  status: report-only; same population, k, ties and budgets as candidates; never gate
+    inputs and never selectable
+  volume_only_logreg:
+    family: LogisticRegression
+    params_from: logreg_c1
+    inputs:
+    - mature_sale_lines
+    - log_order_count
+  analyst_rulebook:
+    score: count of fired rules (0-5)
+    tie_break: descending raw_return_rate, then the standard hash
+    thresholds_from: eligible training customers; linear-interpolated percentiles;
+      frozen
+    null_input: rule does not fire
+    rules:
+    - raw_return_rate >= training p90
+    - visible transaction-claim return lines >= 2
+    - requested_refund_ratio >= training p90
+    - supported_neighbor_count >= 1 and own transaction-claim return lines >= 1
+    - late_window_share >= 0.50 with >= 2 timed return lines
+difficulty_calibration:
+  status: disclosed development step; targets are not acceptance gates
+  measured_on: pooled out-of-fold training-world scores at the 5% budget
+  targets:
+    baseline_precision:
+    - 0.2
+    - 0.3
+    best_supervised_precision:
+    - 0.75
+    - 0.85
+    raise_difficulty_above: 0.9
+  permitted_levers:
+  - action-rate Beta parameters
+  - address failure multiplier dispersion
+  - genuine claim rates
+  forbidden: gate, truth definitions, eligibility, benign segments, household generation
+  deadline: before any validation manifest exists; each change dated with before/after
+    values
+gate_dry_run:
+  input: pooled out-of-fold training-world scores; Isolation Forest in-sample, flagged
+    optimistic
+  rule: identical gate, k, ties and segment definitions
+  effect: diagnostic only; never selects, promotes or replaces validation
+  deadline: before any validation manifest exists

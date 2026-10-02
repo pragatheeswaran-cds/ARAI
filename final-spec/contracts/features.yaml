@@ -1,4 +1,4 @@
-version: '1.0'
+version: '1.1'
 entity:
 - world_id
 - customer_id
@@ -73,8 +73,8 @@ ordered_features:
   scope: all_visible_orders
   'null': 0 empty valid graph
 - name: coordinated_claim_share
-  definition: fraction own transaction claim return lines with same SKU and <=7 calendar-day
-    distance to >=1 supported neighbor claim; count own line once
+  definition: fraction own transaction claim return lines with a supported neighbor
+    claim on the same style (any SKU) <=7 calendar days apart; count own line once
   scope: all_visible_nonwithdrawn_requests
   'null': null without own claims
 preprocessing:

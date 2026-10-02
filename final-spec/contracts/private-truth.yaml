@@ -1,4 +1,4 @@
-version: '1.0'
+version: '1.1'
 access: offline generation/training/evaluation only; never upload/mount to serving
 tables:
   customer_profile:
@@ -13,6 +13,8 @@ tables:
     - target_days_per_order
     - claim_propensity
     - temporary_use_propensity
+    - claim_action_rate
+    - temporary_use_action_rate
     - heavy_return_overlay
   unit_truth:
     key:
@@ -33,8 +35,10 @@ tables:
     - campaign_id
     fields:
     - coordination_group_id
-    - target_style_ids
+    - target_style_id
     - campaign_date
+    rule: one row per group and campaign date; the date's style is one of the group's
+      hot-list styles
   relationship_truth:
     key:
     - world_id
@@ -79,6 +83,7 @@ tables:
     - available_at
     - coordination_group_id
     - campaign_id
+    - claim_source
     - uncompleted_reason
     nullable:
     - return_order_id
@@ -87,10 +92,14 @@ tables:
     - available_at
     - coordination_group_id
     - campaign_id
+    - claim_source
     - uncompleted_reason
+    claim_source:
+    - reused_purchase
+    - campaign_order
     rules:
     - completed requires return line/time/allocated unit references
-    - coordinated requires campaign/group and claim type
+    - coordinated requires campaign/group, claim type and claim_source
     - uncompleted requires reason, never positive label
   customer_truth:
     key:
@@ -111,8 +120,18 @@ tables:
     - latent_defect_probability
     - planned_targeted_by
     - completed_targeted_by
+    - hot_listed
+    - coordinated_claim_accounts_by_group
+    - targeting_level
     - targeted
-    rule: targeted iff completed_targeted_by nonempty
+    targeting_level:
+    - none
+    - sub_threshold
+    - targeted
+    rule: targeting_level is targeted iff one group has >=3 distinct accounts with
+      completed coordinated claims on the style visible at cutoff; sub_threshold iff
+      completed_targeted_by is nonempty otherwise; else none. targeted iff targeting_level
+      is targeted
   line_truth:
     key:
     - world_id
@@ -125,6 +144,26 @@ tables:
     - deceptive_nonreceipt
     rule: derived any-unit summaries; retain unit truth for returned-defective-unit
       segment
+  order_truth:
+    key:
+    - world_id
+    - order_id
+    fields:
+    - layer
+    - campaign_id
+    layer:
+    - base
+    - campaign
+    rule: campaign orders exist only when abuse is enabled; campaign_id null for base
+      orders; no operational field reveals the layer
+  address_truth:
+    key:
+    - world_id
+    - address_id
+    fields:
+    - genuine_failure_multiplier
+    rule: Z^2 multiplier on genuine fulfilment-failure rates for lines delivered to
+      the address
   evaluation_segments:
     key:
     - world_id

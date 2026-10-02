@@ -58,3 +58,42 @@ These fill implementation gaps under the user's authorization, not individually 
 - Revised UI navigation/copy based on supplied PDF with complete failure/fallback states.
 
 No business decision blocks starting the small-world slice. Runtime locks, measured performance and executed ACs remain development outputs. Change simulation defaults only with dated development evidence before validation. Visual refinement cannot silently change gates/contracts.
+
+## Amendment 1.1 (2026-10-02)
+
+The user reviewed version 1.0 on 2026-10-02 and agreed each item below in discussion. This is a dated correction to the baseline, not a new historical signature. Version 1.0 stays available unchanged in ARAI-final-spec-v1.0.zip and in version control. No generator, model or measurement exists yet, so every number here is a design value.
+
+| ID | Decision | Supersedes | Final owner |
+|---|---|---|---|
+| AM-01 | Version 1.0 accepted as the baseline, including the v0.3.1 amendments A-01..A-09 and P-01..P-03 that were never separately signed | Open sign-off status of v0.3.1 | This record |
+| AM-02 | Demonstration date may slip one to two weeks; schedule alone is not a reason to cut scope | Fixed November 1-14 window and fixed 2026-10-09 checkpoint | 01 scope, 16 delivery |
+| AM-03 | Rings buy their target style: an abuse-layer campaign order when no recent purchase can be reused; each world has a hot list of target styles | No forced purchases (D-015 and the A-03 campaign policy); free choice of 1-3 target styles | 02 generation, generator-policy/config, private-truth |
+| AM-04 | A style is targeted only when one group has >=3 accounts with completed coordinated claims; fewer is sub_threshold | Targeted iff >=1 completed coordinated claim (A-06/P-03) | 02 generation, 08 evaluation, private-truth |
+| AM-05 | Targeting evidence is linked-claim share and linked claimants; component_share withdrawn; sixth style state no_elevated_signal | Style predicates of V02-DEF-06 | 06 features, 12 API, 13 UI |
+| AM-06 | coordinated_claim_share matches on style, not SKU | Same-SKU matching in features.yaml | 06 features, features.yaml |
+| AM-07 | Quality signal at damage share >=.30; mixed_or_uncertain means both signals fire | Quality >=.50 with a component guard; mixed as the neither case | 06 features |
+| AM-08 | Difficulty is a calibrated, disclosed setting: per-account action rates, address-clustered genuine failures, targets of .20-.30 for the return-rate rule and .75-.85 for the best model at the 5% budget, never above .90 | Flat .20 action probability; uniform genuine failure rate | 02 generation, 05 exploration, experiment.yaml |
+| AM-09 | Report-only references on the scorecard: analyst rulebook and volume-only model | None (addition) | 07 training, 08 evaluation, experiment.yaml |
+| AM-10 | The demonstration explains why the return-rate rule misranks customers; return-rate rank is shown beside the model rank with neutral wording; an error account is reported | Metric-led presentation | 01 scope, 08 evaluation, 11 inference, 12 API, 13 UI |
+| AM-11 | Gate rule unchanged; a full gate dry run on out-of-fold training scores happens before any validation world exists | None (addition; answers risks R-01/R-06) | 09 selection, 16 delivery |
+| AM-12 | Wardrobing uses integer points 30/25/15/20/10 with bands 65/45, needs a timing signal for any band, and temporary use favours occasion wear | Decimal weights of V02-DEF-07; unspecified temporary-use compatibility | 02 generation, 06 features |
+| AM-13 | Order channel split fixed; loyalty tier and marketing channel emit unknown; run routes live under /runs | Unspecified generator fields; /inference-jobs paths | 02 generation, 12 API, openapi.yaml |
+
+### Why
+
+- At 10,000 customers a style has hundreds of returners, so a linked group of 3-6 could never reach the 1.0 component_share threshold, while the one-claim truth rule would have marked most styles targeted.
+- A flat .20 action probability against a 1.5% genuine claim rate makes claim count a near-direct label, and a result that easy is a weak demonstration.
+- The decimal weights .30+.15 evaluate to 0.44999999999999996 in floating point and miss the .45 band (checked by running the arithmetic).
+- A defect-prone style yields a damage share near .47 under the defaults, just under the old .50 threshold.
+
+The first, second and fourth points are estimates from the configuration, not measurements. Small-world diagnostics confirm or correct them before validation worlds are generated.
+
+### Engineering defaults introduced by this amendment
+
+The user agreed the direction of every item above. The specific values below were chosen while writing the amendment and follow the same rule as the consolidation defaults: confirm on development worlds, change only with a dated record, never after validation generation.
+
+- Hot list of 4 styles per world; groups take 1-2 of them and 2-4 dates; participation .60 per date; 14-day reuse window; campaign order 0-2 days after the campaign date.
+- Action rate Beta(1.2,4.8); address multiplier Z^2; temporary-use multipliers 2.5/0.55.
+- Targeting signal at >=3 linked claimants and linked-claim share >=.10; the no_elevated_signal style state.
+- The five rules of the analyst rulebook and the groups of the error account.
+- Order channel mobile_app .60/web .30/marketplace .10.

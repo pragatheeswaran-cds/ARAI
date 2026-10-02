@@ -1,4 +1,4 @@
-version: '1.0'
+version: '1.1'
 status: engineering defaults; tune on development only before validation; record changes
 snapshot: '2026-09-09T23:59:59+05:30'
 history_start: '2025-09-10'
@@ -31,7 +31,7 @@ accepted_settings:
   - 0.48
   power_user_share: 0.08
   defect_style_share: 0.08
-  action_probability_per_relevant_order: 0.2
+  action_rate_mean_per_relevant_order: 0.2
   cancel_probability: 0.03
   dispatch_days:
   - 0
@@ -129,8 +129,9 @@ consolidation_defaults:
     shape: 2.0
     scale_days: 3.0
     truncate_after_days: 30
-  campaign_matching: earliest compatible unreserved delivered unit among target styles
-    for scheduled claim; no new purchases
+    origin: delivered_date of the claimed unit
+  campaign_matching: reuse a compatible unreserved unit of the date's style delivered
+    in the 14 days up to the campaign date; otherwise place a campaign order (amendment_1_1)
   festive_discount: conditional on discount, uniform .25,.30,.35,.40 rather than all
     steps
   loss_confirmation: shipping_date+12 days; earlier cutoff remains shipped
@@ -144,3 +145,67 @@ consolidation_defaults:
   rng: NumPy PCG64, independent seed derived from SHA256(world_seed|entity_key|purpose),
     first128 bits
   quantiles: linear interpolation
+amendment_1_1:
+  note: Added 2026-10-02. Engineering defaults; confirm on development worlds before
+    validation. Calibration may change only the three levers named in experiment.yaml
+    difficulty_calibration.
+  action_rate:
+    distribution: Beta(1.2, 4.8) per positive-propensity account and enabled family
+    mean: 0.2
+    applies_to: solo opportunities per relevant base-layer delivered order
+  temporary_use_occasion_weighting:
+    occasion_order_multiplier: 2.5
+    other_order_multiplier: 0.55
+    rule: probability = clip(action_rate * multiplier, 0, 1); an unreserved delivered
+      occasion-wear unit is used when present
+  campaigns:
+    world_hot_list_size: 4
+    hot_list_weight: median catalog unit price of the style
+    hot_list_eligibility: at least one SKU launched by history_start
+    group_target_styles:
+    - 1
+    - 2
+    group_campaign_dates:
+    - 2
+    - 4
+    campaign_date_sampling: uniform over the history window; one group style per date
+    participant_probability_per_date: 0.6
+    participants: claim-capable members only
+    reuse_window_days_before_campaign_date: 14
+    campaign_order:
+      order_date_offset_days:
+      - 0
+      - 2
+      lines: 1
+      quantity: 1
+      sku_choice: uniform launched SKU of the date's style
+      rules: ordinary pricing, discount, shipping, identifier usage and fulfilment
+      layer: abuse; private order_truth only; separate keyed ID stream; no honest events;
+        no solo opportunities
+    uncompleted_reasons:
+    - pre_signup
+    - pre_launch
+    - after_cutoff
+    - cancelled
+    - lost_in_transit
+    - undelivered_by_cutoff
+    - claim_after_cutoff
+  genuine_failure_address_multiplier:
+    distribution: Z^2 with Z standard normal (Gamma shape 0.5, scale 2); mean 1, variance
+      2
+    key: world and address_id
+    applies_to: item_not_received, wrong_item_sent, missing_parts and empty_package
+      rates
+    clip: probability at most 1
+    excludes: carrier_damage
+  targeting_truth:
+    min_accounts_per_group: 3
+  emitted_constants:
+    order_channel:
+      mobile_app: 0.6
+      web: 0.3
+      marketplace: 0.1
+    loyalty_tier: unknown
+    marketing_channel: unknown
+    reason_text: null
+    disposition: null

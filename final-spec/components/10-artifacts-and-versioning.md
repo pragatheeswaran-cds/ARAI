@@ -1,6 +1,6 @@
 # Artifacts, reproducibility and baseline bundle
 
-Version 1.0 | Implementation baseline | Component ART
+Version 1.1 (amended 2026-10-02) | Implementation baseline | Component ART
 
 ## Requirements and boundary
 
@@ -8,7 +8,7 @@ Bundle includes estimator/preprocessing, ordered feature schema, category return
 
 Use skops only after compatibility check in pinned environment. JSON/Parquet for metadata/reference. Explicit allow-list of serialized types; locally produced verified hashes only. API cannot upload model binaries. Reject signature/type/schema/library mismatch before use.
 
-Baseline bundle is trained-statistics-only, before comparison, no candidate dependency: category fallbacks, latency references, sorted eligible training raw_return_rate. Score=raw_return_rate; reference percentile=100*(count_less+.5*count_equal)/reference_count. Supervised raw adapter decision_function; IF negative score_samples. Percentile not probability; label baseline score as Return-rate reference percentile.
+Baseline bundle is trained-statistics-only, before comparison, no candidate dependency: category fallbacks, latency references, sorted eligible training raw_return_rate. Score=raw_return_rate; reference percentile=100*(count_less+.5*count_equal)/reference_count. Supervised raw adapter decision_function; IF negative score_samples. Percentile not probability; label baseline score as Return-rate reference percentile. Every run also ranks eligible customers by raw_return_rate so model and baseline selections can be compared (component 11). Rulebook percentiles and volume-only coefficients live in a separate offline evaluation-reference artifact that serving never loads.
 
 Validate new immutable directory then atomic active pointer update. Jobs bind dataset/model at submission, unaffected by promotion/restart. No fit/fit_transform in inference. Corrupt active model fails readiness, not silent fallback. Missing both model/baseline gives409; explicit rejected model gives409. No prior selection means baseline only/selection not completed, not gate FAIL.
 

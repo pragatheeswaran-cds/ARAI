@@ -1,6 +1,6 @@
 # Operational and private data contracts
 
-Version 1.0 | Implementation baseline | Component DATA
+Version 1.1 (amended 2026-10-02) | Implementation baseline | Component DATA
 
 ## Requirements and boundary
 
@@ -16,7 +16,7 @@ Refund zero unless refunded and <=requested net unit value; header equals sum cu
 
 Operational manifest: schema_version=1.0, world_id, cutoff, history_start, timezone, currency, purpose, exactly seven basenames/hashes/counts. Generated worlds also require generator/code/config/catalog/lock hashes and seed. Private manifest never uploaded. world_id binds immutable content: same content re-registration stable, changed content conflicts. Notes cannot cross unrelated regenerated worlds.
 
-Private profiles/unit facts/campaigns/memberships/allocations/actions/customer/style truth live outside inference mounts. Required fields and joins in private-truth.yaml reconstruct labels. Supervised labels join only after feature artifact freeze.
+Private profiles/action rates/unit facts/order layer (base or campaign)/address failure multipliers/campaigns/memberships/allocations/actions/customer/style truth live outside inference mounts. Amendment 1.1 changes private truth only: the seven operational tables and manifest schema_version stay 1.0, and no operational field distinguishes a campaign order. Required fields and joins in private-truth.yaml reconstruct labels. Supervised labels join only after feature artifact freeze.
 
 ## Inputs, outputs and dependencies
 

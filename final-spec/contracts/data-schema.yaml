@@ -1,5 +1,7 @@
-spec_version: '1.0'
+spec_version: '1.1'
 status: IMPLEMENTATION BASELINE
+amendment: 1.1 (2026-10-02) changes private truth only; the seven operational tables
+  and manifest schema_version remain 1.0
 conventions:
   timezone: Asia/Kolkata
   date_format: ISO-8601 date (YYYY-MM-DD), local Asia/Kolkata date
@@ -486,12 +488,16 @@ private_truth:
       from line_truth; D-024 benign_household from relationship_truth + orders; minimum
       pooled size D-025)
     product_truth: per style_id defect state, latent defect probability, planned_targeted_by,
-      completed_targeted_by, targeted (A-06; D-030 style grain); optional per-sku
-      fit_issue
+      completed_targeted_by, hot_listed, coordinated_claim_accounts_by_group, targeting_level,
+      targeted (amendment 1.1 over A-06; D-030 style grain); optional per-sku fit_issue
     relationship_truth: household_id / coordination_group_id membership and shared
       identifier types
     line_truth: genuine vs deceptive nonreceipt, received_defective_unit, temporary_use
       (D-005 requires both genuine and deceptive nonreceipt on delivered lines)
+    order_truth: per order_id layer (base or campaign) and campaign_id; campaign orders
+      are abuse-layer purchases with no operational marker (amendment 1.1)
+    address_truth: per address_id genuine fulfilment-failure multiplier (amendment
+      1.1)
   contract: contracts/private-truth.yaml
 cross_table_rules:
 - return_order.customer_id equals the customer_id of every referenced sales_order
@@ -532,8 +538,13 @@ private_truth_additions:
     required:
     - planned_targeted_by
     - completed_targeted_by
+    - hot_listed
+    - coordinated_claim_accounts_by_group
+    - targeting_level
     - targeted
-    targeted_rule: completed_targeted_by is nonempty; see A-06
+    targeted_rule: one group has >=3 distinct accounts with completed coordinated claims
+      on the style visible at cutoff; fewer is sub_threshold (amendment 1.1 supersedes
+      A-06)
   relationship_truth:
     member_usage:
     - world_id

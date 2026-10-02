@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.0.0
+  version: 1.1.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -213,7 +213,7 @@ paths:
         in: path
         required: true
         schema: *id001
-  /inference-jobs:
+  /runs:
     post:
       operationId: submitRun
       responses:
@@ -317,7 +317,7 @@ paths:
         in: query
         required: false
         schema: *id001
-  /inference-jobs/{run_id}:
+  /runs/{run_id}:
     get:
       operationId: getRun
       responses:
@@ -368,7 +368,7 @@ paths:
         in: path
         required: true
         schema: *id001
-  /inference-jobs/{run_id}/customers:
+  /runs/{run_id}/customers:
     get:
       operationId: listCustomers
       responses:
@@ -455,7 +455,18 @@ paths:
           - needs_investigation
           - likely_legitimate
           - unresolved
-  /inference-jobs/{run_id}/customers/{customer_id}:
+      - name: comparison
+        in: query
+        required: false
+        schema:
+          type: string
+          default: all
+          enum:
+          - all
+          - model_only
+          - baseline_only
+          - both
+  /runs/{run_id}/customers/{customer_id}:
     get:
       operationId: getCustomerCase
       responses:
@@ -512,7 +523,7 @@ paths:
         in: path
         required: true
         schema: *id001
-  /inference-jobs/{run_id}/customers/{customer_id}/reviews:
+  /runs/{run_id}/customers/{customer_id}/reviews:
     get:
       operationId: listReviews
       responses:
@@ -615,7 +626,7 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ReviewRequest'
-  /inference-jobs/{run_id}/styles:
+  /runs/{run_id}/styles:
     get:
       operationId: listStyles
       responses:
@@ -678,9 +689,10 @@ paths:
           - quality
           - targeting
           - mixed_or_uncertain
+          - no_elevated_signal
           - insufficient_support
           - no_return_evidence
-  /inference-jobs/{run_id}/styles/{style_id}:
+  /runs/{run_id}/styles/{style_id}:
     get:
       operationId: getStyle
       responses:
@@ -1043,6 +1055,8 @@ components:
       - eligible_count
       - excluded_count
       - selected_count
+      - model_only_count
+      - baseline_only_count
       properties:
         run_id: *id001
         dataset_id: *id001
@@ -1095,6 +1109,14 @@ components:
           type: integer
           minimum: 0
           nullable: true
+        model_only_count:
+          type: integer
+          minimum: 0
+          nullable: true
+        baseline_only_count:
+          type: integer
+          minimum: 0
+          nullable: true
     Support:
       type: object
       additionalProperties: false
@@ -1141,6 +1163,8 @@ components:
       - risk_score
       - rank
       - selected_for_review
+      - baseline_rank
+      - baseline_selected
       - support_counts
       - evidence_tags
       - wardrobing_status
@@ -1165,6 +1189,12 @@ components:
           minimum: 1
           nullable: true
         selected_for_review: &id011
+          type: boolean
+        baseline_rank:
+          type: integer
+          minimum: 1
+          nullable: true
+        baseline_selected:
           type: boolean
         support_counts:
           $ref: '#/components/schemas/Support'
@@ -1310,7 +1340,9 @@ components:
           - insufficient_evidence
           - incomplete
         indicator_score:
-          type: number
+          type: integer
+          minimum: 0
+          maximum: 100
           nullable: true
         signals:
           type: array
@@ -1332,7 +1364,8 @@ components:
       - shrunk_return_rate
       - damage_share
       - claim_share
-      - component_share
+      - linked_claim_share
+      - linked_claimers
       - quality_signal
       - targeting_signal
       properties:
@@ -1344,6 +1377,7 @@ components:
           - quality
           - targeting
           - mixed_or_uncertain
+          - no_elevated_signal
           - insufficient_support
           - no_return_evidence
         mature_sale_lines: *id008
@@ -1362,9 +1396,10 @@ components:
         claim_share:
           type: number
           nullable: true
-        component_share:
+        linked_claim_share:
           type: number
           nullable: true
+        linked_claimers: *id008
         quality_signal: *id011
         targeting_signal: *id011
     Sku:
@@ -1570,6 +1605,9 @@ components:
       - wardrobing_metrics
       - coverage_limitations
       - report_only_evidence_metrics
+      - reference_metrics
+      - error_account
+      - difficulty_calibration
       properties:
         summary:
           $ref: '#/components/schemas/ExperimentSummary'
@@ -1602,6 +1640,33 @@ components:
           type: array
           items: *id001
         report_only_evidence_metrics: *id011
+        reference_metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        error_account:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        difficulty_calibration:
+          $ref: '#/components/schemas/DifficultyCalibration'
+    DifficultyCalibration:
+      type: object
+      additionalProperties: false
+      required:
+      - calibrated
+      - levers
+      - record_ref
+      properties:
+        calibrated:
+          type: boolean
+        levers:
+          type: array
+          items:
+            type: string
+        record_ref:
+          type: string
+          nullable: true
     TruthExample:
       type: object
       additionalProperties: false

@@ -18,5 +18,7 @@ All seven pages reviewed visually: page1 montage, pages2-7 dashboard, risk queue
 | Employee profile/security/configuration | Reviewer-name input and run metadata | No identity-management expansion |
 | Missing model lifecycle | Dataset/run and isolated evaluation/truth reveal | Frozen inference and honest fallback |
 | Happy-path-only screens | Loading/empty/error/not-ready/no-winner/test-failed controls | Explicit acceptance states |
+| Single risk score per customer | Return-rate rule rank beside the model rank, with neutral selected-by wording (1.1) | Explain why the rule and the model differ without implying truth |
+| Product verdict from concentration of buyers | Linked-claim share and linked claimants per style; sixth no-elevated-signal state (1.1) | Share of all returners cannot register a small ring at world scale |
 
 Retained conceptually: sidebar, overview cards, tables, case tabs and product investigation. The result is a revised wireframe, not an unchanged PDF reproduction. Sample values are illustrative, not targets or generated/evaluated data.

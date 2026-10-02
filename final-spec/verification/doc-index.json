@@ -7,7 +7,8 @@
       "Walkthrough covers legitimate heavy returns, defective buyers, benign sharing, deceptive claims, coordination, temporary use and mixed cases without revealing truth on cases.",
       "No UI/API can suspend accounts, refund orders, generate LLM verdicts or route inspections.",
       "Review budget is 5% of eligible customers; excluded-history counts and fallback are visible.",
-      "Synthetic and prototype data are clearly labelled; mock values are not evaluated results."
+      "Synthetic and prototype data are clearly labelled; mock values are not evaluated results.",
+      "Walkthrough explains, with one case each and no truth on case pages, four reasons the return-rate rule misranks: honest heavy returns, abuse inside an ordinary return rate, thin history and linked accounts."
     ]
   ],
   [
@@ -17,12 +18,14 @@
     [
       "Pinned seed/config/lock reproduces canonical sorted tables; different seeds vary; CSV/Parquet values match.",
       "Adapter preserves 300 SKUs/37 styles, prices/windows/variants/launch dates and source hash.",
-      "Abuse-off preserves base/honest events; quantity-three fixture with one honest/one abusive request yields two requested units.",
+      "Abuse-off preserves base/honest events and IDs and removes every campaign order; quantity-three fixture with one honest/one abusive request yields two requested units.",
       "Five sale states and all cutoff chronology pass; future plans do not enter snapshot.",
       "Population-average probabilities equal .04/.03/.005; invalid allocation fails; no forced realized quotas.",
-      "Labels reconstruct from action/request/unit joins; nonacting group members and planned-only targets are not positive.",
+      "Labels reconstruct from action/request/unit joins; nonacting group members and planned-only targets are not positive; a style is targeted iff one group has >=3 accounts with completed coordinated claims.",
       "Assigned sharing and realized links differ legitimately; one-order usage may be 0%/100%.",
-      "Coverage, eligibility, excluded abuse, segment support and blocked-campaign reports precede full generation."
+      "Coverage, eligibility, excluded abuse, segment support and blocked-campaign reports precede full generation.",
+      "Campaign orders obey signup/launch/cutoff chronology and are marked only in private order_truth; coordinated claims occur only on world hot-list styles; uncompleted attempts keep a reason.",
+      "Per-account action rates and per-address genuine-failure multipliers reproduce from keyed streams; realized means versus .20 and the configured claim rates are reported; the temporary-use occasion weighting matches a fixture."
     ]
   ],
   [
@@ -59,7 +62,8 @@
       "Enrichment fixture yields .667/.20; undefined metrics are null.",
       "Reports identify disjoint feature support and genuine/deceptive code overlap.",
       "Equal propensity may coexist with unequal completed prevalence without false failure.",
-      "Configuration changes are justified on development data before validation manifests."
+      "Configuration changes are justified on development data before validation manifests.",
+      "Dated calibration record precedes validation manifests, changes only permitted levers and reports achieved baseline and best-candidate precision against the targets."
     ]
   ],
   [
@@ -71,9 +75,10 @@
       "Ordered 18-feature schema enforced; identity renaming preserving equality leaves features unchanged.",
       "Eligibility threshold exactly three mature lines; recent requests affect composition but not mature rate.",
       "One shared type no edge; two edge; fanout26 value removed; empty vs failed graph distinguished.",
-      "All five style states and threshold boundaries correct; diluted/multi-group misses reported.",
-      "Wardrobing boundary/zero-IQR/capped-latency/no-return fixtures match without mixing into model risk.",
-      "Changing private labels with operational inputs fixed changes no features or predictions."
+      "All six style states and signal boundaries correct; claims 7 days apart link and 8 do not; different SKUs of one style link; unsupported neighbors never link; low-link misses reported.",
+      "Wardrobing integer boundaries 45/65, a 45-point case without a timing signal (no band), zero-IQR, capped-latency and no-return fixtures match without mixing into model risk.",
+      "Changing private labels with operational inputs fixed changes no features or predictions.",
+      "coordinated_claim_share matches the style-grain linked-claim rule on a hand-built fixture and counts each own line once."
     ]
   ],
   [
@@ -98,7 +103,9 @@
       "Quantile ties/kept defective unit/unused household identifier/overlap fixtures have correct segment membership.",
       "Reports include paired whole-world intervals and per-world results without significance claims.",
       "Style/wardrobing misses, no-return state, coverage and null metrics are present.",
-      "Private evaluation joins happen after score freeze; no truth on inference routes."
+      "Private evaluation joins happen after score freeze; no truth on inference routes.",
+      "Rulebook and volume-only references use the identical population/k/ties and training-only thresholds, are flagged report-only and cannot be selected.",
+      "Error account gives false-positive and false-negative splits with denominators plus model-versus-baseline selection differences; the calibration disclosure is present."
     ]
   ],
   [
@@ -110,7 +117,8 @@
       "Passing ties follow worst FPR then ordinal.",
       "No winner produces fallback without fabricated promotion.",
       "Selection record precedes test; test failure prevents runner-up switching.",
-      "Test-informed iteration retains failure and uses untouched test worlds."
+      "Test-informed iteration retains failure and uses untouched test worlds.",
+      "Dated gate dry run on out-of-fold training scores precedes validation manifests and selects nothing; gate rule and segment definitions are unchanged afterwards."
     ]
   ],
   [
@@ -134,7 +142,8 @@
       "Duplicate scoped key/body returns same resource; changed body409.",
       "Crash cannot publish partial success; restart preserves notes/bindings.",
       "Population counts and eligible/ineligible nullable fields reconcile.",
-      "No-winner path yields complete labelled baseline evidence; corrupt active model fails."
+      "No-winner path yields complete labelled baseline evidence; corrupt active model fails.",
+      "baseline_rank/baseline_selected use the same k and ties as the model, equal rank/selection under fallback, and the run counts match the comparison filters."
     ]
   ],
   [
@@ -147,7 +156,8 @@
       "Cursors return no duplicates/gaps and cannot cross run/filter.",
       "Every UI action has an endpoint, with no training/refund/block/delete-note operation.",
       "Unknown404, unfinished409, conflict409 and validation422 are distinguished.",
-      "Unlisted CORS origin denied; VM API unauthenticated denied."
+      "Unlisted CORS origin denied; VM API unauthenticated denied.",
+      "comparison filter values partition eligible customers consistently with the run counts and stable cursors; ineligible customers appear only under all."
     ]
   ],
   [
@@ -161,7 +171,8 @@
       "No AI confidence/USD/non-apparel/calibrated bands/loss-prevented claims remain.",
       "Keyboard user filters, opens cases, navigates tabs, appends note and returns.",
       "Implemented notes persist cross-run; prototype labels memory-only behavior.",
-      "Truth reveal isolated to evaluation; examples never presented as measured results."
+      "Truth reveal isolated to evaluation; examples never presented as measured results.",
+      "Rank comparison appears on overview/queue/case with neutral wording and is hidden under fallback; evaluation shows references, error account and calibration disclosure."
     ]
   ],
   [
@@ -195,7 +206,7 @@
     "TEST",
     [
       "Every AC has evidence or explicit NOT_RUN; syntax success never stands in for runtime acceptance.",
-      "Small-world gate precedes full generation; selection freezes before test exposure.",
+      "Small-world gate precedes full generation; calibration and gate dry run precede validation generation; selection freezes before test exposure.",
       "Integration cases execute with retained output and no truth leakage.",
       "Target-machine rehearsal has measured runtime and working baseline fallback.",
       "Release includes failures/limitations/hashes and enough reference material for another developer."

@@ -1,4 +1,4 @@
-spec_version: '1.0'
+spec_version: '1.1'
 codebook_source: assets/reason_codes.csv
 principle: reasons are customer claims, not adjudications. Groups are explicit code
   lists, not claim_class, because late_delivery is claim_class=transaction_claim but
@@ -58,6 +58,8 @@ generator_reason_selection:
     rate: ~0.5% of delivered lines
   genuine_fulfilment_failure:
     rate: ~1.5% of delivered lines, all customer groups, independent of abuse propensity
+    address_scaling: private per-address multiplier Z^2 (mean 1) on these rates (amendment
+      1.1)
     nonreceipt_on_scanned_line: item_not_received
     contents:
     - wrong_item_sent
@@ -79,6 +81,8 @@ generator_reason_selection:
     draw:
       discretionary_or_fit: ~0.85
       false_quality_complaint: ~0.15
+    occasion_weighting: opportunity probability x2.5 on orders with occasion wear,
+      x0.55 otherwise (amendment 1.1)
     note: no dedicated code; false quality complaints test that SKU quality evidence
       does not clear a wardrober (Q9)
   constraints:
