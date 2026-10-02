@@ -1,0 +1,13 @@
+# Static UI behind nginx; /api is proxied to the API so UI and API share one origin.
+FROM node:22-alpine AS build
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY final-spec/contracts/openapi.yaml /final-spec/contracts/openapi.yaml
+COPY web ./
+RUN npm run build
+
+FROM nginx:1.27-alpine
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /web/dist /usr/share/nginx/html
+EXPOSE 80

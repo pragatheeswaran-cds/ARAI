@@ -27,7 +27,7 @@ a.link:hover { text-decoration: underline; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   outline: 3px solid #d39720; outline-offset: 2px;
 }
-main:focus { outline: none; }
+main:focus, main:focus-visible { outline: none; }
 
 .strip { background: #e7eddd; padding: 8px; text-align: center; font-size: 11px; letter-spacing: 0.4px; }
 .shell { display: grid; grid-template-columns: 215px 1fr; min-height: calc(100vh - 32px); }

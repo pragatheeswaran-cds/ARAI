@@ -36,9 +36,12 @@ export function useLoad<T>(loader: () => Promise<T>, deps: unknown[]): Loaded<T>
   const [state, setState] = useState<{ data: T | null; error: ApiError | null; loading: boolean }>({ data: null, error: null, loading: true });
   const [tick, setTick] = useState(0);
   const latest = useRef(0);
+  const lastTick = useRef(0);
   useEffect(() => {
     const call = ++latest.current;
-    setState((previous) => ({ ...previous, loading: true, error: null }));
+    const refresh = lastTick.current !== tick; // reload() keeps what is shown; a new question clears it
+    lastTick.current = tick;
+    setState((previous) => ({ data: refresh ? previous.data : null, loading: true, error: null }));
     loader().then(
       (data) => call === latest.current && setState({ data, error: null, loading: false }),
       (error) =>

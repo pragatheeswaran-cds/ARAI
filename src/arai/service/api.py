@@ -19,7 +19,7 @@ import yaml
 from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -136,7 +136,8 @@ class Service:
         return run, directory
 
 
-def create_app(config: ServiceConfig | None = None, with_worker: bool = False) -> FastAPI:
+def create_app(config: ServiceConfig | None = None, with_worker: bool = False, static_dir: Path | None = None) -> FastAPI:
+    """The API, optionally with the single worker and the built UI served from the same origin (local rehearsal)."""
     config = config or from_env()
     service = Service(config)
     credentials = None
@@ -419,4 +420,17 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False) -
                 "next_cursor": views.encode_cursor(context, following) if following is not None else None}
 
     app.include_router(api)
+
+    if static_dir is not None:
+        root = Path(static_dir).resolve()
+
+        @app.get("/{path:path}", include_in_schema=False)
+        def ui(path: str):
+            if path.startswith("api/"):
+                raise StarletteHTTPException(status_code=404)
+            target = (root / path).resolve()
+            if path and target.is_file() and root in target.parents:       # never serve anything outside the built UI
+                return FileResponse(target)
+            return FileResponse(root / "index.html")                       # client-side routes
+
     return app

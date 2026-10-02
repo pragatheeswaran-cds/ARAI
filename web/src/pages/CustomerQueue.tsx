@@ -60,9 +60,11 @@ export function CustomerQueue() {
 
   const set = (name: string, value: string) => {
     const next = new URLSearchParams(params);
-    if (value && value !== "all" && !(name === "show" && value === "review")) next.set(name, value);
-    else next.delete(name);
-    if (name === "show" && value === "review") next.delete("comparison");
+    // each filter has its own "no filter" value: the review set for Show, "all" or empty for the others
+    const isDefault = name === "show" ? value === "review" : !value || value === "all";
+    if (isDefault) next.delete(name);
+    else next.set(name, value);
+    if (name === "show" && value !== "all") next.delete("comparison"); // a comparison view needs every customer
     setParams(next, { replace: true });
   };
 

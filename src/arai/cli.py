@@ -100,6 +100,32 @@ def _serve(args) -> int:
     return 0
 
 
+def _local(args) -> int:
+    """One command for a local rehearsal: an embedded PostgreSQL, the API, the worker and the built UI."""
+    import logging
+
+    import uvicorn
+
+    from arai import paths
+    from arai.service.api import create_app
+    from arai.service.config import ServiceConfig
+    try:
+        import pgserver
+    except ImportError:
+        print("The embedded PostgreSQL is a development dependency: run `uv sync` (or use docker compose).")
+        return 1
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    server = pgserver.get_server(args.pg_dir or paths.REPO_ROOT / "data" / "postgres")
+    static = paths.REPO_ROOT / "web" / "dist"
+    if not (static / "index.html").is_file():
+        print("web/dist is missing: run `npm install` and `npm run build` in web/ to serve the UI; starting the API only.")
+        static = None
+    config = ServiceConfig(database_url=server.get_uri(), artifact_root=paths.ARTIFACT_ROOT)
+    print(f"ARAI local rehearsal on http://{args.host}:{args.port}  (database in {server.pgdata})")
+    uvicorn.run(create_app(config, with_worker=True, static_dir=static), host=args.host, port=args.port, log_level="info")
+    return 0
+
+
 def _worker(args) -> int:
     import logging
 
@@ -122,6 +148,7 @@ def _register(args) -> int:
     config = _service(args)
     store = Store(config.database_url)
     store.migrate()
+    args.directory = Path(args.directory)
     files = {name: (args.directory / f"{name}.csv").read_bytes() for name in TABLES}
     try:
         row, created = datasets.register(store, config.artifact_root, (args.directory / "manifest.json").read_text(encoding="utf-8"), files)
@@ -166,6 +193,11 @@ def main(argv=None) -> int:
     serve.add_argument("--with-worker", action="store_true", help="also run the single scoring worker in this process")
     serve.set_defaults(run=_serve)
     commands.add_parser("worker", help="run the single scoring worker").set_defaults(run=_worker)
+    local = commands.add_parser("local", help="local rehearsal: embedded PostgreSQL + API + worker + built UI, one process")
+    local.add_argument("--host", default="127.0.0.1")
+    local.add_argument("--port", type=int, default=8000)
+    local.add_argument("--pg-dir", type=Path, default=None, help="PostgreSQL data directory (default: data/postgres)")
+    local.set_defaults(run=_local)
     register = commands.add_parser("register", help="validate and register an operational world directory as a dataset")
     register.add_argument("directory", type=Path)
     register.set_defaults(run=_register)

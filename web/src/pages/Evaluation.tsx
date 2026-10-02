@@ -151,12 +151,11 @@ function MetricList({ metrics }: { metrics: Metric[] }) {
   return (
     <>
       {metrics.map((m, i) => {
-        const isCount = m.value !== null && (m.value > 1 || (Number.isInteger(m.value) && m.denominator === null));
+        const isCount = m.name.endsWith("(count)");
         return (
           <Row key={i} name={m.name} note={m.scope}>
             {m.value === null ? "n/a" : isCount ? number(m.value) : percent(m.value)}
-            {fraction(m) && !isCount ? <span className="muted"> ({fraction(m)})</span> : null}
-            {isCount && m.denominator !== null ? <span className="muted"> of {number(m.denominator)}</span> : null}
+            {fraction(m) ? <span className="muted"> ({fraction(m)})</span> : null}
           </Row>
         );
       })}
@@ -169,7 +168,15 @@ function TruthReveal({ experimentId }: { experimentId: string }) {
   const [shown, setShown] = useState(false);
   const truth = useLoad(async () => {
     if (!shown) return null;
-    const examples = await allPages<TruthExample>((cursor) => api.truth(experimentId, cursor), 120);
+    // the export lists abusers first, so paging stops at the first page that reaches honest customers
+    const examples: TruthExample[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 200; page++) {
+      const result = await api.truth(experimentId, cursor);
+      examples.push(...result.items);
+      cursor = result.next_cursor;
+      if (!cursor || result.items.some((item) => item.y_abuse === 0)) break;
+    }
     const world = examples[0]?.customer_id.split("-")[0];
     let selected: Set<string> | null = null;
     let ruleSelected: Set<string> | null = null;
@@ -202,7 +209,7 @@ function TruthReveal({ experimentId }: { experimentId: string }) {
         <>
           <Row name="Simulated world">{data.world}</Row>
           <Row name="Customers who abused returns in the simulation" note="Including customers with too little history to rank">
-            {number(abusers.length)} of {number(data.examples.length)}
+            {number(abusers.length)}
           </Row>
           {data.selected && data.ruleSelected ? (
             <>
@@ -380,7 +387,7 @@ export function Evaluation() {
               {testMetrics.length === 0 ? (
                 <p className="muted">The final test has not been run. A model is promoted only after it passes.</p>
               ) : (
-                <MetricList metrics={testMetrics.filter((m) => /: (precision|recall|review rate)/.test(m.name)).map((m) => ({ ...m, name: m.name.replace(/^[a-z0-9_]+: /, (id) => (NAMES[id.slice(0, -2)] ?? id.slice(0, -2)) + ": ") }))} />
+                <MetricList metrics={testMetrics.filter((m) => /: (precision|recall|review rate, .*)$/.test(m.name)).map((m) => ({ ...m, name: m.name.replace(/^[a-z0-9_]+: /, (id) => (NAMES[id.slice(0, -2)] ?? id.slice(0, -2)) + ": ") }))} />
               )}
             </Panel>
           </div>

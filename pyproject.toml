@@ -41,5 +41,6 @@ dev = [
     "nbformat>=5.11.1",
     "openapi-spec-validator>=0.7",
     "pgserver>=0.1.4",
+    "playwright>=1.63.0",
     "pytest>=9.1.1",
 ]

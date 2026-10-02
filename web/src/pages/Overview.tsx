@@ -66,7 +66,7 @@ export function Overview() {
           <LoadState state={lists} empty={!!lists.data && lists.data.next.length === 0}>
             No customer was selected for review in this run.
           </LoadState>
-          {lists.data && lists.data.next.length > 0 && <CustomerTable runId={run.run_id} customers={lists.data.next} fallback={fallback} />}
+          {lists.data && lists.data.next.length > 0 && <CustomerTable runId={run.run_id} customers={lists.data.next} fallback={fallback} compact />}
           <Callout>A high return volume alone is not abuse. Product context, timing and relationships support a human decision.</Callout>
           <Link className="button primary" to={`/runs/${run.run_id}/customers`}>
             Open customer queue

@@ -21,7 +21,7 @@ export function reviewBadge(customer: Customer) {
 }
 
 /** The queue table. Under baseline fallback the model and the rule are the same ranking, so the comparison column is hidden. */
-export function CustomerTable({ runId, customers, fallback }: { runId: string; customers: Customer[]; fallback: boolean }) {
+export function CustomerTable({ runId, customers, fallback, compact = false }: { runId: string; customers: Customer[]; fallback: boolean; compact?: boolean }) {
   return (
     <div className="tablewrap">
       <table>
@@ -38,9 +38,9 @@ export function CustomerTable({ runId, customers, fallback }: { runId: string; c
             )}
             <th scope="col">Requested / mature units</th>
             <th scope="col">Measured evidence</th>
-            <th scope="col">Wardrobing indicator</th>
-            <th scope="col">Review</th>
-            <th scope="col">Latest note</th>
+            {!compact && <th scope="col">Wardrobing indicator</th>}
+            {!compact && <th scope="col">Review</th>}
+            {!compact && <th scope="col">Latest note</th>}
           </tr>
         </thead>
         <tbody>
@@ -79,11 +79,15 @@ export function CustomerTable({ runId, customers, fallback }: { runId: string; c
                     <span className="muted">none of the listed observations</span>
                   )}
                 </td>
-                <td>
-                  <Badge text={c.wardrobing_status} tone={c.wardrobing_status === "elevated" ? "amber" : "gray"} />
-                </td>
-                <td>{reviewBadge(c)}</td>
-                <td>{c.latest_disposition ? <Badge text={c.latest_disposition} tone="green" /> : <span className="muted">no note</span>}</td>
+                {!compact && (
+                  <td>
+                    <Badge text={c.wardrobing_status} tone={c.wardrobing_status === "elevated" ? "amber" : "gray"} />
+                  </td>
+                )}
+                {!compact && <td>{reviewBadge(c)}</td>}
+                {!compact && (
+                  <td>{c.latest_disposition ? <Badge text={c.latest_disposition} tone="green" /> : <span className="muted">no note</span>}</td>
+                )}
               </tr>
             );
           })}
