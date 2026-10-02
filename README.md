@@ -13,3 +13,22 @@ Copy the entire final-spec folder or the ARAI-final-spec-v1.1.zip archive to ano
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
 Existing code/synthetic-data assets remain preserved; the final package bundles the required inputs.
+
+## Code (branch `v1`)
+
+The project is managed with [uv](https://docs.astral.sh/uv/); every dependency lives in the project's `.venv`.
+
+```
+uv sync                                   # create .venv from uv.lock
+uv run pytest                             # generator and validator tests
+uv run arai generate --seed 2001          # generate, write and validate fixture world 2001
+uv run arai validate data/artifacts/worlds/W2001/operational
+uv run jupyter lab                        # then open notebooks/01_synthetic_data_generation.ipynb
+```
+
+- `src/arai/generator/` builds a synthetic world from the specification's contracts and assets.
+- `src/arai/validation.py` checks an operational world against the data contract.
+- `notebooks/01_synthetic_data_generation.ipynb` walks through generation stage by stage with checks and charts.
+- `records/` holds dated development records, starting with the generator's open choices and first observations.
+- `data/` (ignored by git) receives generated worlds: operational tables under `data/artifacts/`, private truth
+  under `data/private/`.

@@ -7,3 +7,9 @@ node_modules/
 
 # Teammates' repository with its own Bitbucket remote; tracked there, not here
 code/synthetic-data/
+
+# Python environment and generated worlds (reproducible from seed, config and lock)
+.venv/
+data/
+.pytest_cache/
+.ipynb_checkpoints/
