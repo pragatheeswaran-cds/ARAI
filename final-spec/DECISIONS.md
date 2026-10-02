@@ -111,3 +111,19 @@ The user asked for the two open findings of the first generator run to be resolv
 | AM-18 | The acceptance register records first evidence for the generation, data-contract, validation and exploration criteria, with owner sign-off pending | All criteria NOT_RUN | acceptance-register.csv |
 
 AM-14 and AM-15 change what a world contains, so every world generated before them is void and was regenerated. The seven operational tables and manifest schema_version remain 1.0.
+
+## Amendment 1.3 (2026-10-02)
+
+An independent review of the first exploration (records/2026-10-02-eda-critic-review.md in the code repository) found that abusive requests could be recognised by mechanical artefacts instead of behaviour, that the simulated order history was not stationary, and that the link signal carried no honest noise. The user agreed on 2026-10-02 to fix these before features are built. Every world generated under 1.2 is void and was regenerated; still no validation or test world exists. Evidence is in records/2026-10-02-eda.md and reports/eda/2026-10-02.
+
+| ID | Decision | Supersedes | Final owner |
+|---|---|---|---|
+| AM-19 | Every transaction claim, genuine or deceptive, solo or coordinated, is requested min(30, round(Gamma(2, 3 days))) days after delivery | Uniform 0-10 days for genuine and solo claims with a separate Gamma delay for coordinated claims, which made every claim after day 10 a ring claim | 02 generation, generator-config.yaml amendment_1_3 |
+| AM-20 | A campaign order is an ordinary basket whose first line is the target style; its unclaimed units take honest events; no account places two orders on one day | One line of one unit, which put 98% of ring claims on single-line orders | 02 generation |
+| AM-21 | Return requests are consolidated into headers by one rule and numbered by request time; abuse-off preserves base sales and honest request content, not return identifiers | Honest lines numbered before abusive lines, which made every out-of-order line abusive; identical identifiers under abuse-off (GEN-AC-03) | 02 generation, 03 data contracts |
+| AM-22 | Persona order targets are annual rates scaled by the share of the account's yearly order-date weights after signup; at most one order per two eligible days; High_Intensity is an established persona with tenure up to 1,095 days | Whole target placed inside the tenure, which tripled order volume through the year and gave new accounts several orders a week | 02 generation, assets/profile-config.yaml |
+| AM-23 | A ring starts when its second claim-capable member signs up; campaign dates are drawn over the whole window and kept only from that start; a member takes part only after signing up | AM-15 (dates between the last member's signup and the snapshot), which packed ring activity into the final weeks | 02 generation |
+| AM-24 | Honest claims can be correlated: household co-orders of the same style, delivery incidents that lose whole parcels at an address, and a co-order sharing the fate of the order it follows | Genuine failures independent per unit, which left the linked-claim signal with no honest noise | 02 generation, private-truth.yaml |
+| AM-25 | Style-targeting signal uses a linked-claim share of at least .075 with at least three linked claimants, re-checked on the regenerated training worlds where honest linked claims now exist: precision 1.0 and recall .87 at .075, against precision .94 and recall .89 at .05 and recall .79 at .10 (38 targeted style-worlds). The quality threshold of .30 is kept | AM-17 as evidence, not as a value | 06 features |
+
+Known differences that remain by specification: abusers claim once per order whatever its size while genuine failures scale with units; abusive requests are never withdrawn, late or multi-unit; ring activity grows with the customer base. They are measured in the exploration's artefact audit.

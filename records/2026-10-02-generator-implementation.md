@@ -1,9 +1,10 @@
 # Generator implementation record, 2026-10-02
 
-> **Superseded in part the same day.** Findings 1 and 2 below were resolved by specification amendment 1.2
-> (longer tenures, ring campaigns that start at ring formation, targeting threshold 0.05), and the two missing
-> boundary fixtures now have tests. The numbers in this record describe the generator before those changes;
-> current figures are in `records/2026-10-02-eda.md`.
+> **Superseded in part the same day.** Findings 1 and 2 below were resolved by specification amendments 1.2 and
+> 1.3, and the two missing boundary fixtures now have tests. In the table of open choices, the rows on order
+> intensity, genuine claim timing, coordinated claim delay and return headers were replaced by rules in
+> specification v1.3 (AM-19 to AM-23). The numbers in this record describe the first generator; current figures
+> are in `records/2026-10-02-eda.md`.
 
 First implementation of the synthetic world generator (final-spec v1.1, components 02, 03 and 04) on branch `v1`.
 This is a development record in the sense of the specification: it lists the choices the specification leaves

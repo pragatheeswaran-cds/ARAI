@@ -18,14 +18,14 @@
     [
       "Pinned seed/config/lock reproduces canonical sorted tables; different seeds vary; CSV/Parquet values match.",
       "Adapter preserves 300 SKUs/37 styles, prices/windows/variants/launch dates and source hash.",
-      "Abuse-off preserves base/honest events and IDs and removes every campaign order; quantity-three fixture with one honest/one abusive request yields two requested units.",
+      "Abuse-off preserves base sales and honest request content and removes every campaign order (return header identifiers and line numbers may differ); quantity-three fixture with one honest/one abusive request yields two requested units.",
       "Five sale states and all cutoff chronology pass; future plans do not enter snapshot.",
       "Population-average probabilities equal .04/.03/.005; invalid allocation fails; no forced realized quotas.",
       "Labels reconstruct from action/request/unit joins; nonacting group members and planned-only targets are not positive; a style is targeted iff one group has >=3 accounts with completed coordinated claims.",
       "Assigned sharing and realized links differ legitimately; one-order usage may be 0%/100%.",
       "Coverage, eligibility, excluded abuse, segment support and blocked-campaign reports precede full generation.",
       "Campaign orders obey signup/launch/cutoff chronology and are marked only in private order_truth; coordinated claims occur only on world hot-list styles; uncompleted attempts keep a reason.",
-      "Per-account action rates and per-address genuine-failure multipliers reproduce from keyed streams; realized means versus .20 and the configured claim rates are reported; the temporary-use occasion weighting matches a fixture."
+      "Per-account action rates and per-address genuine-failure multipliers reproduce from keyed streams; realized means versus .20 and the configured claim rates are reported; the temporary-use occasion weighting matches a fixture; claim timing, basket shape, header line order and same-day orders do not separate honest from abusive requests."
     ]
   ],
   [

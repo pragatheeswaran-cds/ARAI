@@ -86,7 +86,17 @@ def build_profiles(ctx: Context) -> pd.DataFrame:
     signup = ctx.snapshot - tenure * DAY
     eligible_start = np.maximum(signup, ctx.history_start)
     eligible_days = ((ctx.snapshot - eligible_start) / DAY).astype(int) + 1
-    target = np.minimum(orders, np.floor(impl["max_order_intensity_per_day"] * eligible_days).astype(int))
+    # persona order targets are annual rates. An account present for part of the year gets the share of its own
+    # yearly order-date weights (festive and ordinary days) that falls after it signed up, so the daily rate of
+    # an account does not depend on when it joined.
+    multiplier = ctx.festive_multiplier
+    is_festive = multiplier > 0
+    festive_tail = np.append(np.cumsum((multiplier * is_festive)[::-1])[::-1], 0.0) / max(multiplier[is_festive].sum(), 1e-12)
+    ordinary_tail = np.append(np.cumsum((~is_festive)[::-1])[::-1], 0.0) / max((~is_festive).sum(), 1)
+    start_index = ((eligible_start - ctx.history_start) / DAY).astype(int)
+    exposure = festive * festive_tail[start_index] + (1.0 - festive) * ordinary_tail[start_index]
+    expected = orders * exposure
+    target = np.minimum(expected, s.amendment3["order_targets"]["max_order_intensity_per_day"] * eligible_days)
     return pd.DataFrame({
         "customer_id": ctx.customer_ids,
         "persona": persona,
@@ -94,6 +104,7 @@ def build_profiles(ctx: Context) -> pd.DataFrame:
         "signup_date": signup,
         "eligible_start": eligible_start,
         "eligible_days": eligible_days,
+        "annual_order_target": orders,
         "target_order_count": target,
         "target_return_propensity": returns,
         "target_festive_share": festive,
@@ -115,7 +126,7 @@ def allocate_abuse(ctx: Context, profiles: pd.DataFrame) -> pd.DataFrame:
     multipliers = {k: float(v) for k, v in overlay["persona_multipliers"].items()}
     if s.overrides.get("actionable_multipliers_all_one"):
         multipliers = {k: (1.0 if v > 0 else 0.0) for k, v in multipliers.items()}
-    m = profiles["persona"].map(multipliers).to_numpy(dtype=float) * (profiles["target_order_count"].to_numpy() > 0)
+    m = profiles["persona"].map(multipliers).to_numpy(dtype=float) * (profiles["annual_order_target"].to_numpy() > 0)
     if s.overrides.get("disable_overlays") or s.overrides.get("all_dormant"):
         m = np.zeros(n)
     mean = m.mean()

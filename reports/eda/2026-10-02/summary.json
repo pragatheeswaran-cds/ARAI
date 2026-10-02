@@ -32,68 +32,109 @@
   "validation_and_test_worlds_generated": false,
   "training_pooled": {
     "customers": 100000,
-    "eligible_customers": 59328,
-    "abusers_all": 3897,
-    "abusers_eligible": 3326,
-    "prevalence_eligible": 0.05606121898597627,
-    "excluded_abuse_share": 0.14652296638439827,
+    "eligible_customers": 53024,
+    "abusers_all": 3258,
+    "abusers_eligible": 2876,
+    "prevalence_eligible": 0.05423958961979481,
+    "excluded_abuse_share": 0.1172498465316145,
     "rule_precision_at_5pct": {
-      "rank by number of claims": 0.417,
-      "rank by raw return rate": 0.2161
+      "rank by number of claims": 0.4015,
+      "rank by raw return rate": 0.2132
     },
     "segment_sizes_five_worlds": {
-      "legit_heavy_returner": 2591,
-      "defective_product_buyer": 5747,
-      "benign_household": 3157
+      "legit_heavy_returner": 2308,
+      "defective_product_buyer": 5207,
+      "benign_household": 3222
     }
   },
   "shortcut_auc_held_out": [
     {
       "population": "all customers",
       "customers": 50000,
-      "abusers": 1922,
-      "persona_only_auc": 0.62,
-      "order_count_only_auc": 0.687,
-      "raw_return_rate_auc": 0.801,
-      "claim_count_auc": 0.837
+      "abusers": 1613,
+      "persona_only_auc": 0.652,
+      "order_count_only_auc": 0.733,
+      "raw_return_rate_auc": 0.854,
+      "claim_count_auc": 0.841
     },
     {
       "population": "eligible customers",
-      "customers": 29679,
-      "abusers": 1618,
-      "persona_only_auc": 0.544,
-      "order_count_only_auc": 0.564,
-      "raw_return_rate_auc": 0.765,
-      "claim_count_auc": 0.807
+      "customers": 26550,
+      "abusers": 1410,
+      "persona_only_auc": 0.534,
+      "order_count_only_auc": 0.57,
+      "raw_return_rate_auc": 0.786,
+      "claim_count_auc": 0.813
     }
   ],
   "style_signals": [
     {
       "signal": "targeting, linked share >= 0.05",
-      "truth_positive_styles": 40,
-      "fired": 37,
-      "true_positives": 37,
+      "truth_positive_styles": 38,
+      "fired": 36,
+      "true_positives": 34,
       "fired_on_sub_threshold": 0,
-      "precision": 1.0,
-      "recall": 0.925
+      "precision": 0.9444444444444444,
+      "recall": 0.8947368421052632,
+      "recall_95": [
+        0.7586916879980553,
+        0.9582981020673341
+      ],
+      "precision_95": [
+        0.8185502589238878,
+        0.9846303362329332
+      ]
     },
     {
       "signal": "targeting, linked share >= 0.075",
-      "truth_positive_styles": 40,
-      "fired": 34,
-      "true_positives": 34,
-      "fired_on_sub_threshold": 0,
-      "precision": 1.0,
-      "recall": 0.85
-    },
-    {
-      "signal": "targeting, linked share >= 0.1",
-      "truth_positive_styles": 40,
+      "truth_positive_styles": 38,
       "fired": 33,
       "true_positives": 33,
       "fired_on_sub_threshold": 0,
       "precision": 1.0,
-      "recall": 0.825
+      "recall": 0.868421052631579,
+      "recall_95": [
+        0.7267282994850112,
+        0.9424621712426856
+      ],
+      "precision_95": [
+        0.8957265699643882,
+        1.0
+      ]
+    },
+    {
+      "signal": "targeting, linked share >= 0.1",
+      "truth_positive_styles": 38,
+      "fired": 30,
+      "true_positives": 30,
+      "fired_on_sub_threshold": 0,
+      "precision": 1.0,
+      "recall": 0.7894736842105263,
+      "recall_95": [
+        0.6365391162355784,
+        0.8892533964790407
+      ],
+      "precision_95": [
+        0.8864829086095221,
+        1.0
+      ]
+    },
+    {
+      "signal": "targeting, three linked claimants only",
+      "truth_positive_styles": 38,
+      "fired": 38,
+      "true_positives": 36,
+      "fired_on_sub_threshold": 0,
+      "precision": 0.9473684210526315,
+      "recall": 0.9473684210526315,
+      "recall_95": [
+        0.8271423311893115,
+        0.9854460975514631
+      ],
+      "precision_95": [
+        0.8271423311893115,
+        0.9854460975514631
+      ]
     },
     {
       "signal": "quality, damage share >= 0.3",
@@ -102,7 +143,15 @@
       "true_positives": 30,
       "fired_on_sub_threshold": 0,
       "precision": 1.0,
-      "recall": 1.0
+      "recall": 1.0,
+      "recall_95": [
+        0.8864829086095221,
+        1.0
+      ],
+      "precision_95": [
+        0.8864829086095221,
+        1.0
+      ]
     },
     {
       "signal": "quality, damage share >= 0.5",
@@ -111,9 +160,23 @@
       "true_positives": 0,
       "fired_on_sub_threshold": 0,
       "precision": NaN,
-      "recall": 0.0
+      "recall": 0.0,
+      "recall_95": [
+        -1.3877787807814457e-17,
+        0.113517091390478
+      ],
+      "precision_95": [
+        null,
+        null
+      ]
     }
   ],
+  "artefact_audit": {
+    "out_of_order_header_lines": 0,
+    "largest_same_day_repeat_order_share": 0.0,
+    "linked_claimants": 566,
+    "honest_linked_claimants": 68
+  },
   "w2507_allocation_independence": {
     "chi2": 0.24,
     "dof": 4,

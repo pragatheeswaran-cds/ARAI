@@ -15,18 +15,16 @@ FESTIVE_DISCOUNT_STEPS = (25, 30, 35, 40)   # generator-config: festive_discount
 def _eligible_weights(ctx: Context, start_index: int, festive_share: float) -> np.ndarray:
     """Order-date weights over a customer's eligible days.
 
-    The festive share is spread over eligible festive days in proportion to each window's multiplier and the
-    rest is uniform. With no eligible festive day the realised festive share is zero.
+    Over a full year the festive share is spread over festive days in proportion to each window's multiplier
+    and the rest is uniform. An account sees the part of that profile after it signed up, so with no eligible
+    festive day its realised festive share is zero.
     """
-    multiplier = ctx.festive_multiplier[start_index:]
+    multiplier = ctx.festive_multiplier
     festive = multiplier > 0
-    if festive.any() and (~festive).any():
-        weights = np.where(festive, festive_share * multiplier / multiplier[festive].sum(),
-                           (1.0 - festive_share) / (~festive).sum())
-    elif festive.any():
-        weights = multiplier.copy()
-    else:
-        weights = np.ones(len(multiplier))
+    yearly = np.where(festive, festive_share * multiplier / multiplier[festive].sum(), (1.0 - festive_share) / (~festive).sum())
+    weights = yearly[start_index:]              # the account's own yearly profile, from the day it could first order
+    if weights.sum() <= 0:
+        weights = np.ones(len(weights))
     return weights / weights.sum()
 
 
@@ -63,59 +61,123 @@ def price_lines(ctx: Context, sku: np.ndarray, quantity: np.ndarray, festive: np
     return discount, gross - discount
 
 
+def _order_chunk(ctx: Context, rel: Relationships, i: int, days: np.ndarray, rng, tag: str = ""):
+    """Raw draws for one account's orders on the given days. `tag` keeps household co-orders on their own streams."""
+    seed, accepted = ctx.seed, ctx.s.accepted
+    cid = ctx.customer_ids[i]
+    d_lo, d_hi = accepted["dispatch_days"]
+    r_lo, r_hi = accepted["carrier_regular_days"]
+    t_lo, t_hi = accepted["carrier_tail_days"]
+    n_orders = len(days)
+    n_lines = np.minimum(6, 1 + rng.poisson(0.6, n_orders))           # generator-config: basket
+    total = int(n_lines.sum())
+    line_u = rng.random((total, 5))
+    order_u = rng.random((n_orders, 3))
+
+    ship = stream(seed, cid, tag + "fulfilment")
+    dispatch = ship.integers(d_lo, d_hi + 1, n_orders)
+    tail = ship.random(n_orders) < accepted["carrier_tail_probability"]
+    transit = np.where(tail, ship.integers(t_lo, t_hi + 1, n_orders), ship.integers(r_lo, r_hi + 1, n_orders))
+    lost = ship.random(n_orders) < accepted["loss_probability_of_shipped"]
+    cancel_u = ship.random((total, 2))
+
+    used = rel.draw_identifiers(stream(seed, cid, tag + "identifiers"), i, n_orders)
+    sequence = np.arange(n_orders)
+    order = {
+        "cust": np.full(n_orders, i), "seq": sequence, "day": np.asarray(days), "n_lines": n_lines,
+        "u_bracket": order_u[:, 0], "u_sibling": order_u[:, 1], "u_channel": order_u[:, 2],
+        "dispatch_days": dispatch, "transit_days": transit, "lost": lost,
+        "address_id": used["address"], "device_id": used["device"], "payment_id": used["payment"],
+        "order_id": np.array([f"{ctx.world_id}-O{token(seed, cid, tag + 'order:' + str(k))}" for k in sequence], dtype=object),
+        "co_order": np.full(n_orders, bool(tag)), "src_chunk": np.full(n_orders, -1), "src_pos": np.full(n_orders, -1),
+    }
+    line = {
+        "order_pos": np.repeat(sequence, n_lines),
+        "order_line_no": np.concatenate([np.arange(1, k + 1) for k in n_lines]),
+        "u_style": line_u[:, 0], "u_sku": line_u[:, 1], "u_quantity": line_u[:, 2],
+        "u_discount": line_u[:, 3], "u_step": line_u[:, 4],
+        "u_cancel": cancel_u[:, 0], "u_cancel_day": cancel_u[:, 1],
+    }
+    return order, line
+
+
+def draw_basket(ctx: Context, rng, order_date, festive: bool, first_style: int):
+    """One ordinary basket whose first line is a launched SKU of `first_style` (None if that style has none yet)."""
+    cat, accepted = ctx.catalog, ctx.s.accepted
+    n = int(min(6, 1 + rng.poisson(0.6)))
+    u = rng.random((n, 5))
+    choices = np.flatnonzero(cat.styles["first_launch"].to_numpy().astype("datetime64[D]") <= order_date)
+    style = choices[(u[:, 0] * len(choices)).astype(int)]
+    style[0] = first_style
+    sku = choose_skus(ctx, style, np.full(n, order_date), u[:, 1])
+    if sku[0] < 0:
+        return None
+    quantity = np.array(accepted["quantity_values"])[_pick(u[:, 2], accepted["quantity_probabilities"])]
+    discount, total = price_lines(ctx, sku, quantity, np.full(n, festive), u[:, 3], u[:, 4])
+    return {"sku_idx": sku, "style_idx": style, "quantity": quantity, "discount_p": discount, "total_p": total}
+
+
 def build_base_orders(ctx: Context, profiles: pd.DataFrame, rel: Relationships):
     """Every account's base purchases. Abuse never changes these rows or their identifiers."""
     s, seed, cat = ctx.s, ctx.seed, ctx.catalog
     accepted, impl = s.accepted, s.impl
     target = profiles["target_order_count"].to_numpy()
     festive_share = profiles["target_festive_share"].to_numpy()
+    annual = profiles["annual_order_target"].to_numpy()
     start_index = ((profiles["eligible_start"].to_numpy() - ctx.history_start) / DAY).astype(int)
-    d_lo, d_hi = accepted["dispatch_days"]
-    r_lo, r_hi = accepted["carrier_regular_days"]
-    t_lo, t_hi = accepted["carrier_tail_days"]
 
-    order_parts, line_parts = [], []
+    order_parts, line_parts, chunk_of = [], [], {}
     for i in np.flatnonzero(target > 0):
-        cid = ctx.customer_ids[i]
-        rng = stream(seed, cid, "orders")
-        n_orders = int(rng.poisson(target[i]))
+        rng = stream(seed, ctx.customer_ids[i], "orders")
+        weights = _eligible_weights(ctx, start_index[i], festive_share[i])
+        # at most one order per account per day: dates are drawn without replacement
+        n_orders = min(int(rng.poisson(target[i])), int(np.count_nonzero(weights)))
         if n_orders == 0:
             continue
-        days = start_index[i] + np.sort(rng.choice(len(ctx.history) - start_index[i], size=n_orders,
-                                                   p=_eligible_weights(ctx, start_index[i], festive_share[i])))
-        n_lines = np.minimum(6, 1 + rng.poisson(0.6, n_orders))           # generator-config: basket
-        total = int(n_lines.sum())
-        line_u = rng.random((total, 5))
-        order_u = rng.random((n_orders, 3))
+        days = start_index[i] + np.sort(rng.choice(len(weights), size=n_orders, replace=False, p=weights))
+        order, line = _order_chunk(ctx, rel, i, days, rng)
+        chunk_of[i] = len(order_parts)
+        order_parts.append(order)
+        line_parts.append(line)
 
-        ship = stream(seed, cid, "fulfilment")
-        dispatch = ship.integers(d_lo, d_hi + 1, n_orders)
-        tail = ship.random(n_orders) < accepted["carrier_tail_probability"]
-        transit = np.where(tail, ship.integers(t_lo, t_hi + 1, n_orders), ship.integers(r_lo, r_hi + 1, n_orders))
-        lost = ship.random(n_orders) < accepted["loss_probability_of_shipped"]
-        cancel_u = ship.random((total, 2))
-
-        used = rel.draw_identifiers(stream(seed, cid, "identifiers"), i, n_orders)
-        sequence = np.arange(n_orders)
-        order_parts.append({
-            "cust": np.full(n_orders, i), "seq": sequence, "day": days, "n_lines": n_lines,
-            "u_bracket": order_u[:, 0], "u_sibling": order_u[:, 1], "u_channel": order_u[:, 2],
-            "dispatch_days": dispatch, "transit_days": transit, "lost": lost,
-            "address_id": used["address"], "device_id": used["device"], "payment_id": used["payment"],
-            "order_id": np.array([f"{ctx.world_id}-O{token(seed, cid, 'order:' + str(k))}" for k in sequence], dtype=object),
-        })
-        line_parts.append({
-            "order_pos": np.repeat(sequence, n_lines),
-            "order_line_no": np.concatenate([np.arange(1, k + 1) for k in n_lines]),
-            "u_style": line_u[:, 0], "u_sku": line_u[:, 1], "u_quantity": line_u[:, 2],
-            "u_discount": line_u[:, 3], "u_step": line_u[:, 4],
-            "u_cancel": cancel_u[:, 0], "u_cancel_day": cancel_u[:, 1],
-        })
+    # household co-orders: another member orders the same style within a couple of days
+    co = s.amendment3["household_co_orders"]
+    o_lo, o_hi = co["offset_days"]
+    taken = {i: set(order_parts[c]["day"].tolist()) for i, c in chunk_of.items()}
+    planned = {}
+    for group in rel.groups.values():
+        if group["type"] != "household":
+            continue
+        for a in group["members"]:
+            if a not in chunk_of:
+                continue
+            days = order_parts[chunk_of[a]]["day"]
+            u = stream(seed, ctx.customer_ids[a], "co_order").random((len(days), 3))
+            for k in np.flatnonzero(u[:, 0] < co["probability_per_member_order"]):
+                day = int(days[k]) + o_lo + int(u[k, 2] * (o_hi - o_lo + 1))
+                # only accounts that shop at all can be drawn into a co-order (never a Dormant account)
+                partners = [m for m in group["members"] if m != a and start_index[m] <= day and annual[m] > 0]
+                if not partners or day >= len(ctx.history):
+                    continue
+                b = partners[int(u[k, 1] * len(partners))]
+                if day in taken.setdefault(b, set()):
+                    continue
+                taken[b].add(day)
+                planned.setdefault(b, {})[day] = (chunk_of[a], int(k))
+    for b in sorted(planned):
+        days = np.array(sorted(planned[b]))
+        order, line = _order_chunk(ctx, rel, b, days, stream(seed, ctx.customer_ids[b], "co_orders"), tag="co_")
+        order["src_chunk"] = np.array([planned[b][d][0] for d in days])
+        order["src_pos"] = np.array([planned[b][d][1] for d in days])
+        order_parts.append(order)
+        line_parts.append(line)
 
     if not order_parts:
         return None, None
     orders = pd.DataFrame({k: np.concatenate([p[k] for p in order_parts]) for k in order_parts[0]})
     offsets = np.concatenate([[0], np.cumsum([len(p["seq"]) for p in order_parts])[:-1]])
+    src_chunk = orders.pop("src_chunk").to_numpy()
+    style_from = np.where(src_chunk >= 0, offsets[np.maximum(src_chunk, 0)] + orders.pop("src_pos").to_numpy(), -1)
     lines = pd.DataFrame({k: np.concatenate([p[k] for p in line_parts]) for k in line_parts[0]})
     lines["order_row"] = lines.pop("order_pos") + np.repeat(offsets, [len(p["order_line_no"]) for p in line_parts])
 
@@ -126,6 +188,8 @@ def build_base_orders(ctx: Context, profiles: pd.DataFrame, rel: Relationships):
         _pick(orders.pop("u_channel").to_numpy(), list(s.amendment["emitted_constants"]["order_channel"].values()))]
     orders["layer"] = "base"
     orders["campaign_id"] = None
+    order_ids = orders["order_id"].to_numpy(dtype=object)
+    orders["co_source"] = np.where(style_from >= 0, order_ids[np.maximum(style_from, 0)], None)
 
     row = lines["order_row"].to_numpy()
     line_date = orders["order_date"].to_numpy()[row]
@@ -133,13 +197,15 @@ def build_base_orders(ctx: Context, profiles: pd.DataFrame, rel: Relationships):
     available = cat.styles["first_launch"].to_numpy().astype("datetime64[D]")[None, :] <= line_date[:, None]
     wanted = (lines["u_style"].to_numpy() * available.sum(axis=1)).astype(int)
     style = (np.cumsum(available, axis=1) > wanted[:, None]).argmax(axis=1)
+    first_line = np.flatnonzero(lines["order_line_no"].to_numpy() == 1)
+    co_rows = np.flatnonzero(style_from >= 0)
+    style[first_line[co_rows]] = style[first_line[style_from[co_rows]]]      # a co-order starts with the partner's style
     sku = choose_skus(ctx, style, line_date, lines["u_sku"].to_numpy())
 
     # bracketers sometimes make the second line another size of the first line's style and colour
     bracketed = np.zeros(len(lines), dtype=bool)
     bracketer = profiles["bracketer"].to_numpy()[orders["cust"].to_numpy()]
     wants = bracketer & (orders["n_lines"].to_numpy() >= 2) & (orders["u_bracket"].to_numpy() < impl["bracket_line_probability"])
-    first_line = np.flatnonzero(lines["order_line_no"].to_numpy() == 1)
     u_sibling = orders["u_sibling"].to_numpy()
     for order_row in np.flatnonzero(wants):
         first = first_line[order_row]
@@ -162,6 +228,7 @@ def build_base_orders(ctx: Context, profiles: pd.DataFrame, rel: Relationships):
         cancel_offset=(lines["u_cancel_day"].to_numpy() * (dispatch_line + 1)).astype(int),
         dispatch_days=dispatch_line, transit_days=orders["transit_days"].to_numpy()[row],
         lost=orders["lost"].to_numpy()[row], address_id=orders["address_id"].to_numpy()[row], layer="base",
+        co_source=orders["co_source"].to_numpy()[row],
     ).drop(columns=["u_style", "u_sku", "u_quantity", "u_discount", "u_step", "u_cancel", "u_cancel_day", "order_row"])
     orders = orders.drop(columns=["u_bracket", "u_sibling", "n_lines"])
     return orders, lines
@@ -191,6 +258,6 @@ def expand_units(lines: pd.DataFrame) -> pd.DataFrame:
     repeat = delivered["quantity"].to_numpy()
     units = delivered.loc[delivered.index.repeat(repeat),
                           ["order_id", "order_line_no", "cust", "sku_idx", "style_idx", "quantity", "total_p", "window",
-                           "bracketed", "delivered_date", "address_id", "layer"]].reset_index(drop=True)
+                           "bracketed", "delivered_date", "address_id", "layer", "co_source"]].reset_index(drop=True)
     units["unit_index"] = np.concatenate([np.arange(1, q + 1) for q in repeat]) if len(repeat) else np.array([], dtype=int)
     return units.sort_values(["cust", "order_id", "order_line_no", "unit_index"], kind="stable").reset_index(drop=True)

@@ -18,10 +18,10 @@ QUALITY_CODES = ("defective", "poor_quality", "not_as_described")
 ELIGIBLE_MIN_LINES = 3      # experiment.yaml eligibility
 FANOUT_CAP = 25             # an identifier shared by more accounts than this is dropped
 LINK_DAYS = 7
-# style signals (final-spec component 06; the targeting share was confirmed on the training worlds, AM-17)
+# style signals (final-spec component 06; the targeting share was confirmed on the training worlds, AM-25)
 QUALITY_DAMAGE_SHARE = 0.30
 TARGETING_LINKED_CLAIMERS = 3
-TARGETING_LINKED_SHARE = 0.05
+TARGETING_LINKED_SHARE = 0.075
 
 
 def sale_lines(world) -> pd.DataFrame:
@@ -98,6 +98,27 @@ def observed_graph(world) -> dict:
     return neighbours
 
 
+def linked_claims(world, returns: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Visible transaction-claim lines with `linked`: a supported neighbour claimed on the same style within 7 days."""
+    if returns is None:
+        lines = sale_lines(world)
+        returns = world.tables["return_order_line"].merge(
+            lines[["order_id", "order_line_no", "style_id", "customer_id", "mature"]], on=["order_id", "order_line_no"])
+        returns = returns[returns["line_status"] != "withdrawn"]
+    neighbours = observed_graph(world)
+    claims = returns[returns["reason_code"].isin(CLAIM_CODES)].copy()
+    claims["day"] = claims["requested_at"].dt.normalize()
+    linked = np.zeros(len(claims), dtype=bool)
+    for _, group in claims.groupby("style_id"):
+        customers, days = group["customer_id"].to_numpy(), group["day"].to_numpy()
+        positions = claims.index.get_indexer(group.index)
+        for i in range(len(group)):
+            near = np.abs((days - days[i]) / np.timedelta64(1, "D")) <= LINK_DAYS
+            linked[positions[i]] = any(c in neighbours.get(customers[i], ()) for c in customers[near])
+    claims["linked"] = linked
+    return claims
+
+
 def style_evidence(world) -> pd.DataFrame:
     """Style-level quality and targeting evidence (final-spec component 06) beside the private style truth."""
     t = world.tables
@@ -112,17 +133,7 @@ def style_evidence(world) -> pd.DataFrame:
     quality_units = mature_returns[mature_returns["reason_code"].isin(QUALITY_CODES)].groupby("style_id")["quantity_returned"].sum()
     claim_units = mature_returns[mature_returns["reason_code"].isin(CLAIM_CODES)].groupby("style_id")["quantity_returned"].sum()
 
-    neighbours = observed_graph(world)
-    claims = returns[returns["reason_code"].isin(CLAIM_CODES)].copy()
-    claims["day"] = claims["requested_at"].dt.normalize()
-    linked = np.zeros(len(claims), dtype=bool)
-    for _, group in claims.groupby("style_id"):
-        customers, days = group["customer_id"].to_numpy(), group["day"].to_numpy()
-        positions = claims.index.get_indexer(group.index)
-        for i in range(len(group)):
-            near = np.abs((days - days[i]) / np.timedelta64(1, "D")) <= LINK_DAYS
-            linked[positions[i]] = any(c in neighbours.get(customers[i], ()) for c in customers[near])
-    claims["linked"] = linked
+    claims = linked_claims(world, returns)
     link = claims.groupby("style_id").agg(claim_lines=("linked", "size"), linked_claim_lines=("linked", "sum"))
     link["linked_claimers"] = claims[claims["linked"]].groupby("style_id")["customer_id"].nunique()
 

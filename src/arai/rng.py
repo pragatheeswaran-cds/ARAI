@@ -22,3 +22,8 @@ def stream(world_seed: int, entity_key: str, purpose: str) -> np.random.Generato
 def token(world_seed: int, entity_key: str, purpose: str, length: int = 12) -> str:
     """Opaque identifier suffix. Hash-derived so IDs carry no order, layer or persona information."""
     return _digest(world_seed, entity_key, purpose).hex()[:length].upper()
+
+
+def keyed_uniform(world_seed: int, entity_key: str, purpose: str) -> float:
+    """One uniform draw in [0, 1) for an entity, without building a generator (used for sparse keyed events)."""
+    return int.from_bytes(_digest(world_seed, entity_key, purpose)[:8], "big") / 2.0 ** 64

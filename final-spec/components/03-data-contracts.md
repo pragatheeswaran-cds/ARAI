@@ -1,6 +1,6 @@
 # Operational and private data contracts
 
-Version 1.1 (amended 2026-10-02) | Implementation baseline | Component DATA
+Version 1.3 (amended 2026-10-02) | Implementation baseline | Component DATA
 
 ## Requirements and boundary
 
@@ -10,7 +10,7 @@ CSV: UTF-8 header, ISO dates/timestamps with offsets, dot decimals; empty cell m
 
 Sales: awaiting_dispatch/cancelled have no shipment/delivery dates; shipped/lost_in_transit have observed shipping only; delivered has carrier scan. Status must be observed by cutoff. Mature iff delivered_date+captured_window<=cutoff local date. Genuine misdelivery and deceptive nonreceipt both can follow scan.
 
-Returns reference delivered sale and same customer across header/order. Pending/refunded/rejected count; withdrawn excluded from all features and quantity cap. Sum active quantities<=purchased. Preserve line requested_at under consolidated headers. Generator available_at=requested_at per line; header created/available time is latest included request. Derived header state common or mixed. Mixed physical/no-item header uses physical channel, all-no-item uses not_applicable.
+Returns reference delivered sale and same customer across header/order. Pending/refunded/rejected count; withdrawn excluded from all features and quantity cap. Sum active quantities<=purchased. Preserve line requested_at under consolidated headers. The generator consolidates every request by one rule (a header covers its first request date and the next day) and numbers lines by request time, so header structure cannot reveal intent. Generator available_at=requested_at per line; header created/available time is latest included request. Derived header state common or mixed. Mixed physical/no-item header uses physical channel, all-no-item uses not_applicable.
 
 Refund zero unless refunded and <=requested net unit value; header equals sum current refunds. Order subtotal includes subsequently cancelled lines; total adds shipping. Optional disposition is observed evidence only.
 

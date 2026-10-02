@@ -134,7 +134,7 @@ segments:
     display_name: High Intensity
     tenure_days:
     - 3
-    - 160
+    - 1095
     orders:
       range:
       - 3
@@ -219,8 +219,8 @@ action_template_reference:
     - 1
     - 3
 notes:
-- Dormant, Occasional, Seasonal and Loyalist tenures reach 1095 days (amended 2026-10-02) so
-  most accounts predate the 12-month history window; order targets cover the history window only.
+- Dormant, Occasional, Seasonal, Loyalist and High_Intensity tenures reach 1095 days (amended
+  2026-10-02) so most accounts predate the 12-month history window; order targets are annual rates.
 - High_Intensity ranges are consolidation engineering defaults for a label-neutral
   persona; change only on development worlds with a dated record.
 - Action templates are private patterns, not persona-based abuse selectors.

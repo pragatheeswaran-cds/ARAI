@@ -63,8 +63,11 @@ def test_campaigns_start_only_after_the_ring_has_formed(world):
         members = truth.loc[truth["coordination_group_id"] == group_id, "customer_id"]
         capable = members[profiles.loc[members, "claim_propensity"].to_numpy()]
         assert len(capable), "a ring without claim-capable members plans no campaign"
-        assert dates.min() >= signup[capable].max()
+        joined = signup[capable].sort_values()
+        assert dates.min() >= joined.iloc[min(1, len(joined) - 1)]      # the ring starts with its second capable member
     actions = world.truth["action_truth"]
+    coordinated = actions[actions["campaign_id"].notna()].merge(campaigns[["campaign_id", "campaign_date"]], on="campaign_id")
+    assert (coordinated["campaign_date"] >= coordinated["customer_id"].map(signup)).all()   # nobody acts before signing up
     assert "pre_signup" not in set(actions["uncompleted_reason"].dropna())
 
 

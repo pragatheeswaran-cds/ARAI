@@ -52,7 +52,7 @@ def test_expected_overlay_rates_are_four_three_and_half_percent(world):
     builder = WorldBuilder(world.seed)
     profiles = builder.build_profiles()
     assert profiles["allocation_weight"].mean() == pytest.approx(1.0)       # so mean probabilities are .035/.025/.005
-    assert (profiles.loc[profiles["target_order_count"] == 0, "allocation_weight"] == 0).all()
+    assert (profiles.loc[profiles["annual_order_target"] == 0, "allocation_weight"] == 0).all()
 
 
 def test_invalid_overlay_probability_fails_instead_of_clipping():
@@ -71,11 +71,16 @@ def test_abuse_off_preserves_base_and_honest_events(world, world_without_abuse):
     pd.testing.assert_frame_equal(base_lines, off.tables["sales_order_line"])
     pd.testing.assert_frame_equal(on.tables["customer_master"], off.tables["customer_master"])
 
+    # honest requests keep their content; header identifiers and line numbers may differ once abusive requests share headers
     actions = on.truth["action_truth"]
     abusive = set(zip(actions["return_order_id"].dropna(), actions["return_line_no"].dropna().astype(int)))
     returns = on.tables["return_order_line"]
-    honest = returns[[key not in abusive for key in zip(returns["return_order_id"], returns["return_line_no"])]].reset_index(drop=True)
-    pd.testing.assert_frame_equal(honest, off.tables["return_order_line"])
+    honest = returns[[key not in abusive for key in zip(returns["return_order_id"], returns["return_line_no"])]]
+    honest = honest[honest["order_id"].map(layer) == "base"]            # campaign orders' honest requests exist only with abuse
+    content = [c for c in returns.columns if c not in ("return_order_id", "return_line_no")]
+    key = ["order_id", "order_line_no", "requested_at", "reason_code"]
+    pd.testing.assert_frame_equal(honest[content].sort_values(key).reset_index(drop=True),
+                                  off.tables["return_order_line"][content].sort_values(key).reset_index(drop=True))
     assert (off.truth["order_truth"]["layer"] == "base").all()
     assert off.truth["customer_truth"]["y_abuse"].sum() == 0 and len(off.truth["action_truth"]) == 0
 
@@ -112,7 +117,8 @@ def test_campaign_orders_are_private_and_only_hit_hot_list_styles(world):
     hot = set(product.loc[product["hot_listed"], "style_id"])
     style = world.tables["sku_master"].set_index("sku")["style_id"]
     lines = world.tables["sales_order_line"]
-    assert set(lines.loc[lines["order_id"].isin(campaign_orders), "sku"].map(style)) <= hot
+    first_lines = lines[lines["order_id"].isin(campaign_orders) & (lines["order_line_no"] == 1)]
+    assert set(first_lines["sku"].map(style)) <= hot          # the first line is the target; other lines are ordinary
 
     actions = world.truth["action_truth"]
     coordinated = actions[actions["completed_action"] & actions["campaign_id"].notna()]
@@ -215,3 +221,86 @@ def test_temporary_use_prefers_orders_with_occasion_wear():
     assert builder.ctx.catalog.sku_occasion[chosen["sku_idx"].to_numpy(dtype=int)].all()   # on the occasion-wear unit
     other_orders = set(free.loc[free["cust"] == cust, "order_id"]) - occasion_orders
     assert len(acted & other_orders) < len(other_orders) or not other_orders
+
+
+# ---- artefact checks (specification v1.3): nothing mechanical may separate honest from abusive requests
+CLAIMS = ["item_not_received", "wrong_item_sent", "missing_parts", "empty_package"]
+
+
+def _claims_with_kind(world):
+    lines = world.tables["sales_order_line"]
+    returns = world.tables["return_order_line"].merge(lines[LINE_KEY + ["delivered_date"]], on=LINE_KEY)
+    returns["days"] = (returns["requested_at"].dt.normalize() - returns["delivered_date"]).dt.days
+    actions = world.truth["action_truth"]
+    done = actions[actions["completed_action"]][["return_order_id", "return_line_no", "campaign_id"]].assign(abusive=True)
+    returns = returns.merge(done, on=["return_order_id", "return_line_no"], how="left")
+    returns["kind"] = np.where(returns["abusive"].isna(), "honest", np.where(returns["campaign_id"].notna(), "ring", "solo"))
+    return returns[returns["reason_code"].isin(CLAIMS)]
+
+
+def test_every_transaction_claim_follows_one_timing_law(world):
+    claims = _claims_with_kind(world)
+    assert claims["days"].max() <= 30
+    slow = claims[claims["days"] > 10]
+    assert (slow["kind"] == "honest").any(), "honest claims must also occur more than ten days after delivery"
+    assert claims.groupby("kind")["days"].median().between(3, 8).all()
+
+
+def test_return_lines_are_numbered_in_time_order(world):
+    returns = world.tables["return_order_line"].sort_values(["return_order_id", "return_line_no"])
+    earlier = returns["requested_at"] < returns.groupby("return_order_id")["requested_at"].shift()
+    assert not earlier.any()
+
+
+def test_no_account_places_two_orders_on_one_day(world):
+    assert not world.tables["sales_order"].duplicated(["customer_id", "order_date"]).any()
+
+
+def test_campaign_orders_have_ordinary_baskets():
+    world = generate_world(2101, 4000)                    # enough campaign orders to compare shapes
+    layer = world.truth["order_truth"].set_index("order_id")["layer"]
+    lines = world.tables["sales_order_line"]
+    per_order = lines.groupby("order_id").agg(lines=("sku", "size"), units=("quantity", "sum"))
+    per_order["layer"] = per_order.index.map(layer)
+    multi = per_order.groupby("layer")["lines"].apply(lambda s: (s > 1).mean())
+    assert (per_order["layer"] == "campaign").sum() > 30
+    assert abs(multi["campaign"] - multi["base"]) < 0.15
+    assert (per_order.loc[per_order["layer"] == "campaign", "units"] > 1).any()
+    # the unclaimed units of campaign orders can be returned honestly
+    actions = world.truth["action_truth"]
+    abusive = set(zip(actions["return_order_id"].dropna(), actions["return_line_no"].dropna().astype(int)))
+    returns = world.tables["return_order_line"]
+    on_campaign = returns[returns["order_id"].map(layer) == "campaign"]
+    assert any(key not in abusive for key in zip(on_campaign["return_order_id"], on_campaign["return_line_no"]))
+
+
+def test_household_co_orders_follow_a_member_order_with_the_same_style(world):
+    order_truth = world.truth["order_truth"]
+    co_orders = set(order_truth.loc[order_truth["household_co_order"], "order_id"])
+    assert co_orders and (order_truth.loc[order_truth["household_co_order"], "layer"] == "base").all()
+    household = world.truth["customer_truth"].set_index("customer_id")["household_id"]
+    orders = world.tables["sales_order"]
+    style = world.tables["sku_master"].set_index("sku")["style_id"]
+    first = world.tables["sales_order_line"].query("order_line_no == 1").set_index("order_id")["sku"].map(style)
+    orders = orders.assign(household=orders["customer_id"].map(household), first_style=orders["order_id"].map(first))
+    for _, order in orders[orders["order_id"].isin(co_orders)].iterrows():
+        partners = orders[(orders["household"] == order["household"]) & (orders["customer_id"] != order["customer_id"])
+                          & (orders["first_style"] == order["first_style"])
+                          & (order["order_date"] - orders["order_date"]).dt.days.between(0, 2)]
+        assert len(partners), "a co-order follows another household member's order of the same style"
+
+
+def test_delivery_incidents_lose_whole_parcels(world):
+    units = world.truth["unit_truth"]
+    lost = units[units["delivery_incident"]]
+    assert len(lost) and (lost["genuine_fulfilment_cause"] == "item_not_received").all()
+    in_lost_orders = units[units["order_id"].isin(lost["order_id"])]
+    base_layer = world.truth["order_truth"].set_index("order_id")["layer"]
+    base_only = in_lost_orders[in_lost_orders["order_id"].map(base_layer) == "base"]
+    assert base_only["delivery_incident"].all()          # every delivered unit of a failed parcel is lost
+
+
+def test_dormant_accounts_never_order(world):
+    persona = world.truth["customer_profile"].set_index("customer_id")["persona"]
+    buyers = set(world.tables["sales_order"]["customer_id"])
+    assert not buyers & set(persona[persona == "Dormant"].index)

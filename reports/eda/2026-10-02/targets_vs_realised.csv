@@ -3,129 +3,129 @@ measure,target,realised,relative_deviation,world_id
 "temporary-use propensity, share of accounts",0.03,0.03,0.0,W2101
 "both propensities, share of accounts",0.005,0.0053,0.06,W2101
 mean action rate of propensity accounts,0.2,0.19573289365274354,-0.021,W2101
-genuine fulfilment failure per delivered unit,0.015,0.01461328336507048,-0.026,W2101
-carrier damage per delivered unit,0.005,0.005000882150744353,0.0,W2101
-cancelled share of lines,0.03,0.02975476703800583,-0.008,W2101
+genuine fulfilment failure per delivered unit,0.015,0.01465666900602076,-0.023,W2101
+carrier damage per delivered unit,0.005,0.004920031027222694,-0.016,W2101
+cancelled share of lines,0.03,0.029689608636977057,-0.01,W2101
 "household members, share of accounts",0.12,0.12,0.0,W2101
 "heavy-return overlay, share of accounts",0.06,0.0537,-0.105,W2101
-orders per account (target total / realised base orders),10.0683,10.061,-0.001,W2101
-honest requested units per delivered unit (mean target propensity),0.17818466679636735,0.18197857286260957,0.021,W2101
-withdrawn share of honest requests,0.03,0.027256449366668878,-0.091,W2101
-late share of honest item-return requests,0.02,0.015472885434018138,-0.226,W2101
+orders per account (target total / realised base orders),8.003150583330891,8.1467,0.018,W2101
+honest requested units per delivered unit (mean target propensity),0.1803035502379256,0.190802644701363,0.058,W2101
+withdrawn share of honest requests,0.03,0.027445704401306937,-0.085,W2101
+late share of honest item-return requests,0.02,0.017241379310344827,-0.138,W2101
 "claim propensity, share of accounts",0.04,0.0409,0.022,W2102
 "temporary-use propensity, share of accounts",0.03,0.0305,0.017,W2102
 "both propensities, share of accounts",0.005,0.0062,0.24,W2102
 mean action rate of propensity accounts,0.2,0.19380438831377614,-0.031,W2102
-genuine fulfilment failure per delivered unit,0.015,0.014969325153374234,-0.002,W2102
-carrier damage per delivered unit,0.005,0.005184049079754601,0.037,W2102
-cancelled share of lines,0.03,0.029294499680286863,-0.024,W2102
+genuine fulfilment failure per delivered unit,0.015,0.014800226777668367,-0.013,W2102
+carrier damage per delivered unit,0.005,0.005087577954823502,0.018,W2102
+cancelled share of lines,0.03,0.028922771939877804,-0.036,W2102
 "household members, share of accounts",0.12,0.1199,-0.001,W2102
 "heavy-return overlay, share of accounts",0.06,0.0531,-0.115,W2102
-orders per account (target total / realised base orders),9.9182,9.9477,0.003,W2102
-honest requested units per delivered unit (mean target propensity),0.17806822425395694,0.18159509202453988,0.02,W2102
-withdrawn share of honest requests,0.03,0.02852556599672274,-0.049,W2102
-late share of honest item-return requests,0.02,0.015776062354792775,-0.211,W2102
+orders per account (target total / realised base orders),7.86922645561574,8.0473,0.023,W2102
+honest requested units per delivered unit (mean target propensity),0.1793439931621208,0.1877704174499448,0.047,W2102
+withdrawn share of honest requests,0.03,0.02894726477885865,-0.035,W2102
+late share of honest item-return requests,0.02,0.01748989277553173,-0.126,W2102
 "claim propensity, share of accounts",0.04,0.0389,-0.028,W2103
 "temporary-use propensity, share of accounts",0.03,0.0309,0.03,W2103
 "both propensities, share of accounts",0.005,0.0052,0.04,W2103
 mean action rate of propensity accounts,0.2,0.19252399130234385,-0.037,W2103
-genuine fulfilment failure per delivered unit,0.015,0.015763900050691757,0.051,W2103
-carrier damage per delivered unit,0.005,0.005137176840048961,0.027,W2103
-cancelled share of lines,0.03,0.02975352668286679,-0.008,W2103
+genuine fulfilment failure per delivered unit,0.015,0.015880517298286673,0.059,W2103
+carrier damage per delivered unit,0.005,0.005078464908332583,0.016,W2103
+cancelled share of lines,0.03,0.030377776913200795,0.013,W2103
 "household members, share of accounts",0.12,0.1199,-0.001,W2103
 "heavy-return overlay, share of accounts",0.06,0.0555,-0.075,W2103
-orders per account (target total / realised base orders),9.8915,9.8749,-0.002,W2103
-honest requested units per delivered unit (mean target propensity),0.1755325311933619,0.17541202507387396,-0.001,W2103
-withdrawn share of honest requests,0.03,0.026674114936107815,-0.111,W2103
-late share of honest item-return requests,0.02,0.0158636435207054,-0.207,W2103
+orders per account (target total / realised base orders),7.84124376173008,8.0034,0.021,W2103
+honest requested units per delivered unit (mean target propensity),0.17758586179451072,0.18355987637651153,0.034,W2103
+withdrawn share of honest requests,0.03,0.02743000688788947,-0.086,W2103
+late share of honest item-return requests,0.02,0.017348146799016483,-0.133,W2103
 "claim propensity, share of accounts",0.04,0.0408,0.02,W2104
 "temporary-use propensity, share of accounts",0.03,0.0306,0.02,W2104
 "both propensities, share of accounts",0.005,0.0054,0.08,W2104
 mean action rate of propensity accounts,0.2,0.1958767088047447,-0.021,W2104
-genuine fulfilment failure per delivered unit,0.015,0.015188683850810389,0.013,W2104
-carrier damage per delivered unit,0.005,0.004936779925795743,-0.013,W2104
-cancelled share of lines,0.03,0.029304075000467816,-0.023,W2104
+genuine fulfilment failure per delivered unit,0.015,0.015218364814964358,0.015,W2104
+carrier damage per delivered unit,0.005,0.004947987402453439,-0.01,W2104
+cancelled share of lines,0.03,0.02903614641663742,-0.032,W2104
 "household members, share of accounts",0.12,0.12,0.0,W2104
 "heavy-return overlay, share of accounts",0.06,0.0534,-0.11,W2104
-orders per account (target total / realised base orders),10.0344,10.0054,-0.003,W2104
-honest requested units per delivered unit (mean target propensity),0.1757449812582811,0.17857230033196642,0.016,W2104
-withdrawn share of honest requests,0.03,0.027070870931765183,-0.098,W2104
-late share of honest item-return requests,0.02,0.015657580467831823,-0.217,W2104
+orders per account (target total / realised base orders),8.038498373691278,8.1679,0.016,W2104
+honest requested units per delivered unit (mean target propensity),0.177640489561783,0.18568901091640544,0.045,W2104
+withdrawn share of honest requests,0.03,0.025803157646689185,-0.14,W2104
+late share of honest item-return requests,0.02,0.017767054178547927,-0.112,W2104
 "claim propensity, share of accounts",0.04,0.0397,-0.008,W2105
 "temporary-use propensity, share of accounts",0.03,0.0323,0.077,W2105
 "both propensities, share of accounts",0.005,0.0058,0.16,W2105
 mean action rate of propensity accounts,0.2,0.2046852624535803,0.023,W2105
-genuine fulfilment failure per delivered unit,0.015,0.015240587508984021,0.016,W2105
-carrier damage per delivered unit,0.005,0.00482833606693327,-0.034,W2105
-cancelled share of lines,0.03,0.029836278144611532,-0.005,W2105
+genuine fulfilment failure per delivered unit,0.015,0.015225936852117438,0.015,W2105
+carrier damage per delivered unit,0.005,0.004770644928774717,-0.046,W2105
+cancelled share of lines,0.03,0.029897098359135996,-0.003,W2105
 "household members, share of accounts",0.12,0.1199,-0.001,W2105
 "heavy-return overlay, share of accounts",0.06,0.0527,-0.122,W2105
-orders per account (target total / realised base orders),9.8843,9.9062,0.002,W2105
-honest requested units per delivered unit (mean target propensity),0.1755771182356499,0.17597626375246483,0.002,W2105
-withdrawn share of honest requests,0.03,0.028573405285734054,-0.048,W2105
-late share of honest item-return requests,0.02,0.015499649505413195,-0.225,W2105
+orders per account (target total / realised base orders),7.912111378119892,8.0814,0.021,W2105
+honest requested units per delivered unit (mean target propensity),0.17694367726318114,0.18337259331366618,0.036,W2105
+withdrawn share of honest requests,0.03,0.027282604321757675,-0.091,W2105
+late share of honest item-return requests,0.02,0.018100769958125085,-0.095,W2105
 "claim propensity, share of accounts",0.04,0.0397,-0.008,W2106
 "temporary-use propensity, share of accounts",0.03,0.03,0.0,W2106
 "both propensities, share of accounts",0.005,0.0053,0.06,W2106
 mean action rate of propensity accounts,0.2,0.19705402855714058,-0.015,W2106
-genuine fulfilment failure per delivered unit,0.015,0.015698443008225618,0.047,W2106
-carrier damage per delivered unit,0.005,0.00499412455934195,-0.001,W2106
-cancelled share of lines,0.03,0.029837415131698117,-0.005,W2106
+genuine fulfilment failure per delivered unit,0.015,0.015191432833384045,0.013,W2106
+carrier damage per delivered unit,0.005,0.0049574387555938165,-0.009,W2106
+cancelled share of lines,0.03,0.030143632792945435,0.005,W2106
 "household members, share of accounts",0.12,0.12,0.0,W2106
 "heavy-return overlay, share of accounts",0.06,0.0555,-0.075,W2106
-orders per account (target total / realised base orders),9.9697,9.9736,0.0,W2106
-honest requested units per delivered unit (mean target propensity),0.17744111455136372,0.1839135330983157,0.036,W2106
-withdrawn share of honest requests,0.03,0.028649610971910853,-0.045,W2106
-late share of honest item-return requests,0.02,0.015313311086392287,-0.234,W2106
+orders per account (target total / realised base orders),7.910129952004571,8.0714,0.02,W2106
+honest requested units per delivered unit (mean target propensity),0.1795363226740685,0.19089107735237149,0.063,W2106
+withdrawn share of honest requests,0.03,0.029245173968327362,-0.025,W2106
+late share of honest item-return requests,0.02,0.017660234321157823,-0.117,W2106
 "claim propensity, share of accounts",0.04,0.0399,-0.003,W2107
 "temporary-use propensity, share of accounts",0.03,0.0323,0.077,W2107
 "both propensities, share of accounts",0.005,0.0054,0.08,W2107
 mean action rate of propensity accounts,0.2,0.20211578770437633,0.011,W2107
-genuine fulfilment failure per delivered unit,0.015,0.014801668399603217,-0.013,W2107
-carrier damage per delivered unit,0.005,0.005061369856465049,0.012,W2107
-cancelled share of lines,0.03,0.029960422726746067,-0.001,W2107
+genuine fulfilment failure per delivered unit,0.015,0.014825689140182705,-0.012,W2107
+carrier damage per delivered unit,0.005,0.004978233853443702,-0.004,W2107
+cancelled share of lines,0.03,0.030258463998310593,0.009,W2107
 "household members, share of accounts",0.12,0.12,0.0,W2107
 "heavy-return overlay, share of accounts",0.06,0.0548,-0.087,W2107
-orders per account (target total / realised base orders),10.1783,10.2357,0.006,W2107
-honest requested units per delivered unit (mean target propensity),0.17591990703768073,0.17901234567901234,0.018,W2107
-withdrawn share of honest requests,0.03,0.02803027798895977,-0.066,W2107
-late share of honest item-return requests,0.02,0.01574482273181936,-0.213,W2107
+orders per account (target total / realised base orders),8.094137436820072,8.2731,0.022,W2107
+honest requested units per delivered unit (mean target propensity),0.17831573347524987,0.1876031075807237,0.052,W2107
+withdrawn share of honest requests,0.03,0.026898064416823797,-0.103,W2107
+late share of honest item-return requests,0.02,0.017968180453707277,-0.102,W2107
 "claim propensity, share of accounts",0.04,0.0378,-0.055,W2108
 "temporary-use propensity, share of accounts",0.03,0.0299,-0.003,W2108
 "both propensities, share of accounts",0.005,0.0052,0.04,W2108
 mean action rate of propensity accounts,0.2,0.20583306100387563,0.029,W2108
-genuine fulfilment failure per delivered unit,0.015,0.014197906991877614,-0.053,W2108
-carrier damage per delivered unit,0.005,0.005389288862333545,0.078,W2108
-cancelled share of lines,0.03,0.030110944600212703,0.004,W2108
+genuine fulfilment failure per delivered unit,0.015,0.01433352683594562,-0.044,W2108
+carrier damage per delivered unit,0.005,0.005353572273225689,0.071,W2108
+cancelled share of lines,0.03,0.030087376835843095,0.003,W2108
 "household members, share of accounts",0.12,0.12,0.0,W2108
 "heavy-return overlay, share of accounts",0.06,0.0536,-0.107,W2108
-orders per account (target total / realised base orders),10.3303,10.3458,0.002,W2108
-honest requested units per delivered unit (mean target propensity),0.17489809216735877,0.17530865658220884,0.002,W2108
-withdrawn share of honest requests,0.03,0.02868196371398079,-0.044,W2108
-late share of honest item-return requests,0.02,0.016349384098544233,-0.183,W2108
+orders per account (target total / realised base orders),8.226708491385542,8.4038,0.022,W2108
+honest requested units per delivered unit (mean target propensity),0.17551671525491686,0.18304630445844353,0.043,W2108
+withdrawn share of honest requests,0.03,0.029647715381932335,-0.012,W2108
+late share of honest item-return requests,0.02,0.018006319525602735,-0.1,W2108
 "claim propensity, share of accounts",0.04,0.041,0.025,W2109
 "temporary-use propensity, share of accounts",0.03,0.03,0.0,W2109
 "both propensities, share of accounts",0.005,0.0048,-0.04,W2109
 mean action rate of propensity accounts,0.2,0.19622330906073582,-0.019,W2109
-genuine fulfilment failure per delivered unit,0.015,0.015341882721204585,0.023,W2109
-carrier damage per delivered unit,0.005,0.005190257904472035,0.038,W2109
-cancelled share of lines,0.03,0.02977412082672914,-0.008,W2109
+genuine fulfilment failure per delivered unit,0.015,0.01536038400960024,0.024,W2109
+carrier damage per delivered unit,0.005,0.005175129378234456,0.035,W2109
+cancelled share of lines,0.03,0.029608026131591227,-0.013,W2109
 "household members, share of accounts",0.12,0.12,0.0,W2109
 "heavy-return overlay, share of accounts",0.06,0.058,-0.033,W2109
-orders per account (target total / realised base orders),9.9429,9.8661,-0.008,W2109
-honest requested units per delivered unit (mean target propensity),0.17722642208898132,0.18085481506226453,0.02,W2109
-withdrawn share of honest requests,0.03,0.027749508107741367,-0.075,W2109
-late share of honest item-return requests,0.02,0.015912897822445562,-0.204,W2109
+orders per account (target total / realised base orders),7.893876613273394,7.9854,0.012,W2109
+honest requested units per delivered unit (mean target propensity),0.17969195173058145,0.18989724743118577,0.057,W2109
+withdrawn share of honest requests,0.03,0.027483729318591704,-0.084,W2109
+late share of honest item-return requests,0.02,0.017474707659965838,-0.126,W2109
 "claim propensity, share of accounts",0.04,0.0385,-0.037,W2110
 "temporary-use propensity, share of accounts",0.03,0.0287,-0.043,W2110
 "both propensities, share of accounts",0.005,0.0069,0.38,W2110
 mean action rate of propensity accounts,0.2,0.19206254044247706,-0.04,W2110
-genuine fulfilment failure per delivered unit,0.015,0.01564870957468731,0.043,W2110
-carrier damage per delivered unit,0.005,0.004795773724405368,-0.041,W2110
-cancelled share of lines,0.03,0.029317123213477847,-0.023,W2110
+genuine fulfilment failure per delivered unit,0.015,0.016263169016210343,0.084,W2110
+carrier damage per delivered unit,0.005,0.00488272406194343,-0.023,W2110
+cancelled share of lines,0.03,0.029906234835558754,-0.003,W2110
 "household members, share of accounts",0.12,0.12,0.0,W2110
 "heavy-return overlay, share of accounts",0.06,0.0554,-0.077,W2110
-orders per account (target total / realised base orders),9.8154,9.7974,-0.002,W2110
-honest requested units per delivered unit (mean target propensity),0.17606815539160975,0.17564521265634658,-0.002,W2110
-withdrawn share of honest requests,0.03,0.028202693673734923,-0.06,W2110
-late share of honest item-return requests,0.02,0.016192403857602095,-0.19,W2110
+orders per account (target total / realised base orders),7.805094579658922,7.9725,0.021,W2110
+honest requested units per delivered unit (mean target propensity),0.17728611019094062,0.18418510580493253,0.039,W2110
+withdrawn share of honest requests,0.03,0.02792207792207792,-0.069,W2110
+late share of honest item-return requests,0.02,0.017922457937088514,-0.104,W2110

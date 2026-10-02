@@ -1,7 +1,8 @@
 """The abuse layer: ring campaigns (with abuse-layer campaign orders) and solo abusive actions.
 
 Everything here draws from its own keyed streams and only ever uses units that honest requests left
-unreserved, so disabling abuse removes these events and nothing else.
+unreserved, so disabling abuse removes these events and nothing else. Abusive requests are built to look
+like honest ones in everything but behaviour: the same claim-timing law, ordinary baskets, one order a day.
 """
 from __future__ import annotations
 
@@ -10,8 +11,8 @@ import pandas as pd
 
 from arai.generator.context import DAY, Context
 from arai.generator.relationships import Relationships
-from arai.generator.returns import DEFECT_CODES, DISCRETIONARY_CODES, FIT_CODES, settle
-from arai.generator.sales import _pick, apply_fulfilment, price_lines
+from arai.generator.returns import DISCRETIONARY_CODES, FIT_CODES, claim_delay, settle
+from arai.generator.sales import _pick, apply_fulfilment, draw_basket
 from arai.rng import stream, token
 
 NONRECEIPT, CONTENTS, TEMPORARY = "deceptive_nonreceipt_claim", "deceptive_contents_claim", "temporary_use_return"
@@ -48,11 +49,14 @@ def choose_hot_list(ctx: Context) -> np.ndarray:
 
 
 def run_campaigns(ctx: Context, profiles: pd.DataFrame, rel: Relationships, units: pd.DataFrame,
-                  reserved: np.ndarray, hot_list: np.ndarray):
-    """Ring campaigns. Returns (campaign truth, actions, campaign orders, campaign lines, abusive events)."""
+                  reserved: np.ndarray, hot_list: np.ndarray, occupied: dict):
+    """Ring campaigns. Returns (campaign truth, actions, campaign orders, campaign lines, abusive events).
+
+    `occupied` maps a customer to the dates on which that account already has an order; a campaign order
+    takes the first free day, so no account ever places two orders on one day.
+    """
     s, seed, cat, world = ctx.s, ctx.seed, ctx.catalog, ctx.world_id
     cfg, accepted = s.amendment["campaigns"], s.accepted
-    gamma = s.defaults["campaign_gamma"]
     claim_capable = profiles["claim_propensity"].to_numpy()
     signup = profiles["signup_date"].to_numpy().astype("datetime64[D]")
     price = cat.styles["median_price"].to_numpy()
@@ -74,30 +78,35 @@ def run_campaigns(ctx: Context, profiles: pd.DataFrame, rel: Relationships, unit
         if group["type"] != "coordination" or not capable:
             continue
         rng = stream(seed, group_id, "campaign")
-        # the ring forms when its last claim-capable member signs up; campaigns fall between then and the snapshot
-        first_day = int((max(ctx.history_start, signup[capable].max()) - ctx.history_start) / DAY)
+        # the ring is active from the signup of its second claim-capable member (of its only one if alone)
+        joined = np.sort(signup[capable])
+        first_day = int((max(ctx.history_start, joined[min(1, len(joined) - 1)]) - ctx.history_start) / DAY)
         n_styles = min(int(rng.integers(s_lo, s_hi + 1)), len(hot_list))
         weights = price[hot_list] / price[hot_list].sum()
         group_styles = rng.choice(hot_list, size=n_styles, replace=False, p=weights)
-        open_days = len(ctx.history) - first_day
-        days = first_day + np.sort(rng.choice(open_days, size=min(int(rng.integers(c_lo, c_hi + 1)), open_days), replace=False))
+        # dates are drawn over the whole window and kept only once the ring exists, so a ring that starts late
+        # runs fewer campaigns instead of packing them into its last weeks
+        days = np.sort(rng.choice(len(ctx.history), size=int(rng.integers(c_lo, c_hi + 1)), replace=False))
+        days = days[days >= first_day]
         for j, day in enumerate(days):
             style = int(group_styles[rng.integers(len(group_styles))])
             campaign_date = ctx.history[day]
             campaign_id = f"{world}-K{token(seed, group_id, 'campaign:' + str(j))}"
             campaigns.append((world, campaign_id, group_id, cat.styles["style_id"].iloc[style], campaign_date))
             for member in capable:
+                if campaign_date < signup[member]:          # not yet a member of the ring
+                    continue
                 cid = ctx.customer_ids[member]
                 member_rng = stream(seed, cid, "campaign:" + campaign_id)
-                u = member_rng.random(16)
+                u = member_rng.random(8)
                 if u[0] >= cfg["participant_probability_per_date"]:
                     continue
                 action_type, reason = _claim(u[1], u[2])
                 attempt = {"action_id": f"{world}-X{token(seed, cid, 'action:' + campaign_id)}", "cust": member,
                            "action_type": action_type, "reason": reason, "campaign_id": campaign_id, "group_id": group_id,
-                           "style_idx": style, "draws": u[3:7], "unit": None, "order": None, "reason_uncompleted": None,
-                           "delay": min(int(gamma["truncate_after_days"]),
-                                        int(np.rint(member_rng.gamma(gamma["shape"], gamma["scale_days"]))))}
+                           "style_idx": style, "draws": u[3:7], "unit": None, "order": None, "lines": None,
+                           "reason_uncompleted": None, "delay": int(claim_delay(ctx, member_rng.gamma(
+                               s.amendment3["claim_latency"]["shape"], s.amendment3["claim_latency"]["scale_days"])))}
                 rows = rows_of.get(member, np.array([], dtype=int))
                 reusable = rows[(unit_style[rows] == style) & ~reserved[rows]
                                 & (unit_delivered[rows] >= campaign_date - cfg["reuse_window_days_before_campaign_date"] * DAY)
@@ -106,54 +115,61 @@ def run_campaigns(ctx: Context, profiles: pd.DataFrame, rel: Relationships, unit
                     row = int(reusable[np.argsort(unit_delivered[reusable], kind="stable")[0]])
                     reserved[row] = True
                     attempt.update(source="reused_purchase", unit=units.iloc[row])
-                else:
-                    attempt["source"] = "campaign_order"
-                    order_date = campaign_date + (o_lo + int(u[7] * (o_hi - o_lo + 1))) * DAY
-                    variants = np.flatnonzero((cat.sku_style == style) & (cat.sku_launch <= order_date))
-                    if order_date < signup[member]:
-                        attempt["reason_uncompleted"] = "pre_signup"
-                    elif order_date > ctx.snapshot:
-                        attempt["reason_uncompleted"] = "after_cutoff"
-                    elif not len(variants):
-                        attempt["reason_uncompleted"] = "pre_launch"
-                    else:
-                        sku = int(variants[int(u[8] * len(variants))])
-                        festive = bool(ctx.festive_multiplier[int((order_date - ctx.history_start) / DAY)] > 0)
-                        discount, total = price_lines(ctx, np.array([sku]), np.array([1]), np.array([festive]),
-                                                      np.array([u[9]]), np.array([u[10]]))
-                        dispatch = d_lo + int(u[11] * (d_hi - d_lo + 1))
-                        tail = u[12] < accepted["carrier_tail_probability"]
-                        transit = (t_lo + int(u[13] * (t_hi - t_lo + 1))) if tail else (r_lo + int(u[13] * (r_hi - r_lo + 1)))
-                        used = rel.draw_identifiers(stream(seed, cid, "campaign_identifiers:" + campaign_id), member, 1)
-                        cancel = bool(member_rng.random() < accepted["cancel_probability"])
-                        attempt["order"] = {
-                            "order_id": f"{world}-O{token(seed, cid, 'campaign_order:' + campaign_id)}", "cust": member,
-                            "order_date": order_date, "festive": festive, "channel": channels[int(_pick(np.array([u[14]]), channel_p)[0])],
-                            "address_id": used["address"][0], "device_id": used["device"][0], "payment_id": used["payment"][0],
-                            "dispatch_days": dispatch, "transit_days": transit,
-                            "lost": bool(u[15] < accepted["loss_probability_of_shipped"]), "layer": "campaign",
-                            "campaign_id": campaign_id, "seq": -1,
-                            "line": {"order_line_no": 1, "sku_idx": sku, "style_idx": style, "quantity": 1,
-                                     "unit_price_p": int(cat.sku_price_paise[sku]), "discount_p": int(discount[0]),
-                                     "total_p": int(total[0]), "window": int(cat.sku_window[sku]), "bracketed": False,
-                                     "cancel": cancel, "cancel_offset": int(member_rng.integers(0, dispatch + 1))}}
+                    attempts.append(attempt)
+                    continue
+                attempt["source"] = "campaign_order"
                 attempts.append(attempt)
+                taken = occupied.setdefault(member, set())
+                order_date = campaign_date + (o_lo + int(u[7] * (o_hi - o_lo + 1))) * DAY
+                while order_date in taken and order_date <= ctx.snapshot:
+                    order_date += DAY
+                if order_date > ctx.snapshot:
+                    attempt["reason_uncompleted"] = "after_cutoff"
+                    continue
+                festive = bool(ctx.festive_multiplier[int((order_date - ctx.history_start) / DAY)] > 0)
+                basket = draw_basket(ctx, member_rng, order_date, festive, style)
+                if basket is None:
+                    attempt["reason_uncompleted"] = "pre_launch"
+                    continue
+                taken.add(order_date)
+                n_lines = len(basket["sku_idx"])
+                f = member_rng.random(5)
+                dispatch = d_lo + int(f[0] * (d_hi - d_lo + 1))
+                tail = f[1] < accepted["carrier_tail_probability"]
+                transit = (t_lo + int(f[2] * (t_hi - t_lo + 1))) if tail else (r_lo + int(f[2] * (r_hi - r_lo + 1)))
+                cancel_u = member_rng.random((n_lines, 2))
+                used = rel.draw_identifiers(stream(seed, cid, "campaign_identifiers:" + campaign_id), member, 1)
+                order_id = f"{world}-O{token(seed, cid, 'campaign_order:' + campaign_id)}"
+                attempt["order"] = {
+                    "order_id": order_id, "cust": member, "order_date": order_date, "festive": festive,
+                    "channel": channels[int(_pick(np.array([f[3]]), channel_p)[0])],
+                    "address_id": used["address"][0], "device_id": used["device"][0], "payment_id": used["payment"][0],
+                    "dispatch_days": dispatch, "transit_days": transit,
+                    "lost": bool(f[4] < accepted["loss_probability_of_shipped"]), "layer": "campaign",
+                    "campaign_id": campaign_id, "seq": -1, "co_order": False, "co_source": None}
+                attempt["lines"] = [{
+                    "order_id": order_id, "order_line_no": k + 1, "cust": member, "order_date": order_date,
+                    "sku_idx": int(basket["sku_idx"][k]), "style_idx": int(basket["style_idx"][k]),
+                    "quantity": int(basket["quantity"][k]), "unit_price_p": int(cat.sku_price_paise[basket["sku_idx"][k]]),
+                    "discount_p": int(basket["discount_p"][k]), "total_p": int(basket["total_p"][k]),
+                    "window": int(cat.sku_window[basket["sku_idx"][k]]), "bracketed": False,
+                    "cancel": bool(cancel_u[k, 0] < accepted["cancel_probability"]),
+                    "cancel_offset": int(cancel_u[k, 1] * (dispatch + 1)), "dispatch_days": dispatch,
+                    "transit_days": transit, "lost": attempt["order"]["lost"], "address_id": used["address"][0],
+                    "layer": "campaign", "co_source": None} for k in range(n_lines)]
 
     campaign_truth = pd.DataFrame(campaigns, columns=["world_id", "campaign_id", "coordination_group_id", "target_style_id", "campaign_date"])
     placed = [a for a in attempts if a["order"] is not None]
-    order_columns = ["order_id", "cust", "order_date", "festive", "channel", "address_id", "device_id", "payment_id",
-                     "dispatch_days", "transit_days", "lost", "layer", "campaign_id", "seq"]
-    c_orders = pd.DataFrame([{k: a["order"][k] for k in order_columns} for a in placed], columns=order_columns)
-    c_lines = pd.DataFrame([dict(a["order"]["line"], order_id=a["order"]["order_id"], cust=a["cust"],
-                                 order_date=a["order"]["order_date"], dispatch_days=a["order"]["dispatch_days"],
-                                 transit_days=a["order"]["transit_days"], lost=a["order"]["lost"],
-                                 address_id=a["order"]["address_id"], layer="campaign") for a in placed])
+    c_orders = pd.DataFrame([a["order"] for a in placed])
+    c_lines = pd.DataFrame([line for a in placed for line in a["lines"]])
     if len(c_lines):
         c_lines = apply_fulfilment(ctx, c_lines)
-        for a, (_, line) in zip(placed, c_lines.iterrows()):
+        first = c_lines[c_lines["order_line_no"] == 1].set_index("order_id")
+        for a in placed:                       # the claim is on one unit of the first line, the target style
+            line = first.loc[a["order"]["order_id"]]
             if line["line_status"] == "delivered":
-                a["unit"] = pd.Series({"order_id": line["order_id"], "order_line_no": 1, "unit_index": 1,
-                                       "sku_idx": line["sku_idx"], "style_idx": line["style_idx"], "quantity": 1,
+                a["unit"] = pd.Series({"order_id": a["order"]["order_id"], "order_line_no": 1, "unit_index": 1,
+                                       "sku_idx": line["sku_idx"], "style_idx": line["style_idx"], "quantity": line["quantity"],
                                        "total_p": line["total_p"], "window": line["window"],
                                        "delivered_date": line["delivered_date"]})
             elif line["line_status"] == "cancelled":
@@ -185,6 +201,7 @@ def run_solo_actions(ctx: Context, profiles: pd.DataFrame, orders: pd.DataFrame,
     """Solo abusive actions on base-layer delivered orders. Returns (actions, abusive events)."""
     s, seed, cat, world = ctx.s, ctx.seed, ctx.catalog, ctx.world_id
     weighting = s.amendment["temporary_use_occasion_weighting"]
+    latency_law = s.amendment3["claim_latency"]
     fit_share = s.accepted["temp_reason_mix"]["fit_or_discretionary"]
     rates = {"claim": profiles["claim_action_rate"].to_numpy(), "temporary_use": profiles["temporary_use_action_rate"].to_numpy()}
     capable = {"claim": profiles["claim_propensity"].to_numpy(), "temporary_use": profiles["temporary_use_propensity"].to_numpy()}
@@ -215,6 +232,7 @@ def run_solo_actions(ctx: Context, profiles: pd.DataFrame, orders: pd.DataFrame,
             rng = stream(seed, cid, "solo:" + family)
             u = rng.random((len(relevant), 9))
             beta = rng.beta(5.0, 2.0, len(relevant))                         # request_latency.temporary_use
+            gamma = rng.gamma(latency_law["shape"], latency_law["scale_days"], len(relevant))
             for k, order_id in enumerate(relevant):
                 rows = unit_rows[order_id]
                 free = rows[~reserved[rows]]
@@ -233,7 +251,7 @@ def run_solo_actions(ctx: Context, profiles: pd.DataFrame, orders: pd.DataFrame,
                     continue
                 row = int(pool[int(u[k, 1] * len(pool))])
                 if family == "claim":
-                    latency = int(u[k, 4] * (min(10, window[row]) + 1))      # request_latency.solo_claim
+                    latency = int(claim_delay(ctx, gamma[k]))               # the one law for every transaction claim
                 else:
                     if u[k, 2] < fit_share:
                         codes = FIT_CODES if u[k, 3] < 0.5 else DISCRETIONARY_CODES

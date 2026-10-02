@@ -49,3 +49,9 @@ Limits are unchanged: nothing is built or measured. The thresholds and distribut
 - All YAML contracts and assets parse; the acceptance criteria are unchanged in number (101).
 - The acceptance register now carries implementation evidence for part of the GEN, DATA, VAL and EDA criteria. Evidence paths are relative to the code repository root, outside this package. Every other criterion remains NOT_RUN.
 - A generator, validator and exploration now exist in the code repository. No feature, model, API, database or application has been built, and no validation or test world has been generated.
+
+## Amendment 1.3 checks (2026-10-02)
+
+- The package verifier passes after the rebuild; all YAML contracts and assets parse; 101 acceptance criteria.
+- The generator was changed to match and all fixture, training and stress worlds were regenerated and validated. The exploration's artefact audit confirms no claim-timing range, header line order or same-day order separates honest from abusive requests.
+- Evidence in the acceptance register was re-recorded against the regenerated worlds. No validation or test world exists, and no feature, model, API, database or application has been built.

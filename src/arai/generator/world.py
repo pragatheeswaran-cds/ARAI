@@ -102,12 +102,19 @@ class WorldBuilder:
             ctx, self.profiles, self.units, self.defect_prone, self.fit_issue, self.g_address)
         position = {key: i for i, key in enumerate(zip(self.units["order_id"], self.units["order_line_no"], self.units["unit_index"]))}
         self.reserved = np.zeros(len(self.units), dtype=bool)
-        for event_id, order_id, line_no, indices in zip(self.honest_events["event_id"], self.honest_events["order_id"],
-                                                        self.honest_events["order_line_no"], self.honest_events["unit_indices"]):
-            for index in indices:
-                self.reserved[position[(order_id, line_no, index)]] = True
-                self.reservations.append((ctx.world_id, order_id, int(line_no), int(index), "honest_request", event_id))
+        for key in self._reserve_honest(self.honest_events):
+            self.reserved[position[key]] = True
         return self.honest_events
+
+    def _reserve_honest(self, events: pd.DataFrame) -> list:
+        """Record the unit reservations of honest requests (withdrawn and not-yet-visible ones included)."""
+        keys = []
+        for event_id, order_id, line_no, indices in zip(events["event_id"], events["order_id"], events["order_line_no"],
+                                                        events["unit_indices"]):
+            for index in indices:
+                keys.append((order_id, line_no, index))
+                self.reservations.append((self.ctx.world_id, order_id, int(line_no), int(index), "honest_request", event_id))
+        return keys
 
     def build_abuse(self):
         ctx = self.ctx
@@ -115,21 +122,40 @@ class WorldBuilder:
         self.campaign_truth = pd.DataFrame(columns=["world_id", "campaign_id", "coordination_group_id", "target_style_id", "campaign_date"])
         self.actions, abusive, self.campaign_units = [], [], pd.DataFrame()
         if ctx.abuse_enabled:
+            occupied = {}
+            for cust, day in zip(self.orders["cust"].to_numpy(), self.orders["order_date"].to_numpy().astype("datetime64[D]")):
+                occupied.setdefault(int(cust), set()).add(day)
             self.campaign_truth, campaign_actions, c_orders, c_lines, campaign_events = abuse.run_campaigns(
-                ctx, self.profiles, self.rel, self.units, self.reserved, self.hot_list)
+                ctx, self.profiles, self.rel, self.units, self.reserved, self.hot_list, occupied)
             solo_actions, solo_events = abuse.run_solo_actions(ctx, self.profiles, self.orders, self.units, self.reserved)
             self.actions = campaign_actions + solo_actions
             abusive = [campaign_events, solo_events]
             if len(c_orders):
                 self.orders = _concat([self.orders, c_orders])
                 self.lines = _concat([self.lines, c_lines])
-                delivered = c_lines[c_lines["line_status"] == "delivered"]
-                self.campaign_units = pd.DataFrame({
-                    "order_id": delivered["order_id"].to_numpy(), "order_line_no": 1, "unit_index": 1,
-                    "cust": delivered["cust"].to_numpy(), "style_idx": delivered["style_idx"].to_numpy(),
-                    "delivered_date": delivered["delivered_date"].to_numpy(), "layer": "campaign",
-                    "received_defective_unit": False, "genuine_fulfilment_cause": None, "carrier_damage": False,
-                    "honest_cause": ""})
+                # the claimed unit is the abusive action; every other delivered unit behaves like any honest unit
+                c_units = sales.expand_units(c_lines)
+                claimed_keys = {(a["order_id"], a["order_line_no"], i) for a in campaign_actions
+                                if a["claim_source"] == "campaign_order" for i in a["allocated_unit_indices"]}
+                claimed = np.array([key in claimed_keys for key in zip(c_units["order_id"], c_units["order_line_no"],
+                                                                       c_units["unit_index"])], dtype=bool)
+                self.g_address.update(returns.address_multipliers(
+                    ctx, sorted(set(c_units["address_id"]) - set(self.g_address))))
+                claimed_units = c_units[claimed]
+                facts = [pd.DataFrame({
+                    "order_id": claimed_units["order_id"].to_numpy(), "order_line_no": claimed_units["order_line_no"].to_numpy(),
+                    "unit_index": claimed_units["unit_index"].to_numpy(), "cust": claimed_units["cust"].to_numpy(),
+                    "style_idx": claimed_units["style_idx"].to_numpy(), "delivered_date": claimed_units["delivered_date"].to_numpy(),
+                    "layer": "campaign", "received_defective_unit": False, "genuine_fulfilment_cause": None,
+                    "carrier_damage": False, "delivery_incident": False, "honest_cause": ""})]
+                others = c_units[~claimed].reset_index(drop=True)
+                if len(others):
+                    other_facts, other_events = returns.build_honest_events(
+                        ctx, self.profiles, others, self.defect_prone, self.fit_issue, self.g_address, purpose="honest_campaign")
+                    facts.append(other_facts)
+                    self._reserve_honest(other_events)
+                    self.honest_events = _concat([self.honest_events, other_events])
+                self.campaign_units = _concat(facts)
             for action in self.actions:
                 for index in action["allocated_unit_indices"]:
                     self.reservations.append((ctx.world_id, action["order_id"], action["order_line_no"], index,

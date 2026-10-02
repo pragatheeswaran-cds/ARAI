@@ -1,3 +1,3 @@
 population,customers,abusers,persona_only_auc,order_count_only_auc,raw_return_rate_auc,claim_count_auc
-all customers,50000,1922,0.62,0.687,0.801,0.837
-eligible customers,29679,1618,0.544,0.564,0.765,0.807
+all customers,50000,1613,0.652,0.733,0.854,0.841
+eligible customers,26550,1410,0.534,0.57,0.786,0.813

@@ -20,7 +20,6 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 # Choices the specification leaves open. Change only with a dated record, on development worlds.
 IMPLEMENTATION_DEFAULTS = {
-    "max_order_intensity_per_day": 1.0,     # caps target orders at one per eligible day
     "loyalist_lognormal": (-1.6, 0.7),      # position within the Loyalist order range: exp(N(mu, sigma)), clipped to 1
     "power_user_persona": "Loyalist",       # the team's config calls power users the "Loyalist heavy tail"
     "bleed_features": ("orders", "festive_order_ratio", "return_rate"),
@@ -68,6 +67,7 @@ class Settings:
     accepted: dict          # generator-config.yaml accepted_settings
     defaults: dict          # generator-config.yaml consolidation_defaults
     amendment: dict         # generator-config.yaml amendment_1_1
+    amendment3: dict        # generator-config.yaml amendment_1_3
     policy: dict            # generator-policy.yaml
     profiles: dict          # assets/profile-config.yaml
     festive_windows: list   # assets/festive-windows.yaml
@@ -119,6 +119,7 @@ def load_settings(seed: int | None = None, spec_root: Path | None = None, overri
         accepted=config["accepted_settings"],
         defaults=config["consolidation_defaults"],
         amendment=config["amendment_1_1"],
+        amendment3=config["amendment_1_3"],
         policy=_load(root / "contracts" / "generator-policy.yaml"),
         profiles=_load(root / "assets" / "profile-config.yaml"),
         festive_windows=_load(root / "assets" / "festive-windows.yaml")["windows"],

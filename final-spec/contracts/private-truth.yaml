@@ -1,4 +1,4 @@
-version: '1.1'
+version: '1.3'
 access: offline generation/training/evaluation only; never upload/mount to serving
 tables:
   customer_profile:
@@ -27,6 +27,7 @@ tables:
     - received_defective_unit
     - genuine_fulfilment_cause
     - carrier_damage
+    - delivery_incident
     - temporary_use
     rule: unit_index<=purchased quantity
   campaign:
@@ -151,6 +152,7 @@ tables:
     fields:
     - layer
     - campaign_id
+    - household_co_order
     layer:
     - base
     - campaign

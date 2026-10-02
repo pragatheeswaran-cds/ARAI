@@ -30,32 +30,27 @@ def _days(values) -> pd.Series:
 def build_return_tables(ctx: Context, events: pd.DataFrame):
     """Return headers and lines from the requests visible at the cutoff.
 
-    Honest requests form headers first: a header covers its first request date and the following day. An
-    abusive request joins an honest header covering its date and is numbered after the honest lines, so honest
-    line identifiers are the same with abuse on or off.
+    One rule for every request, honest or abusive: a customer's requests are taken in time order, a header
+    covers its first request date and the following day, and lines are numbered by request time. Header
+    structure therefore says nothing about intent.
     """
     s, seed, world = ctx.s, ctx.seed, ctx.world_id
     span = s.impl["header_span_days"] * DAY
-    events = events.sort_values(["cust", "requested_at", "event_id"], kind="stable").reset_index(drop=True)
+    # ties in time are broken by a hash of the event, never by its kind
+    events = events.assign(tie=[token(seed, e, "request_order") for e in events["event_id"]])
+    events = events.sort_values(["cust", "requested_at", "tie"], kind="stable").reset_index(drop=True)
     cust = events["cust"].to_numpy()
     request_date = events["request_date"].to_numpy().astype("datetime64[D]")
-    honest = (events["kind"] == "honest").to_numpy()
+    event_id = events["event_id"].to_numpy(dtype=object)
     header_key = np.empty(len(events), dtype=object)
-    opened = {}                                    # customer -> list of [first_date, key, is_honest_header]
-    for kinds in (True, False):                    # honest pass, then abusive pass
-        for row in np.flatnonzero(honest == kinds):
-            headers = opened.setdefault(cust[row], [])
-            match = next((h for h in headers if h[0] <= request_date[row] <= h[0] + span and (h[2] or not kinds)), None)
-            if match is None:
-                match = [request_date[row], events["event_id"].iloc[row], kinds]
-                headers.append(match)
-            header_key[row] = match[1]
+    current = (None, None, None)                   # customer, first request date, key of the open header
+    for row in range(len(events)):
+        if current[0] != cust[row] or request_date[row] > current[1] + span:
+            current = (cust[row], request_date[row], event_id[row])
+        header_key[row] = current[2]
     events["return_order_id"] = [f"{world}-R{token(seed, ctx.customer_ids[c], 'return:' + k)}" for c, k in zip(cust, header_key)]
-    # honest lines first in time order, abusive lines after them
-    order = np.lexsort((events["event_id"].to_numpy(dtype=object).astype(str), events["requested_at"].to_numpy(), ~honest,
-                        events["return_order_id"].to_numpy(dtype=object).astype(str)))
-    events = events.iloc[order].reset_index(drop=True)
     events["return_line_no"] = events.groupby("return_order_id", sort=False).cumcount() + 1
+    events = events.drop(columns="tie")
 
     lines = pd.DataFrame({
         "return_order_id": events["return_order_id"], "return_line_no": events["return_line_no"],
@@ -205,13 +200,14 @@ def build_truth(ctx: Context, profiles, rel, orders, lines, unit_facts, campaign
         "received_defective_unit": all_units["received_defective_unit"].astype(bool),
         "genuine_fulfilment_cause": all_units["genuine_fulfilment_cause"],
         "carrier_damage": all_units["carrier_damage"].astype(bool),
+        "delivery_incident": all_units["delivery_incident"].astype(bool),
         "temporary_use": [k in temporary_units for k in unit_keys]})
     line_truth = (unit_truth.assign(genuine_nonreceipt=genuine_nonreceipt,
                                     deceptive_nonreceipt=[k in nonreceipt_units for k in unit_keys])
                   .groupby(["world_id", "order_id", "order_line_no"], sort=True)
                   [["received_defective_unit", "temporary_use", "genuine_nonreceipt", "deceptive_nonreceipt"]].any().reset_index())
 
-    profile_columns = ["persona", "target_order_count", "target_return_propensity", "target_festive_share",
+    profile_columns = ["persona", "annual_order_target", "target_order_count", "target_return_propensity", "target_festive_share",
                        "target_days_per_order", "claim_propensity", "temporary_use_propensity", "claim_action_rate",
                        "temporary_use_action_rate", "heavy_return_overlay", "power_user", "bracketer", "tenure_days"]
     truth = {
@@ -227,7 +223,8 @@ def build_truth(ctx: Context, profiles, rel, orders, lines, unit_facts, campaign
         "sku_truth": pd.DataFrame({"world_id": world, "sku": cat.sku_master["sku"], "fit_issue": fit_issue}),
         "line_truth": line_truth,
         "order_truth": pd.DataFrame({"world_id": world, "order_id": orders["order_id"].to_numpy(),
-                                     "layer": orders["layer"].to_numpy(), "campaign_id": orders["campaign_id"].to_numpy()}),
+                                     "layer": orders["layer"].to_numpy(), "campaign_id": orders["campaign_id"].to_numpy(),
+                                     "household_co_order": orders["co_order"].to_numpy(dtype=bool)}),
         "address_truth": pd.DataFrame({"world_id": world, "address_id": list(g_address),
                                        "genuine_failure_multiplier": list(g_address.values())}),
     }

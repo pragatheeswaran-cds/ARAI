@@ -504,6 +504,9 @@ def collect(world, settings) -> dict:
         "relationships": relationships(world), "hot_list": hot_list_coverage(world),
         "timing": active[["intent", "group", "window_ratio"]].assign(world_id=world.world_id),
         "stress": stress_metrics(world),
+        "audit": artefact_audit(world), "orders": order_artefacts(world), "linked": linked_claimants(world),
+        "gate_preview": rule_gate_preview(world).assign(world_id=world.world_id),
+        "opportunity": opportunity_prevalence(world),
     }
 
 
@@ -521,10 +524,141 @@ def detector_table(styles: pd.DataFrame, thresholds=(0.05, 0.075, 0.10)) -> pd.D
                      "fired": int(fired.sum()), "true_positives": int((fired & targeted).sum()),
                      "fired_on_sub_threshold": int((fired & (supported["targeting_level"] == "sub_threshold")).sum()),
                      "precision": ratio((fired & targeted).sum(), fired.sum()), "recall": ratio((fired & targeted).sum(), targeted.sum())})
+    rows.append({"signal": "targeting, three linked claimants only", "truth_positive_styles": int(targeted.sum()),
+                 "fired": int((supported["linked_claimers"] >= 3).sum()),
+                 "true_positives": int(((supported["linked_claimers"] >= 3) & targeted).sum()), "fired_on_sub_threshold": 0,
+                 "precision": ratio(((supported["linked_claimers"] >= 3) & targeted).sum(), (supported["linked_claimers"] >= 3).sum()),
+                 "recall": ratio(((supported["linked_claimers"] >= 3) & targeted).sum(), targeted.sum())})
     defect = supported["defect_state"] == "defect_prone"
     for threshold in (0.30, 0.50):
         fired = supported["damage_share"] >= threshold
         rows.append({"signal": f"quality, damage share >= {threshold}", "truth_positive_styles": int(defect.sum()),
                      "fired": int(fired.sum()), "true_positives": int((fired & defect).sum()), "fired_on_sub_threshold": 0,
                      "precision": ratio((fired & defect).sum(), fired.sum()), "recall": ratio((fired & defect).sum(), defect.sum())})
+    table = pd.DataFrame(rows)
+    # 95% Wilson intervals: these counts are small, so the point values alone overstate what is known
+    table["recall_95"] = [wilson(tp, n) for tp, n in zip(table["true_positives"], table["truth_positive_styles"])]
+    table["precision_95"] = [wilson(tp, n) for tp, n in zip(table["true_positives"], table["fired"])]
+    return table
+
+
+# ------------------------------------------------------------------ artefact audit (added after independent review)
+def wilson(successes: int, trials: int, z: float = 1.96):
+    """Wilson score interval for a proportion; (None, None) without trials."""
+    if not trials:
+        return None, None
+    p = successes / trials
+    centre = (p + z * z / (2 * trials)) / (1 + z * z / trials)
+    half = z * np.sqrt(p * (1 - p) / trials + z * z / (4 * trials * trials)) / (1 + z * z / trials)
+    return float(centre - half), float(centre + half)
+
+
+def request_kinds(world) -> pd.DataFrame:
+    """Return lines labelled honest, solo abuse or ring abuse, with the shape of the order they sit on."""
+    requests = _requests(world)
+    requests["kind"] = np.where(requests["action_type"].isna(), "honest",
+                                np.where(requests["campaign_id"].notna(), "ring abuse", "solo abuse"))
+    lines = world.tables["sales_order_line"]
+    shape = lines.groupby("order_id").agg(order_lines=("sku", "size"), order_units=("quantity", "sum"))
+    requests = requests.merge(shape, on="order_id")
+    cutoff = pd.Timestamp(world.snapshot_date)
+    requests["days_before_cutoff"] = (cutoff - requests["delivered_date"]).dt.days
+    return requests
+
+
+def artefact_audit(world) -> pd.DataFrame:
+    """Could anything mechanical tell an abusive request from an honest one? One column per kind of request.
+
+    A leak shows as a row where honest and abusive requests cannot overlap, for example a claim-timing range
+    or an order shape that only one kind occupies. Rows marked "by design" are specified differences.
+    """
+    requests = request_kinds(world)
+    claims = requests[requests["group"] == "transaction claim"]
+    ordered = requests.sort_values(["return_order_id", "return_line_no"])
+    out_of_order = ordered["requested_at"] < ordered.groupby("return_order_id")["requested_at"].shift()
+    rows = {
+        "claim lines": claims.groupby("kind").size(),
+        "claims: median days after delivery": claims.groupby("kind")["days"].median(),
+        "claims: 95th percentile days": claims.groupby("kind")["days"].quantile(0.95),
+        "claims: maximum days": claims.groupby("kind")["days"].max(),
+        "claims: share more than 10 days after delivery": claims.groupby("kind")["days"].apply(lambda s: (s > 10).mean()),
+        "claims: share on single-line orders": claims.groupby("kind")["order_lines"].apply(lambda s: (s == 1).mean()),
+        "claims: share on single-unit orders": claims.groupby("kind")["order_units"].apply(lambda s: (s == 1).mean()),
+        "claims: share on lines delivered in the last 90 days": claims.groupby("kind")["days_before_cutoff"].apply(lambda s: (s <= 90).mean()),
+        "claims: share on lines not yet mature": claims.groupby("kind")["mature"].apply(lambda s: (~s).mean()),
+        "requests: lines out of time order in their header": out_of_order.groupby(ordered["kind"]).sum(),
+        "requests: share refunded": requests.groupby("kind")["line_status"].apply(lambda s: (s == "refunded").mean()),
+        "requests: share rejected": requests.groupby("kind")["line_status"].apply(lambda s: (s == "rejected").mean()),
+        "requests: share withdrawn (by design honest only)": requests.groupby("kind")["line_status"].apply(lambda s: (s == "withdrawn").mean()),
+        "requests: share after the window (by design honest only)": requests.groupby("kind")["window_ratio"].apply(lambda s: (s > 1).mean()),
+        "requests: share with more than one unit (by design honest only)": requests.groupby("kind")["quantity_returned"].apply(lambda s: (s > 1).mean()),
+    }
+    table = pd.DataFrame(rows).T.reindex(columns=["honest", "solo abuse", "ring abuse"])
+    return table
+
+
+def order_artefacts(world) -> dict:
+    """Order-level checks: same-day orders, basket shape by private layer, and activity through the year."""
+    orders = world.tables["sales_order"].merge(world.truth["order_truth"], on="order_id")
+    lines = world.tables["sales_order_line"]
+    shape = lines.groupby("order_id").agg(order_lines=("sku", "size"), order_units=("quantity", "sum"))
+    orders = orders.merge(shape, on="order_id")
+    orders["kind"] = np.where(orders["layer"] == "campaign", "campaign order",
+                              np.where(orders["household_co_order"], "household co-order", "base order"))
+    by_kind = orders.groupby("kind").agg(orders=("order_id", "size"), single_line_share=("order_lines", lambda s: (s == 1).mean()),
+                                         mean_lines=("order_lines", "mean"), mean_units=("order_units", "mean"),
+                                         mean_order_total=("order_total", "mean"))
+    month = orders["order_date"].dt.to_period("M")
+    monthly = pd.crosstab(month, orders["kind"])
+    per_customer_day = orders.groupby(["customer_id", "order_date"]).size()
+    quarter = orders[orders["kind"] != "campaign order"].groupby(orders["order_date"].dt.to_period("Q")).size()
+    return {"by_kind": by_kind.round(3), "monthly": monthly,
+            "same_day_repeat_order_share": float((per_customer_day > 1).sum() / len(orders)),
+            "last_to_first_full_quarter_ratio": float(quarter.iloc[-2] / quarter.iloc[1]) if len(quarter) >= 4 else None}
+
+
+def linked_claimants(world) -> dict:
+    """Customers with a linked claim line, split by private label: how much honest noise does the link signal carry?"""
+    claims = diagnostics.linked_claims(world)
+    summary = diagnostics.customer_summary(world)[["customer_id", "y_abuse", "eligible", "household_id", "coordination_group_id"]]
+    linked = summary[summary["customer_id"].isin(claims.loc[claims["linked"], "customer_id"])]
+    return {"linked_claimants": len(linked), "honest": int((linked["y_abuse"] == 0).sum()),
+            "honest_household_members": int(((linked["y_abuse"] == 0) & linked["household_id"].notna()).sum()),
+            "honest_ring_members": int(((linked["y_abuse"] == 0) & linked["coordination_group_id"].notna()).sum()),
+            "abusers": int((linked["y_abuse"] == 1).sum())}
+
+
+def rule_gate_preview(world) -> pd.DataFrame:
+    """The two reference rules against the gate's benign segments: who each rule would wrongly select."""
+    summary = diagnostics.customer_summary(world)
+    summary["claim_count"] = summary["claim_lines"]
+    segments = benign_segments(world).set_index("customer_id")
+    rows = []
+    for rule, score in (("rank by raw return rate", "raw_return_rate"), ("rank by number of claims", "claim_count")):
+        selected = set(diagnostics.top_fraction(world, summary, score)["customer_id"])
+        row = {"rule": rule, "selected": len(selected),
+               "true_positives": int(summary.loc[summary["customer_id"].isin(selected), "y_abuse"].sum())}
+        for name in ("legit_heavy_returner", "defective_product_buyer", "benign_household"):
+            members = segments.index[segments[name]]
+            row[name + "_selected"] = int(members.isin(selected).sum())
+            row[name + "_size"] = len(members)
+        rows.append(row)
     return pd.DataFrame(rows)
+
+
+def opportunity_prevalence(world) -> pd.DataFrame:
+    """Accounts with a propensity, by how many relevant orders they had: how often does a propensity turn into an action?"""
+    profile = world.truth["customer_profile"]
+    propensity = profile[profile["claim_propensity"] | profile["temporary_use_propensity"]][["customer_id"]]
+    orders = world.tables["sales_order"].merge(world.truth["order_truth"][["order_id", "layer"]], on="order_id")
+    delivered = world.tables["sales_order_line"].query("line_status == 'delivered'")["order_id"].unique()
+    relevant = orders[(orders["layer"] == "base") & orders["order_id"].isin(delivered)].groupby("customer_id").size()
+    propensity = propensity.assign(relevant_orders=propensity["customer_id"].map(relevant).fillna(0).astype(int))
+    actions = world.truth["action_truth"]
+    drawn = actions.groupby("customer_id").size()
+    done = actions[actions["completed_action"]].groupby("customer_id").size()
+    propensity["opportunities"] = propensity["customer_id"].map(drawn).fillna(0).astype(int)
+    propensity["acted"] = propensity["customer_id"].isin(done.index)
+    propensity["bucket"] = pd.cut(propensity["relevant_orders"], ORDER_BUCKETS, right=False, labels=ORDER_BUCKET_LABELS)
+    return propensity.groupby("bucket", observed=True).agg(propensity_accounts=("customer_id", "size"),
+                                                           opportunities_drawn=("opportunities", "sum"), acted=("acted", "sum"))

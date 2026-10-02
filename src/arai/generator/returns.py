@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from arai.generator.context import DAY, Context
-from arai.rng import stream
+from arai.rng import keyed_uniform, stream
 
 CLAIM_CODES = ("item_not_received", "wrong_item_sent", "missing_parts", "empty_package")
 DEFECT_CODES = ("defective", "poor_quality", "not_as_described")
@@ -47,19 +47,47 @@ def time_of_day(ctx: Context, u: np.ndarray) -> np.ndarray:
     return (lo * 3600 + u * (hi - lo) * 3600).astype(int) * np.timedelta64(1, "s")
 
 
-def build_honest_events(ctx: Context, profiles: pd.DataFrame, units: pd.DataFrame, defect_prone, fit_issue, g_address):
-    """Honest requests on base-layer delivered units. Returns (unit facts, request events)."""
+def claim_delay(ctx: Context, gamma):
+    """Days from delivery to a transaction claim: one law for genuine, solo deceptive and coordinated claims."""
+    return np.minimum(ctx.s.amendment3["claim_latency"]["truncate_after_days"], np.rint(gamma)).astype(int)
+
+
+def delivery_incidents(ctx: Context, units: pd.DataFrame) -> np.ndarray:
+    """Units lost in a delivery incident: an address has a bad 14-day block and whole parcels to it go missing."""
+    cfg = ctx.s.amendment3["delivery_incidents"]
+    delivered = units["delivered_date"].to_numpy().astype("datetime64[D]")
+    block = ((delivered - ctx.history_start) / DAY).astype(int) // cfg["block_days"]
+    block_key = units["address_id"].to_numpy(dtype=object) + "|" + block.astype(str).astype(object)
+    bad_block = {k: keyed_uniform(ctx.seed, k, "delivery_incident") < cfg["probability_per_address_block"]
+                 for k in set(block_key)}
+    in_bad_block = np.array([bad_block[k] for k in block_key], dtype=bool)
+    orders = units["order_id"].to_numpy(dtype=object)
+    lost = {o: keyed_uniform(ctx.seed, o, "incident_parcel") < cfg["parcel_failure_probability"]
+            for o in set(orders[in_bad_block])}
+    return in_bad_block & np.array([lost.get(o, False) for o in orders], dtype=bool)
+
+
+def build_honest_events(ctx: Context, profiles: pd.DataFrame, units: pd.DataFrame, defect_prone, fit_issue, g_address,
+                        purpose: str = "honest"):
+    """Honest requests on delivered units. Returns (unit facts, request events).
+
+    `purpose` names the random streams: base units use "honest"; the unclaimed units of campaign orders use
+    their own, so adding the abuse layer never changes a base draw.
+    """
     s, seed, cat = ctx.s, ctx.seed, ctx.catalog
     accepted, defaults, impl = s.accepted, s.defaults, s.impl
+    latency_law = s.amendment3["claim_latency"]
     n = len(units)
     u = np.empty((n, 14))
     noise = np.empty(n)
     beta = np.empty(n)
+    gamma = np.empty(n)
     for cust, rows in units.groupby("cust", sort=True).indices.items():
-        rng = stream(seed, ctx.customer_ids[cust], "honest")
+        rng = stream(seed, ctx.customer_ids[cust], purpose)
         u[rows] = rng.random((len(rows), 14))
         noise[rows] = rng.normal(size=len(rows))
         beta[rows] = rng.beta(2.0, 5.0, len(rows))                 # generator-config: request_latency.honest
+        gamma[rows] = rng.gamma(latency_law["shape"], latency_law["scale_days"], len(rows))
 
     cust = units["cust"].to_numpy()
     sku = units["sku_idx"].to_numpy()
@@ -70,11 +98,28 @@ def build_honest_events(ctx: Context, profiles: pd.DataFrame, units: pd.DataFram
     p_defect = np.where(defect_prone[style], defaults["defect_unit_probability"]["defect_prone_style"],
                         defaults["defect_unit_probability"]["ordinary_style"])
     defective = u[:, 0] < p_defect
+    # independent failures per unit, scaled by the address multiplier; parcel-level incidents on top
     claim_rates = np.array([accepted["genuine_claim_rates"][c] for c in CLAIM_CODES])
+    claim_rates[CLAIM_CODES.index("item_not_received")] = s.amendment3["delivery_incidents"]["independent_item_not_received_rate"]
     g = np.array([g_address[a] for a in units["address_id"].to_numpy()])
-    fulfilment = u[:, 1] < np.minimum(1.0, claim_rates.sum() * g)
-    fulfilment_code = np.array(CLAIM_CODES, dtype=object)[np.minimum(
+    incident = delivery_incidents(ctx, units)
+    independent = u[:, 1] < np.minimum(1.0, claim_rates.sum() * g)
+    independent_code = np.array(CLAIM_CODES, dtype=object)[np.minimum(
         np.searchsorted(np.cumsum(claim_rates / claim_rates.sum()), u[:, 2], side="right"), len(CLAIM_CODES) - 1)]
+    # household co-orders travel with the order they follow: same address, same fate
+    order_id = units["order_id"].to_numpy(dtype=object)
+    address = units["address_id"].to_numpy(dtype=object)
+    not_received = incident | (independent & (independent_code == "item_not_received"))
+    lost_orders = set(order_id[not_received])
+    address_of = dict(zip(order_id, address))
+    source = units["co_source"].to_numpy(dtype=object)
+    probability = s.amendment3["household_co_orders"]["shared_fate_probability"]
+    shared = np.array([src is not None and src in lost_orders and address_of.get(src) == adr
+                       and keyed_uniform(seed, oid, "shared_fate") < probability
+                       for src, adr, oid in zip(source, address, order_id)], dtype=bool)
+    incident = incident | shared
+    fulfilment = incident | independent
+    fulfilment_code = np.where(incident, "item_not_received", independent_code).astype(object)
     damage = u[:, 3] < accepted["carrier_damage_rate"]
 
     logit = defaults["ordinary_logit"]
@@ -91,7 +136,7 @@ def build_honest_events(ctx: Context, profiles: pd.DataFrame, units: pd.DataFram
     facts = units[["order_id", "order_line_no", "unit_index", "cust", "style_idx", "delivered_date", "layer"]].assign(
         received_defective_unit=defective,
         genuine_fulfilment_cause=np.where(fulfilment, fulfilment_code, None),
-        carrier_damage=damage, honest_cause=cause)
+        carrier_damage=damage, delivery_incident=incident, honest_cause=cause)
 
     # one request per (sale line, cause); the first unit's draws describe the request
     returned = np.flatnonzero(cause != "")
@@ -111,12 +156,11 @@ def build_honest_events(ctx: Context, profiles: pd.DataFrame, units: pd.DataFram
                        [fulfilment_code[first], "damaged", defect_code, fit_code], default=discretionary_code).astype(object)
 
     e_window = window[first]
-    claim_latency = (u[first, 7] * (np.minimum(10, e_window) + 1)).astype(int)        # same as request_latency.solo_claim
-    latency = np.where(e_cause == FULFILMENT, claim_latency, np.rint(beta[first] * e_window).astype(int))
+    latency = np.where(e_cause == FULFILMENT, claim_delay(ctx, gamma[first]), np.rint(beta[first] * e_window).astype(int))
     # a capped share of honest item returns arrives after the window and is rejected (max_late_request_share)
     item_return = np.flatnonzero(e_cause != FULFILMENT)
     late = np.zeros(len(first), dtype=bool)
-    late_rng = stream(seed, "world", "late_requests")
+    late_rng = stream(seed, "world", "late_requests:" + purpose)
     n_late = int(np.floor(accepted["max_late_request_share"] * len(item_return)))
     late[late_rng.permutation(item_return)[:n_late]] = True
     latency = np.where(late, e_window + 1 + (u[first, 8] * e_window).astype(int), latency)

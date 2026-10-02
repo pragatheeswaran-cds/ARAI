@@ -1,4 +1,4 @@
-version: '1.2'
+version: '1.3'
 status: engineering defaults; tune on development only before validation; record changes
 snapshot: '2026-09-09T23:59:59+05:30'
 history_start: '2025-09-10'
@@ -122,7 +122,8 @@ consolidation_defaults:
   request_latency:
     honest: round(Beta(2,5)*captured_window)
     temporary_use: round(Beta(5,2)*captured_window)
-    solo_claim: discrete_uniform(0,min(10,window))
+    solo_claim: superseded by amendment_1_3 claim_latency (one law for every transaction
+      claim)
     late: at most floor(.02*submitted_count) seeded requests reassigned to uniform(window+1,2*window)
       if visible; else opportunity uncompleted
   campaign_gamma:
@@ -168,10 +169,11 @@ amendment_1_1:
     group_campaign_dates:
     - 2
     - 4
-    campaign_date_sampling: uniform between ring formation and the snapshot; one group
-      style per date
-    ring_formation: latest signup among the ring's claim-capable members, not before
-      history_start; a ring without claim-capable members plans nothing
+    campaign_date_sampling: uniform over the history window, keeping dates on or after
+      the ring's start; one group style per date
+    ring_start: signup of the ring's second claim-capable member (of its only one if
+      there is one), not before history_start; a member takes part only in campaigns
+      on or after signing up; a ring without claim-capable members plans nothing
     participant_probability_per_date: 0.6
     participants: claim-capable members only
     reuse_window_days_before_campaign_date: 14
@@ -179,12 +181,12 @@ amendment_1_1:
       order_date_offset_days:
       - 0
       - 2
-      lines: 1
-      quantity: 1
+      lines: base basket law; the first line is the date's style
+      quantity: base quantity law; one unit of the first line is claimed
       sku_choice: uniform launched SKU of the date's style
       rules: ordinary pricing, discount, shipping, identifier usage and fulfilment
-      layer: abuse; private order_truth only; separate keyed ID stream; no honest events;
-        no solo opportunities
+      layer: abuse; private order_truth only; separate keyed ID stream; unclaimed units
+        take honest events; no solo opportunities
     uncompleted_reasons:
     - pre_signup
     - pre_launch
@@ -217,7 +219,47 @@ amendment_1_2:
     for the evidence. These clarify scope; they add no new mechanism.
   tenure: Dormant, Occasional, Seasonal and Loyalist tenures reach 1095 days (assets/profile-config.yaml);
     order targets cover the history window only
-  max_order_intensity_per_day: 1.0
+  max_order_intensity_per_day: superseded by amendment_1_3 order_targets
   power_user_scope: Loyalist accounts only (power_user_share is a share of Loyalists)
   defect_prone_style_count: exactly round(defect_style_share x styles), at least 1, chosen
     at random per world
+amendment_1_3:
+  note: Added 2026-10-02 after an independent review of the first exploration found
+    artefacts that revealed abuse without behaviour and an order history that was
+    not stationary. Every world generated earlier is void.
+  claim_latency:
+    law: min(truncate_after_days, round(Gamma(shape, scale_days))) days after delivery
+    shape: 2.0
+    scale_days: 3.0
+    truncate_after_days: 30
+    applies_to: every transaction claim - genuine, solo deceptive and coordinated
+  order_targets:
+    rule: persona order targets are annual rates; expected orders = target x the share
+      of the account's yearly order-date weights that falls after its signup
+    high_intensity: an established persona with tenure up to 1095 days and an annual target
+      like the others; no account type places its whole target inside a short tenure
+    max_order_intensity_per_day: 0.5
+    same_day_orders: at most one order per account per day, campaign orders included
+  household_co_orders:
+    probability_per_member_order: 0.2
+    offset_days:
+    - 0
+    - 2
+    rule: another member of the household who has signed up orders the first line's
+      style; skipped when that member already has an order that day
+    layer: base; marked household_co_order in private order_truth; never followed by
+      another co-order
+    shared_fate_probability: 0.8
+    shared_fate: a co-order delivered to the same address as the order it follows is
+      genuinely not received when that order is
+  delivery_incidents:
+    block_days: 14
+    probability_per_address_block: 0.00375
+    parcel_failure_probability: 0.8
+    effect: every delivered unit of a failed order is genuinely not received
+    independent_item_not_received_rate: 0.002
+    address_multiplier: applies to the independent component only
+  return_headers:
+    consolidation: one rule for every request; a header covers its first request date
+      and the next day
+    line_numbers: by request time
