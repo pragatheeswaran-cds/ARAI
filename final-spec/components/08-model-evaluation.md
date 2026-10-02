@@ -1,6 +1,6 @@
 # Model and evidence evaluation
 
-Version 1.1 (amended 2026-10-02) | Implementation baseline | Component EVAL
+Version 1.5 (amended 2026-10-02) | Implementation baseline | Component EVAL
 
 ## Requirements and boundary
 
@@ -18,7 +18,7 @@ Sealed style/wardrobing metrics report-only; development behavior tests mandator
 
 Report-only references use the candidates' population, k, tie rule and budgets and can never be selected or promoted. analyst_rulebook scores the number of fired rules (0-5), ties by descending raw_return_rate then the standard hash: raw_return_rate>=training p90; >=2 visible transaction-claim return lines; requested_refund_ratio>=training p90; >=1 supported neighbor with >=1 own claim line; late_window_share>=.50 with >=2 timed return lines. A null input does not fire. Percentiles come from eligible training customers (linear interpolation) and are frozen. volume_only_logreg shows how much of the ranking follows order volume alone. If a reference approaches or beats a candidate, say so plainly.
 
-Error account at the 5% budget: split false positives into heavy returner, defective buyer, household, repeat genuine claimant (y=0 with >=2 genuine fulfilment-failure units) and other, with overlaps shown and never summed; split false negatives by action type, completed-action count (1, 2-3, 4+) and eligibility. Report which selected positives the raw-return-rate baseline did not select and which baseline selections the model did not select, by the same groups. Calibration status, levers and achieved baseline/best precision (component 05) are part of every report.
+The heavy-returner segment is defined on the same quantity the baseline ranks by, so every baseline false positive is a heavy returner by construction and that leg cannot fail for a candidate that is not itself a rate; it is reported and not presented as evidence. Every report states how much of the result depends on the timing features: precision of the selected family with all features, without late_return_lines and without any timing feature (AM-31). A whole-parcel claim counts as one completed action when any of its lines is visible at the cutoff. Error account at the 5% budget: split false positives into heavy returner, defective buyer, household, repeat genuine claimant (y=0 with >=2 genuine fulfilment-failure units) and other, with overlaps shown and never summed; split false negatives by action type, completed-action count (1, 2-3, 4+) and eligibility. Report which selected positives the raw-return-rate baseline did not select and which baseline selections the model did not select, by the same groups. Calibration status, levers and achieved baseline/best precision (component 05) are part of every report.
 
 ## Inputs, outputs and dependencies
 

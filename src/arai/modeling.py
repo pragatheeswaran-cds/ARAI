@@ -26,6 +26,7 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from arai import dataset, paths
+from arai.bundles import load_pipeline, percentile  # noqa: F401  (one implementation, owned by the serving side)
 from arai.dataset import MODEL_FEATURES
 from arai.settings import load_settings
 
@@ -33,8 +34,6 @@ FAMILIES = {"LogisticRegression": LogisticRegression, "HistGradientBoostingClass
             "IsolationForest": IsolationForest}
 VOLUME_FEATURES = ["mature_sale_lines", "log_order_count"]
 N_FOLDS = 5
-# serialised types the loader will accept; anything else in a bundle is refused (final-spec component 10)
-TRUSTED_TYPES = ["sklearn.pipeline.FeatureUnion"]
 
 
 @dataclass
@@ -115,15 +114,6 @@ def out_of_fold(candidate: Candidate, frame: pd.DataFrame, folds: dict) -> tuple
     return scores, notes
 
 
-def percentile(reference: np.ndarray, values) -> np.ndarray:
-    """Position of each value in the frozen training reference: 100*(less + half of equal)/count. Not a probability."""
-    reference = np.sort(np.asarray(reference, dtype=float))
-    values = np.asarray(values, dtype=float)
-    less = np.searchsorted(reference, values, side="left")
-    equal = np.searchsorted(reference, values, side="right") - less
-    return 100.0 * (less + 0.5 * equal) / len(reference)
-
-
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -198,11 +188,3 @@ def train_experiment(experiment_id: str, train_worlds: list, artifact_root: Path
               "eligible_training_rows": int(len(frame)), "training_positives": int(frame["y_abuse"].sum())}
     (out / "config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     return {"config": config, "candidates": records, "references": [reference]}
-
-
-def load_pipeline(path: Path) -> Pipeline:
-    """Load a fitted pipeline, refusing any serialised type outside the allow-list."""
-    unknown = [t for t in sio.get_untrusted_types(file=path) if t not in TRUSTED_TYPES and not t.startswith(("sklearn.", "numpy."))]
-    if unknown:
-        raise ValueError(f"model file contains types outside the allow-list: {unknown}")
-    return sio.load(path, trusted=sio.get_untrusted_types(file=path))

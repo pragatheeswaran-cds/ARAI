@@ -144,5 +144,5 @@ def test_the_loader_refuses_types_outside_the_allow_list(tmp_path):
 
     path = tmp_path / "hostile.skops"
     sio.dump(FunctionTransformer(func=os.getcwd), path)
-    with pytest.raises(ValueError, match="allow-list"):
+    with pytest.raises(Exception, match="allow-list"):
         modeling.load_pipeline(path)

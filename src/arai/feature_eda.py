@@ -20,8 +20,9 @@ def labelled_frame(world, result) -> pd.DataFrame:
     segments = eda.benign_segments(world)[["customer_id", "legit_heavy_returner", "defective_product_buyer", "benign_household"]]
     frame = result.features.merge(truth, on="customer_id").merge(profile, on="customer_id").merge(segments, on="customer_id")
     frame["world_id"] = world.world_id
-    actions = world.truth["action_truth"]
-    done = actions[actions["completed_action"] & ~actions["parcel_companion"]].groupby("customer_id").size()
+    from arai.evaluation import opportunity_actions
+    actions = opportunity_actions(world.truth["action_truth"])
+    done = actions[actions["completed_action"]].groupby("customer_id").size()
     frame["completed_actions"] = frame["customer_id"].map(done).fillna(0).astype(int)
     claim = frame["deceptive_nonreceipt_claim"] | frame["deceptive_contents_claim"]
     frame["group"] = np.select(

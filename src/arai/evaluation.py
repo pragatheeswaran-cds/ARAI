@@ -5,8 +5,6 @@ from the inference path. Every ratio keeps its numerator and denominator; a zero
 """
 from __future__ import annotations
 
-import hashlib
-import math
 from pathlib import Path
 
 import numpy as np
@@ -14,11 +12,11 @@ import pandas as pd
 
 from arai import dataset, paths
 from arai.generator import load_world
+from arai.ranking import PRIMARY_FRACTION, budget, rank_world, tie_key  # noqa: F401  (tie_key is part of this module's interface)
 
-TIE_NAMESPACE = "review-tie-v02"
 SEGMENTS = ("legit_heavy_returner", "defective_product_buyer", "benign_household")
 ACTION_TYPES = ("deceptive_nonreceipt_claim", "deceptive_contents_claim", "temporary_use_return")
-PRIMARY_FRACTION, SENSITIVITY_FRACTIONS = 0.05, (0.01, 0.10)
+SENSITIVITY_FRACTIONS = (0.01, 0.10)
 BOOTSTRAP_REPETITIONS, BOOTSTRAP_SEED = 1000, 20260926
 MIN_SEGMENT_SIZE = 200
 LINE_KEY = ["order_id", "order_line_no"]
@@ -26,11 +24,6 @@ LINE_KEY = ["order_id", "order_line_no"]
 
 def ratio(numerator, denominator):
     return float(numerator) / float(denominator) if denominator else None
-
-
-def tie_key(world_id: str, customer_id: str) -> str:
-    """Public tie-break: ascending SHA256 of the namespace, world and customer."""
-    return hashlib.sha256(f"{TIE_NAMESPACE}|{world_id}|{customer_id}".encode("utf-8")).hexdigest()
 
 
 def select(frame: pd.DataFrame, score: str, fraction: float = PRIMARY_FRACTION) -> pd.Series:
@@ -42,12 +35,8 @@ def select(frame: pd.DataFrame, score: str, fraction: float = PRIMARY_FRACTION) 
     for world_id, group in frame.groupby("world_id", sort=True):
         if not len(group):
             raise ValueError(f"world {world_id} has no eligible customer")
-        if group[score].isna().any() or not np.isfinite(group[score]).all():
-            raise ValueError(f"world {world_id} has a missing or non-finite score")
-        k = min(len(group), math.ceil(fraction * len(group)))
-        ties = [tie_key(world_id, c) for c in group["customer_id"]]
-        order = group.assign(_tie=ties).sort_values([score, "_tie"], ascending=[False, True], kind="stable").index[:k]
-        selected.loc[order] = True
+        ranks = rank_world(world_id, group["customer_id"], group[score])       # the same rule serving uses
+        selected.loc[group.index[ranks <= budget(len(group), fraction)]] = True
     return selected
 
 
@@ -181,6 +170,24 @@ def coverage(frame: pd.DataFrame, world_ids: list, private_root: Path | None = N
             "segments_below_minimum": [s for s in SEGMENTS if frame[s].sum() < MIN_SEGMENT_SIZE]}
 
 
+def opportunity_actions(actions: pd.DataFrame) -> pd.DataFrame:
+    """Abusive actions counted once per opportunity.
+
+    A whole-parcel claim is one opportunity written as several actions (one per sale line, the further ones
+    marked parcel_companion with the parent's identifier plus "-L<line>"). The opportunity is completed if any
+    of its lines is visible at the cutoff: a companion can be visible while the first line's request falls
+    after the cutoff.
+    """
+    if "parcel_companion" not in actions or not len(actions):
+        return actions
+    parent = actions["action_id"].where(~actions["parcel_companion"], actions["action_id"].str.rsplit("-L", n=1).str[0])
+    completed = actions["completed_action"].groupby(parent).transform("any")
+    first = actions[~actions["parcel_companion"]].copy()
+    first["completed_action"] = completed[first.index]
+    first.loc[first["completed_action"], "uncompleted_reason"] = None
+    return first
+
+
 def error_account(frame: pd.DataFrame, selected: pd.Series, baseline_selected: pd.Series, completed_actions: pd.Series) -> dict:
     """Who the ranking gets wrong at the review budget, and how it differs from the return-rate rule.
 
@@ -198,6 +205,8 @@ def error_account(frame: pd.DataFrame, selected: pd.Series, baseline_selected: p
     fn = {"false_negatives": int(false_negative.sum())}
     for action in ACTION_TYPES:
         fn[action] = int((false_negative & frame[action].astype(bool)).sum())
+    if (completed_actions[y] < 1).any():
+        raise ValueError("a positive customer has no completed abusive action: label and action counts disagree")
     bucket = pd.cut(completed_actions, [0, 1, 3, np.inf], labels=["1", "2-3", "4+"])
     for label in ("1", "2-3", "4+"):
         fn[f"completed_actions_{label}"] = int((false_negative & (bucket == label)).sum())
@@ -216,9 +225,8 @@ def private_counts(world_ids: list, private_root: Path | None = None) -> pd.Data
     frames = []
     for world_id in world_ids:
         world = load_world(world_id, private_root=private_root)
-        actions = world.truth["action_truth"]              # the further lines of a whole-parcel claim are one action
-        done = actions[actions["completed_action"] & ~actions["parcel_companion"]].groupby("customer_id").size() \
-            .rename("completed_actions")
+        actions = opportunity_actions(world.truth["action_truth"])        # a whole-parcel claim is one action
+        done = actions[actions["completed_action"]].groupby("customer_id").size().rename("completed_actions")
         units = world.truth["unit_truth"]
         units = units[units["genuine_fulfilment_cause"].notna()].merge(
             world.tables["sales_order"][["order_id", "customer_id"]], on="order_id")

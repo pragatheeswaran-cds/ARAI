@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.1.0
+  version: 1.2.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -1057,6 +1057,7 @@ components:
       - selected_count
       - model_only_count
       - baseline_only_count
+      - warnings
       properties:
         run_id: *id001
         dataset_id: *id001
@@ -1117,6 +1118,10 @@ components:
           type: integer
           minimum: 0
           nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
     Support:
       type: object
       additionalProperties: false
@@ -1215,6 +1220,7 @@ components:
           - needs_investigation
           - likely_legitimate
           - unresolved
+          - null
           nullable: true
     ReviewRequest:
       type: object
@@ -1571,6 +1577,7 @@ components:
       - config_hash
       - selection_status
       - selected_model_id
+      - selected_candidate_id
       - final_test_status
       properties:
         experiment_id: *id001
@@ -1582,6 +1589,9 @@ components:
           - selected
           - no_selected_model
         selected_model_id:
+          type: string
+          nullable: true
+        selected_candidate_id:
           type: string
           nullable: true
         final_test_status:
@@ -1702,6 +1712,7 @@ components:
           - supervised
           - unsupervised
           - baseline_fallback
+          - null
           nullable: true
     DatasetPage:
       type: object

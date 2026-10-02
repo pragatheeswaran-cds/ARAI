@@ -1,6 +1,6 @@
 # Training dataset, model fitting and validation
 
-Version 1.1 (amended 2026-10-02) | Implementation baseline | Component TRAIN
+Version 1.5 (amended 2026-10-02) | Implementation baseline | Component TRAIN
 
 ## Requirements and boundary
 
@@ -14,7 +14,7 @@ Supervised reference uses 5 folds grouped by world (two held out per fold). Each
 
 Report-only references are fitted beside the candidates and are never candidates: volume_only_logreg (the logreg_c1 settings with only mature_sale_lines and log_order_count as inputs) and analyst_rulebook (component 08). Both take coefficients or thresholds from training worlds only and use the same fold-local fitting for out-of-fold scores. Out-of-fold training scores also feed difficulty calibration (component 05) and the gate dry run (component 09).
 
-Freeze expanded parameters/dependency versions. Convergence/nonfinite output rejects candidate. Training, selection/promotion offline only; no inference refitting. Selected artifact remains original training fit, never refit on validation.
+Training and the gate dry run refuse to run once a validation or test world exists. Freeze expanded parameters/dependency versions. Convergence/nonfinite output rejects candidate. Training, selection/promotion offline only; no inference refitting. Selected artifact remains original training fit, never refit on validation.
 
 ## Inputs, outputs and dependencies
 

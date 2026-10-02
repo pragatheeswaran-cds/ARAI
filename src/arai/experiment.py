@@ -6,16 +6,19 @@ A selected model is never refit on validation, and a failed test never switches 
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from arai import dataset, evaluation, features as F, modeling, selection
+from arai import bundles, dataset, evaluation, features as F, modeling, paths, selection
 from arai.evaluation import PRIMARY_FRACTION, SENSITIVITY_FRACTIONS
 from arai.generator import load_world
+from arai.generator.world import _code_sha256 as generator_code_sha256
 from arai.settings import load_settings
 
 DEFAULT_EXPERIMENT = "EXP-20261002-01"
@@ -41,6 +44,31 @@ def _plain(value):
     raise TypeError(type(value))
 
 
+def _manifest_path(world_id: str, artifact_root=None) -> Path:
+    return Path(artifact_root or paths.ARTIFACT_ROOT) / "worlds" / world_id / "operational" / "manifest.json"
+
+
+def _sealed_worlds_present(settings, artifact_root=None) -> list:
+    """Validation and test worlds that already exist on disk."""
+    seeds = settings.experiment["validation_seeds"] + settings.experiment["test_seeds"]
+    return [f"W{s}" for s in seeds if _manifest_path(f"W{s}", artifact_root).is_file()]
+
+
+def provenance(world_ids: list, artifact_root=None) -> dict:
+    """What produced a report: the repository commit, the code hashes and the manifests of the worlds it used."""
+    def git(*args) -> str | None:
+        try:
+            return subprocess.run(["git", *args], cwd=paths.REPO_ROOT, capture_output=True, text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            return None
+    status = git("status", "--porcelain", "--", "src", "final-spec", "uv.lock")
+    lock = paths.REPO_ROOT / "uv.lock"
+    return {"git_commit": git("rev-parse", "HEAD"), "git_tracked_changes": None if status is None else bool(status),
+            "scoring_code_sha256": bundles.code_sha256(), "generator_code_sha256": generator_code_sha256(),
+            "dependency_lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest() if lock.is_file() else None,
+            "world_manifest_sha256": {w: hashlib.sha256(_manifest_path(w, artifact_root).read_bytes()).hexdigest() for w in world_ids}}
+
+
 def _records(frame: pd.DataFrame) -> list:
     return json.loads(frame.reset_index().to_json(orient="records"))
 
@@ -53,6 +81,8 @@ def train(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, private_r
     out = modeling.experiment_dir(experiment_id, artifact_root)
     if (out / "selection.json").exists():
         raise RuntimeError("this experiment already has a frozen selection; start a new experiment instead of retraining")
+    if _sealed_worlds_present(settings, artifact_root):
+        raise RuntimeError("validation or test worlds already exist; training must precede them (start a new experiment on fresh seeds)")
     reference = dataset.reference_from_worlds(train_worlds)
     for world_id in train_worlds:
         dataset.build_features(world_id, reference, artifact_root)
@@ -145,6 +175,8 @@ def dry_run(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, private
     settings = load_settings()
     out = modeling.experiment_dir(experiment_id, artifact_root)
     train_worlds = [f"W{s}" for s in settings.experiment["train_seeds"]]
+    if _sealed_worlds_present(settings, artifact_root):
+        raise RuntimeError("validation or test worlds already exist; the gate dry run must be recorded before any of them is generated")
     frame = _training_rankings(out, evaluation.evaluation_frame(train_worlds, artifact_root, private_root))
     rankings, selectable = _rankings()
     report = _report(frame, rankings, selectable, _fit_rejections(out), train_worlds, private_root)
@@ -156,6 +188,7 @@ def dry_run(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, private
     payload = {
         "kind": "gate dry run on out-of-fold training scores; diagnostic only, selects nothing",
         "experiment_id": experiment_id, "recorded_at": _now(), "worlds": train_worlds,
+        "provenance": provenance(train_worlds, artifact_root),
         "isolation_forest_scores": "in-sample, optimistic", **report,
         "would_pass": card[(card["role"] == "candidate") & (card["status"] == "passed")].index.tolist(),
         "calibration": {
@@ -180,6 +213,11 @@ def validate(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, privat
     if (out / "selection.json").exists():
         raise RuntimeError("selection is already frozen for this experiment")
     worlds = [f"W{s}" for s in settings.experiment["validation_seeds"]]
+    recorded = datetime.strptime(json.loads((out / "reports" / "dry_run.json").read_text())["recorded_at"], "%Y-%m-%dT%H:%M:%SZ")
+    for world_id in worlds:                              # validation worlds must not have existed when the dry run was recorded
+        written = datetime.fromtimestamp(_manifest_path(world_id, artifact_root).stat().st_mtime, timezone.utc).replace(tzinfo=None)
+        if written < recorded:
+            raise RuntimeError(f"{world_id} was generated before the gate dry run was recorded")
     reference = _reference(out)
     for world_id in worlds:
         dataset.build_features(world_id, reference, artifact_root)
@@ -188,6 +226,7 @@ def validate(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, privat
     report = _report(frame, rankings, selectable, _fit_rejections(out), worlds, private_root)
     card = report.pop("card")
     chosen = selection.choose(card)
+    origin = provenance(worlds, artifact_root)
     evidence = evidence_metrics(worlds, artifact_root, private_root)
     account = None
     if chosen:
@@ -195,7 +234,8 @@ def validate(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, privat
         joined = frame.merge(counts, on=["world_id", "customer_id"], validate="one_to_one")
         account = evaluation.error_account(joined, evaluation.select(joined, chosen), evaluation.select(joined, selection.BASELINE),
                                            joined["completed_actions"])
-    _write(out / "reports" / "validation.json", {"experiment_id": experiment_id, "recorded_at": _now(), "worlds": worlds, **report,
+    _write(out / "reports" / "validation.json", {"experiment_id": experiment_id, "recorded_at": _now(), "worlds": worlds,
+                                                 "provenance": origin, **report,
                                                  "evidence_report_only": evidence, "error_account": account})
     record = {"experiment_id": experiment_id, "frozen_at": _now(), "validation_worlds": worlds,
               "selection_status": "selected" if chosen else "no_selected_model", "selected_model_id": chosen,
@@ -203,7 +243,7 @@ def validate(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, privat
               "rule": "strictly higher precision than the raw-return-rate baseline and no higher false-positive rate in each "
                       "benign segment at the 5% budget; then precision, worst segment rate, registered ordinal",
               "candidates": _records(card[card["role"] == "candidate"][["precision", "status", "reasons", "ordinal"]]),
-              "final_test_status": "not_run"}
+              "provenance": origin, "final_test_status": "not_run"}
     _write(out / "selection.json", record)
     return record | {"card": card}
 
@@ -237,8 +277,11 @@ def final_test(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, priv
     joined = frame.merge(counts, on=["world_id", "customer_id"], validate="one_to_one")
     account = evaluation.error_account(joined, evaluation.select(joined, chosen), evaluation.select(joined, selection.BASELINE),
                                        joined["completed_actions"])
+    frozen = json.loads((out / "candidates" / chosen / "record.json").read_text())["model_sha256"]
+    if frozen != record["selected_model_sha256"]:
+        raise RuntimeError("the selected model's file differs from the one frozen at selection")
     payload = {"experiment_id": experiment_id, "recorded_at": _now(), "worlds": worlds, "selected_model_id": chosen,
-               "final_test_status": status, **report, "coverage_limitations": coverage["segments_below_minimum"],
+               "provenance": provenance(worlds, artifact_root), "final_test_status": status, **report, "coverage_limitations": coverage["segments_below_minimum"],
                "evidence_report_only": evidence_metrics(worlds, artifact_root, private_root), "error_account": account}
     _write(out / "reports" / "test.json", payload)
     record["final_test_status"] = status

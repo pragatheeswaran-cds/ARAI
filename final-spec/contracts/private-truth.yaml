@@ -108,6 +108,9 @@ tables:
       whole parcel; parcel_companion marks its actions on sale lines other than the
       one first chosen, which are excluded from style targeting truth and from counts
       of opportunities
+    - a whole-parcel claim is one opportunity; it counts as completed when any of its
+      actions is completed (a companion line can be visible at the cutoff while the
+      first line's request falls after it)
   customer_truth:
     key:
     - world_id

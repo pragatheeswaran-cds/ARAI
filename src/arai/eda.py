@@ -100,8 +100,8 @@ def distributions(world) -> dict:
 
 def _opportunities(world) -> pd.DataFrame:
     """Abusive actions counted once per opportunity: the further lines of a whole-parcel claim are left out."""
-    actions = world.truth["action_truth"]
-    return actions[~actions["parcel_companion"]] if "parcel_companion" in actions else actions
+    from arai.evaluation import opportunity_actions
+    return opportunity_actions(world.truth["action_truth"])
 
 
 def _requests(world) -> pd.DataFrame:
@@ -588,6 +588,16 @@ def nonreceipt_orders(requests: pd.DataFrame) -> pd.DataFrame:
     return per_order
 
 
+def _mixed_orders(requests: pd.DataFrame) -> pd.Series:
+    """Among orders with a non-receipt claim, the share that also carry an item return on a different line, by kind of claim."""
+    claims = requests[requests["reason_code"] == "item_not_received"][["order_id", "order_line_no", "kind"]]
+    items = requests[requests["group"] != "transaction claim"][["order_id", "order_line_no"]].rename(columns={"order_line_no": "item_line"})
+    joined = claims.merge(items, on="order_id", how="left")
+    joined["mixed"] = joined["item_line"].notna() & (joined["item_line"] != joined["order_line_no"])
+    per_order = joined.groupby(["order_id", "kind"])["mixed"].any().reset_index()
+    return per_order.groupby("kind")["mixed"].mean()
+
+
 def artefact_audit(world) -> pd.DataFrame:
     """Could anything mechanical tell an abusive request from an honest one? One column per kind of request.
 
@@ -610,6 +620,9 @@ def artefact_audit(world) -> pd.DataFrame:
         "claims on multi-unit lines: share claiming every unit": multi_unit.groupby("kind").apply(
             lambda g: (g["quantity_returned"] == g["line_quantity"]).mean(), include_groups=False),
         "non-receipt on multi-line orders: share covering the whole order": parcels.groupby("kind")["whole_order"].mean(),
+        "non-receipt on multi-line orders: orders claiming several lines but not all": parcels.groupby("kind").apply(
+            lambda g: int(((g["claimed_lines"] >= 2) & ~g["whole_order"]).sum()), include_groups=False),
+        "non-receipt orders: share that also have an item return on another line": _mixed_orders(requests),
         "claims: median days after delivery": claims.groupby("kind")["days"].median(),
         "claims: 95th percentile days": claims.groupby("kind")["days"].quantile(0.95),
         "claims: maximum days": claims.groupby("kind")["days"].max(),

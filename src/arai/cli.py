@@ -1,4 +1,8 @@
-"""Command line: `arai generate` and `arai validate` (project-relative paths, final-spec component 15)."""
+"""Command line for every step, with project-relative paths (final-spec component 15).
+
+Offline:  generate -> validate -> train -> dry-run -> select -> test -> publish
+Serving:  db-migrate -> serve (API, optionally with the worker) / worker / register
+"""
 from __future__ import annotations
 
 import argparse
@@ -31,8 +35,105 @@ def _validate(args) -> int:
     return 0 if report.accepted else 1
 
 
+def _card(card) -> str:
+    columns = ["role", "status", "k", "true_positives", "precision", "recall", "legit_heavy_returner_fpr",
+               "defective_product_buyer_fpr", "benign_household_fpr", "reasons"]
+    return card[columns].round(4).to_string()
+
+
+def _train(args) -> int:
+    from arai import experiment
+    result = experiment.train(args.experiment)
+    for record in result["candidates"] + result["references"]:
+        print(f"{record['candidate_id']}: {record['status']} in {record['duration_seconds']}s ({record['reference_kind']})")
+    return 0
+
+
+def _dry_run(args) -> int:
+    from arai import experiment
+    result = experiment.dry_run(args.experiment)
+    print(_card(result["card"]))
+    print(json.dumps(result["calibration"], indent=1))
+    return 0
+
+
+def _select(args) -> int:
+    from arai import experiment
+    result = experiment.validate(args.experiment)
+    print(_card(result["card"]))
+    print("selection:", result["selection_status"], result["selected_model_id"])
+    return 0
+
+
+def _test(args) -> int:
+    from arai import experiment
+    result = experiment.final_test(args.experiment)
+    print(_card(result["card"]))
+    print("final test:", result["final_test_status"])
+    return 0 if result["final_test_status"] == "passed" else 2
+
+
+def _publish(args) -> int:
+    from arai import publishing
+    result = publishing.publish(args.experiment, demo_world=args.demo_world)
+    print(json.dumps({k: result[k] for k in ("pointer", "baseline_id", "model_id", "report")}, indent=1))
+    return 0
+
+
+def _service(args):
+    from arai.service.config import from_env
+    return from_env()
+
+
+def _db_migrate(args) -> int:
+    from arai.service.store import Store
+    applied = Store(_service(args).database_url).migrate()
+    print("applied:", applied or "nothing new")
+    return 0
+
+
+def _serve(args) -> int:
+    import uvicorn
+
+    from arai.service.api import create_app
+    uvicorn.run(create_app(_service(args), with_worker=args.with_worker), host=args.host, port=args.port, log_level="info")
+    return 0
+
+
+def _worker(args) -> int:
+    import logging
+
+    from arai.service import worker
+    from arai.service.store import Store
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    config = _service(args)
+    store = Store(config.database_url)
+    store.migrate()
+    worker.reconcile(config, store)
+    worker.run_forever(config, store)
+    return 0
+
+
+def _register(args) -> int:
+    """Register a world directory through the same validation and storage path the upload route uses."""
+    from arai.operational import TABLES
+    from arai.service import datasets
+    from arai.service.store import Store
+    config = _service(args)
+    store = Store(config.database_url)
+    store.migrate()
+    files = {name: (args.directory / f"{name}.csv").read_bytes() for name in TABLES}
+    try:
+        row, created = datasets.register(store, config.artifact_root, (args.directory / "manifest.json").read_text(encoding="utf-8"), files)
+    except datasets.Rejected as rejected:
+        print(json.dumps(rejected.report.to_dict() if rejected.report else {"message": rejected.message}, indent=2))
+        return 1
+    print(f"{row['id']}: world {row['world_id']}, {row['customer_count']} customers ({'registered' if created else 'already registered'})")
+    return 0
+
+
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="arai", description="ARAI synthetic worlds")
+    parser = argparse.ArgumentParser(prog="arai", description="ARAI: synthetic worlds, training, evaluation and serving")
     commands = parser.add_subparsers(dest="command", required=True)
     generate = commands.add_parser("generate", help="generate, write and validate one or more worlds")
     generate.add_argument("--seed", type=int, nargs="+", required=True, help="world seeds from contracts/experiment.yaml")
@@ -44,6 +145,30 @@ def main(argv=None) -> int:
     validate = commands.add_parser("validate", help="validate an operational world directory; nonzero exit on rejection")
     validate.add_argument("directory", type=Path)
     validate.set_defaults(run=_validate)
+
+    for name, handler, text in (
+            ("train", _train, "freeze training features and fit the candidates and references (training worlds only)"),
+            ("dry-run", _dry_run, "gate dry run and calibration check on out-of-fold training scores; selects nothing"),
+            ("select", _select, "score the validation worlds, apply the gate and freeze the selection"),
+            ("test", _test, "evaluate the frozen selection once on the test worlds")):
+        command = commands.add_parser(name, help=text)
+        command.add_argument("--experiment", default="EXP-20261002-01")
+        command.set_defaults(run=handler)
+    publish = commands.add_parser("publish", help="build bundles, set the active pointer and write the published experiment report")
+    publish.add_argument("--experiment", default="EXP-20261002-01")
+    publish.add_argument("--demo-world", default=None, help="export this world's synthetic truth for the evaluation page")
+    publish.set_defaults(run=_publish)
+
+    commands.add_parser("db-migrate", help="apply database migrations (DATABASE_URL)").set_defaults(run=_db_migrate)
+    serve = commands.add_parser("serve", help="run the API (DATABASE_URL, ARTIFACT_ROOT, APP_PROFILE, UI_ORIGINS)")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--with-worker", action="store_true", help="also run the single scoring worker in this process")
+    serve.set_defaults(run=_serve)
+    commands.add_parser("worker", help="run the single scoring worker").set_defaults(run=_worker)
+    register = commands.add_parser("register", help="validate and register an operational world directory as a dataset")
+    register.add_argument("directory", type=Path)
+    register.set_defaults(run=_register)
     args = parser.parse_args(argv)
     return args.run(args)
 

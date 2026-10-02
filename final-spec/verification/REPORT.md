@@ -61,3 +61,9 @@ Limits are unchanged: nothing is built or measured. The thresholds and distribut
 - The package verifier passes after the rebuild; all YAML contracts and assets parse; 101 acceptance criteria.
 - The generator was changed to match and all fixture, training and stress worlds were regenerated and validated. The exploration's artefact audit shows honest, solo-abuse and ring-abuse claims within a few points of each other on reason code, claim line and timing.
 - Features (17 model features, 2 evidence-only measures), the five candidates and the two report-only references were built and trained on training worlds; the gate dry run and the calibration disclosure are recorded. Evidence in the acceptance register was recorded against the regenerated worlds. No validation, test or demo world existed at this point.
+
+## Amendment 1.5 checks (2026-10-02)
+
+- The package verifier passes after the rebuild; the OpenAPI contract (1.2.0) validates as OpenAPI 3.0; 101 acceptance criteria.
+- Bundles, storage, batch scoring and the API were built against the contract; every response body in the service tests is validated against the bundled OpenAPI schemas.
+- No validation, test or demo world existed at this point.

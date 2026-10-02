@@ -93,6 +93,53 @@ History of the best out-of-fold figure today: 18 features on the v1.3 worlds fai
 against 0.042 for the rule); 16 features (AM-26) gave 0.63 on the v1.3 worlds and 0.65 on the v1.4 worlds; 17
 features (AM-27) give 0.69.
 
+## Review before validation
+
+An independent review (`records/2026-10-02-training-critic-review.md`) reproduced every out-of-fold score and
+the whole scorecard, found no leakage, and asked for the following before validation worlds were generated.
+
+**1. How much of the result rests on the simulation's return-timing law.** In the simulation, 0.46% of honest
+item-return lines fall in the last quarter of the return window against 47.5% of temporary-use lines. Three
+features read timing. Out of fold on the ten training worlds, precision at the 5% budget (re-measured here):
+
+| Feature set | Boosted trees, 15 leaves | Logistic | Temporary-use recall (boosted) |
+|---|---|---|---|
+| All 17 features | 0.694 | 0.614 | 0.64 |
+| Without `late_return_lines` | 0.652 | 0.552 | 0.52 |
+| Without any timing feature | **0.561** | 0.504 | 0.21 |
+| Return-rate rule | 0.237 | | 0.16 |
+
+Every row passes all three gate legs. **Decision (AM-31): the timing laws stay as specified and the dependence
+is disclosed.** Late in-window returns are the behaviour the wardrobing scenario is about, so reading them is
+not an artefact of the kind removed earlier; but real customers procrastinate, and on real data this signal
+would be far weaker. The claim the demonstration makes must therefore be the one that survives without it:
+*with no timing feature at all the model is at 0.56 against 0.24 for the rule.* 0.69 is what this simulation
+gives; it is not an estimate for real returns. Softening the honest timing law would have needed a new
+amendment, regeneration and retraining; it was not done, and after validation it cannot be done inside this
+experiment. This is an open point for the project owner.
+
+**2. The heavy-returner leg of the gate is circular.** The segment is honest customers in the top tenth by
+return rate, and the rule ranks by return rate, so every one of the rule's 2,165 false positives is a heavy
+returner by construction and no candidate that is not itself a rate can fail this leg. It is reported, but it
+is not evidence. The household and defective-buyer legs are the informative ones.
+
+**3. What the model is.** Of the boosted model's 867 false positives at the budget, 73% are honest repeat
+claimants, 82% have a claim line and 27% a late return (reviewer's measurement). A hand rule that adds claim
+lines and late return lines scores 0.51; the model adds about 18 points by weighting rate, volume and linked
+claims. Its selections average 23.6 mature sale lines against 14.6 for the rule and 20.2 overall, so volume
+helps the model even though a volume-only model is useless. Recall by number of completed actions: 0.27 for
+one, 0.64 for two or three, 0.89 for four or more. It selects 2 of about 298 ring members who have not acted.
+
+**4. Chance of a gate failure on five validation worlds** (reviewer, 20,000 resamples of five training worlds):
+boosted 0.0000, logistic 0.0003, isolation forests 0.81. In-sample precision of the final fit is 0.733 against
+0.694 out of fold, so about 0.69-0.71 is expected on validation.
+
+**5. Order and provenance.** `train` and `dry-run` now refuse to run once a validation or test world exists;
+`select` refuses validation worlds older than the dry-run record; every report carries the repository commit,
+the code hashes and the hashes of the world manifests it used; the final test checks that the selected model
+file is the one frozen at selection. A whole-parcel claim counts as one action, completed if any of its lines
+is visible at the cutoff (four cases in ten worlds had only a companion line visible).
+
 ## Known deviations and limits
 
 - The frozen feature reference (category return rates) is fitted on all ten training worlds, not per fold. No

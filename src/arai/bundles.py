@@ -21,15 +21,18 @@ import numpy as np
 import pandas as pd
 import sklearn
 import skops
+import skops.io as sio
 
 from arai import features as F
-from arai import modeling, paths
+from arai import paths
 
 BUNDLE_SCHEMA = "1.0"
 BASELINE_KIND = "baseline_fallback"
 ADAPTERS = {"supervised": "decision_function", "unsupervised": "negative_score_samples", BASELINE_KIND: "raw_return_rate"}
 BASELINE_LABEL = "Return-rate reference percentile"
-CODE_FILES = ("features.py", "dataset.py", "modeling.py", "bundles.py")
+CODE_FILES = ("features.py", "dataset.py", "modeling.py", "bundles.py", "ranking.py")
+# serialised types the loader accepts beyond scikit-learn's and numpy's own; anything else is refused
+TRUSTED_TYPES = ["sklearn.pipeline.FeatureUnion"]
 
 
 class BundleError(Exception):
@@ -52,6 +55,24 @@ class Bundle:
     @property
     def reference(self) -> F.Reference:
         return F.Reference.from_dict(self.manifest["feature_reference"])
+
+
+def load_pipeline(path: Path):
+    """Load a fitted pipeline, refusing any serialised type outside the allow-list."""
+    found = sio.get_untrusted_types(file=path)
+    unknown = [t for t in found if t not in TRUSTED_TYPES and not t.startswith(("sklearn.", "numpy."))]
+    if unknown:
+        raise BundleError(f"model file contains types outside the allow-list: {unknown}")
+    return sio.load(path, trusted=found)
+
+
+def percentile(reference: np.ndarray, values) -> np.ndarray:
+    """Position of each value in the frozen training reference: 100*(less + half of equal)/count. Not a probability."""
+    reference = np.sort(np.asarray(reference, dtype=float))
+    values = np.asarray(values, dtype=float)
+    less = np.searchsorted(reference, values, side="left")
+    equal = np.searchsorted(reference, values, side="right") - less
+    return 100.0 * (less + 0.5 * equal) / len(reference)
 
 
 def bundle_root(artifact_root: Path | None = None) -> Path:
@@ -179,7 +200,7 @@ def load_bundle(model_id: str, artifact_root: Path | None = None) -> Bundle:
             raise BundleError(f"{model_id}: feature schema differs from the feature contract in this installation")
         if manifest["model_sha256"] != files["files"].get("model.skops"):
             raise BundleError(f"{model_id}: estimator hash mismatch")
-        pipeline = modeling.load_pipeline(directory / "model.skops")           # refuses types outside the allow-list
+        pipeline = load_pipeline(directory / "model.skops")                    # refuses types outside the allow-list
     reference = pd.read_parquet(directory / "reference_scores.parquet")["score"].to_numpy()
     if len(reference) != manifest["reference_count"] or _logical_reference_hash(reference) != manifest["reference_logical_sha256"]:
         raise BundleError(f"{model_id}: score reference does not match its recorded hash")
@@ -199,7 +220,7 @@ def raw_scores(bundle: Bundle, frame: pd.DataFrame) -> np.ndarray:
 
 def reference_percentile(bundle: Bundle, scores) -> np.ndarray:
     """Position in the frozen training reference, 0-100. A percentile, not a probability."""
-    return modeling.percentile(bundle.reference_scores, scores)
+    return percentile(bundle.reference_scores, scores)
 
 
 # ------------------------------------------------------------------ the active pointer
