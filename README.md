@@ -20,6 +20,8 @@ Existing code/synthetic-data assets remain preserved; the final package bundles 
 The Python side is managed with [uv](https://docs.astral.sh/uv/); every dependency lives in the project's `.venv`.
 The web side is a React/Vite app under `web/`.
 
+**Day-to-day operation (start, stop, validate, troubleshoot) is in [RUNBOOK.md](RUNBOOK.md).**
+
 ### Run the demonstration locally (no Docker)
 
 ```
