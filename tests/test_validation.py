@@ -132,3 +132,64 @@ def test_money_identity_is_checked(copy):
         return frame
     _rewrite(copy, "sales_order", change)
     assert "A001" in _rules(validate_world(copy))
+
+
+def test_unknown_category_and_changed_catalog_are_rejected_with_the_sku_key(copy):
+    def change(frame):
+        frame.loc[0, "category"] = "Sari"
+        frame.loc[1, "unit_price"] = "1.00"
+        return frame
+    _rewrite(copy, "sku_master", change)
+    report = validate_world(copy)
+    assert "T002" in _rules(report)                    # the enum failure stops validation before the catalog comparison
+    assert any(v["rule_id"] == "T002" and v["row_key"] == "SKU001" for v in report.violations)
+
+
+def test_changed_catalog_price_is_rejected(copy):
+    def change(frame):
+        frame.loc[1, "unit_price"] = "1.00"
+        return frame
+    _rewrite(copy, "sku_master", change)
+    report = validate_world(copy)
+    assert any(v["rule_id"] == "G002" and v["row_key"] == "SKU002" for v in report.violations)
+
+
+def test_changed_codebook_is_rejected(copy):
+    _rewrite(copy, "reason_code", lambda f: f.assign(is_high_risk=["1"] + list(f["is_high_risk"][1:])))
+    assert "G001" in _rules(validate_world(copy))
+
+
+def test_violations_name_the_offending_key(copy):
+    def change(frame):
+        frame.loc[0, "customer_id"] = frame.loc[frame["customer_id"] != frame.loc[0, "customer_id"], "customer_id"].iloc[0]
+        return frame
+    first = pd.read_csv(copy / "return_order.csv", dtype=str).loc[0, "return_order_id"]
+    _rewrite(copy, "return_order", change)
+    report = validate_world(copy)
+    ownership = [v for v in report.violations if v["rule_id"] == "F002"]
+    assert ownership and ownership[0]["table"] == "return_order_line" and ownership[0]["row_key"].startswith(first)
+
+
+def test_command_line_exits_nonzero_on_a_rejected_world(copy, capsys):
+    from arai.cli import main
+    assert main(["validate", str(copy)]) == 0
+    (copy / "leak.csv").write_text("x\n", encoding="utf-8")
+    assert main(["validate", str(copy)]) == 1
+    assert '"accepted": false' in capsys.readouterr().out
+
+
+def test_optional_evidence_may_be_empty_without_losing_customers(written, world):
+    lines = pd.read_csv(written["operational"] / "return_order_line.csv", dtype=str, keep_default_na=False)
+    assert (lines["reason_text"] == "").all() and (lines["disposition"] == "").all()
+    report = validate_world(written["operational"])
+    assert report.accepted and report.counts["customer_master"] == world.n_customers
+
+
+def test_catalog_hash_and_adapter_transforms_are_recorded(written):
+    import hashlib
+    from arai.paths import SPEC_ROOT
+    source = hashlib.sha256((SPEC_ROOT / "assets" / "sku_master_source.csv").read_bytes()).hexdigest()
+    assert written["manifest"]["generator"]["catalog_sha256"] == source
+    private = json.loads((written["private"] / "private-manifest.json").read_text(encoding="utf-8"))
+    assert private["catalog_transforms"] == ["rename sku_id->sku", "rename color->colour", "rename color_id->colour_id",
+                                             "is_occasion_wear True/False->1/0", "active_flag True/False->1/0"]

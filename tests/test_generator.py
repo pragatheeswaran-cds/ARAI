@@ -169,3 +169,49 @@ def test_every_world_marks_eight_percent_of_styles_defect_prone(world):
     product = world.truth["product_truth"]
     assert (product["defect_state"] == "defect_prone").sum() == 3            # round(0.08 * 37)
     assert product.loc[product["defect_state"] == "defect_prone", "latent_defect_probability"].eq(0.25).all()
+
+
+def test_two_request_dates_under_one_header_keep_their_own_times(world):
+    returns = world.tables["return_order_line"]
+    dates = returns.assign(day=returns["requested_at"].dt.normalize()).groupby("return_order_id")["day"].nunique()
+    assert (dates > 1).any(), "fixture world should contain a header spanning two request dates"
+    header_id = dates[dates > 1].index[0]
+    lines = returns[returns["return_order_id"] == header_id]
+    assert lines["requested_at"].nunique() > 1 and (lines["available_at"] == lines["requested_at"]).all()
+    header = world.tables["return_order"].set_index("return_order_id").loc[header_id]
+    assert header["return_created_at"] == lines["requested_at"].max() == header["available_at"]
+
+
+def test_return_lines_are_aggregated_before_joining_sales():
+    from arai import diagnostics
+    world = generate_world(2002)
+    returns = world.tables["return_order_line"]
+    assert returns.duplicated(LINE_KEY).any(), "some sale lines should have more than one return line"
+    lines = diagnostics.sale_lines(world)
+    assert len(lines) == len(world.tables["sales_order_line"])              # no duplicated exposure
+    active = returns[returns["line_status"] != "withdrawn"]
+    assert lines["requested_units"].sum() == active["quantity_returned"].sum()
+    assert (lines["requested_units"] <= lines["quantity"]).all()
+
+
+def test_temporary_use_prefers_orders_with_occasion_wear():
+    from arai.generator import abuse
+    builder = WorldBuilder(2001)
+    builder.build_profiles(); builder.build_relationships(); builder.build_orders(); builder.build_honest_returns()
+    units = builder.units.assign(reserved=builder.reserved, occasion=builder.ctx.catalog.sku_occasion[builder.units["sku_idx"].to_numpy()])
+    free = units[~units["reserved"]]
+    with_occasion = set(free.loc[free["occasion"], "order_id"])
+    per_customer = free[free["order_id"].isin(with_occasion)].groupby("cust")["order_id"].nunique()
+    cust = per_customer.idxmax()
+    # a rate of 0.4 gives probability 1.0 on orders with occasion wear (0.4 x 2.5) and 0.22 otherwise (0.4 x 0.55)
+    profiles = builder.profiles.assign(claim_propensity=False, temporary_use_propensity=False,
+                                       claim_action_rate=0.0, temporary_use_action_rate=0.0)
+    profiles.loc[cust, ["temporary_use_propensity", "temporary_use_action_rate"]] = [True, 0.4]
+    actions, events = abuse.run_solo_actions(builder.ctx, profiles, builder.orders, builder.units, builder.reserved.copy())
+    acted = set(events["order_id"])
+    occasion_orders = set(free.loc[(free["cust"] == cust) & free["occasion"], "order_id"])
+    assert occasion_orders and occasion_orders <= acted                      # every such order produces an action
+    chosen = events[events["order_id"].isin(occasion_orders)]
+    assert builder.ctx.catalog.sku_occasion[chosen["sku_idx"].to_numpy(dtype=int)].all()   # on the occasion-wear unit
+    other_orders = set(free.loc[free["cust"] == cust, "order_id"]) - occasion_orders
+    assert len(acted & other_orders) < len(other_orders) or not other_orders

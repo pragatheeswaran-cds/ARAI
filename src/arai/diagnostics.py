@@ -12,19 +12,22 @@ from itertools import combinations
 import numpy as np
 import pandas as pd
 
-from arai.generator.world import World
 
 CLAIM_CODES = ("wrong_item_sent", "missing_parts", "item_not_received", "empty_package")
 QUALITY_CODES = ("defective", "poor_quality", "not_as_described")
 ELIGIBLE_MIN_LINES = 3      # experiment.yaml eligibility
 FANOUT_CAP = 25             # an identifier shared by more accounts than this is dropped
 LINK_DAYS = 7
+# style signals (final-spec component 06; the targeting share was confirmed on the training worlds, AM-17)
+QUALITY_DAMAGE_SHARE = 0.30
+TARGETING_LINKED_CLAIMERS = 3
+TARGETING_LINKED_SHARE = 0.05
 
 
-def sale_lines(world: World) -> pd.DataFrame:
+def sale_lines(world) -> pd.DataFrame:
     """Sale lines with customer, style, maturity and non-withdrawn requested units."""
     t = world.tables
-    cutoff = pd.Timestamp(world.context.s.snapshot_date)
+    cutoff = pd.Timestamp(world.snapshot_date)
     lines = t["sales_order_line"].merge(t["sales_order"][["order_id", "customer_id", "order_date"]], on="order_id") \
                                  .merge(t["sku_master"][["sku", "style_id", "category", "is_occasion_wear"]], on="sku")
     lines["mature"] = (lines["line_status"] == "delivered") & (
@@ -36,7 +39,7 @@ def sale_lines(world: World) -> pd.DataFrame:
     return lines
 
 
-def customer_summary(world: World) -> pd.DataFrame:
+def customer_summary(world) -> pd.DataFrame:
     """One row per customer: mature exposure, raw return rate, eligibility and private label."""
     lines = sale_lines(world)
     mature = lines[lines["mature"]]
@@ -62,7 +65,7 @@ def _tie_break(world_id: str, customer_id: str) -> str:
     return hashlib.sha256(f"review-tie-v02|{world_id}|{customer_id}".encode("utf-8")).hexdigest()
 
 
-def top_fraction(world: World, summary: pd.DataFrame, score: str, fraction: float = 0.05) -> pd.DataFrame:
+def top_fraction(world, summary: pd.DataFrame, score: str, fraction: float = 0.05) -> pd.DataFrame:
     """The review selection: top ceil(fraction*N) eligible customers by score, ties by the public hash rule."""
     eligible = summary[summary["eligible"]].copy()
     eligible["tie"] = [_tie_break(world.world_id, c) for c in eligible["customer_id"]]
@@ -70,7 +73,7 @@ def top_fraction(world: World, summary: pd.DataFrame, score: str, fraction: floa
     return eligible.sort_values([score, "tie"], ascending=[False, True], kind="stable").head(k)
 
 
-def precision_at(world: World, summary: pd.DataFrame, score: str, fraction: float = 0.05) -> dict:
+def precision_at(world, summary: pd.DataFrame, score: str, fraction: float = 0.05) -> dict:
     selected = top_fraction(world, summary, score, fraction)
     positives = int(summary.loc[summary["eligible"], "y_abuse"].sum())
     hits = int(selected["y_abuse"].sum())
@@ -78,7 +81,7 @@ def precision_at(world: World, summary: pd.DataFrame, score: str, fraction: floa
             "recall": hits / positives if positives else None, "eligible_positives": positives}
 
 
-def observed_graph(world: World) -> dict:
+def observed_graph(world) -> dict:
     """Supported neighbours from operational identifiers: an edge needs at least two shared identifier types."""
     orders = world.tables["sales_order"]
     shared = {}
@@ -95,7 +98,7 @@ def observed_graph(world: World) -> dict:
     return neighbours
 
 
-def style_evidence(world: World) -> pd.DataFrame:
+def style_evidence(world) -> pd.DataFrame:
     """Style-level quality and targeting evidence (final-spec component 06) beside the private style truth."""
     t = world.tables
     lines = sale_lines(world)
@@ -128,8 +131,8 @@ def style_evidence(world: World) -> pd.DataFrame:
     out["damage_share"] = np.where(out["requested_units"] > 0, out["quality_units"] / out["requested_units"].replace(0, np.nan), np.nan)
     out["claim_share"] = np.where(out["requested_units"] > 0, out["claim_units"] / out["requested_units"].replace(0, np.nan), np.nan)
     out["linked_claim_share"] = np.where(out["claim_lines"] > 0, out["linked_claim_lines"] / out["claim_lines"].replace(0, np.nan), np.nan)
-    out["quality_signal"] = out["damage_share"] >= 0.30
-    out["targeting_signal"] = (out["linked_claimers"] >= 3) & (out["linked_claim_share"] >= 0.10)
+    out["quality_signal"] = out["damage_share"] >= QUALITY_DAMAGE_SHARE
+    out["targeting_signal"] = (out["linked_claimers"] >= TARGETING_LINKED_CLAIMERS) & (out["linked_claim_share"] >= TARGETING_LINKED_SHARE)
     supported = out["mature_sale_lines"] >= 20
     out["state"] = np.select(
         [~supported, (out["requested_units"] == 0) & (out["claim_lines"] == 0), out["quality_signal"] & out["targeting_signal"],
@@ -139,7 +142,7 @@ def style_evidence(world: World) -> pd.DataFrame:
     return out.join(truth).reset_index()
 
 
-def generation_report(world: World) -> dict:
+def generation_report(world) -> dict:
     """Headline checks of realised behaviour against the generation targets."""
     t, truth = world.tables, world.truth
     lines = sale_lines(world)

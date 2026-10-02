@@ -112,6 +112,8 @@ def build_base_orders(ctx: Context, profiles: pd.DataFrame, rel: Relationships):
             "u_cancel": cancel_u[:, 0], "u_cancel_day": cancel_u[:, 1],
         })
 
+    if not order_parts:
+        return None, None
     orders = pd.DataFrame({k: np.concatenate([p[k] for p in order_parts]) for k in order_parts[0]})
     offsets = np.concatenate([[0], np.cumsum([len(p["seq"]) for p in order_parts])[:-1]])
     lines = pd.DataFrame({k: np.concatenate([p[k] for p in line_parts]) for k in line_parts[0]})

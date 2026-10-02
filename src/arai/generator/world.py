@@ -36,6 +36,24 @@ class World:
     context: Context = field(repr=False)
     summary: dict = field(default_factory=dict)
 
+    @property
+    def snapshot_date(self):
+        return self.context.s.snapshot_date
+
+
+@dataclass
+class StoredWorld:
+    """A world read back from disk: the same tables and truth, without the generation context."""
+    world_id: str
+    purpose: str
+    tables: dict
+    truth: dict
+    manifest: dict = field(repr=False)
+
+    @property
+    def snapshot_date(self):
+        return pd.Timestamp(self.manifest["cutoff"][:10]).date()
+
 
 def _concat(frames: list) -> pd.DataFrame:
     frames = [f for f in frames if f is not None and len(f)]
@@ -68,6 +86,9 @@ class WorldBuilder:
 
     def build_orders(self):
         orders, lines = sales.build_base_orders(self.ctx, self.profiles, self.rel)
+        if orders is None:                      # nobody ordered (all-dormant boundary fixture)
+            self.orders = self.lines = self.units = pd.DataFrame()
+            return self.orders, self.lines
         self.orders = orders
         self.lines = sales.apply_fulfilment(self.ctx, lines)
         self.units = sales.expand_units(self.lines)
@@ -130,10 +151,40 @@ class WorldBuilder:
         world.summary = {name: len(table) for name, table in tables.items()}
         return world
 
+    def _finalize_without_orders(self) -> World:
+        """A world in which no account has ordered: the reference tables plus empty transaction tables."""
+        ctx, schema = self.ctx, _schema(self.ctx.s.spec_root)
+        tables = {name: assemble.empty_table(schema[name]["columns"]) for name in assemble.OPERATIONAL_TABLES}
+        reference = assemble.build_reference_tables(ctx, self.profiles)
+        tables.update({name: reference[name] for name in ("customer_master", "sku_master", "reason_code")})
+        defect_prone, fit_issue = returns.product_truth_draws(ctx)
+        style_ids = ctx.catalog.styles["style_id"].to_numpy()
+        defaults = ctx.s.defaults["defect_unit_probability"]
+        truth = {
+            "customer_profile": self.profiles.drop(columns=["signup_date", "eligible_start", "eligible_days", "abuse_category",
+                                                            "allocation_weight"]).assign(world_id=ctx.world_id),
+            "customer_truth": pd.DataFrame({
+                "world_id": ctx.world_id, "customer_id": ctx.customer_ids, "y_abuse": 0, "deceptive_nonreceipt_claim": False,
+                "deceptive_contents_claim": False, "temporary_use_return": False, "coordinated_action_flag": False,
+                "household_id": self.rel.household_id, "coordination_group_id": self.rel.coordination_group_id,
+                "shared_location_id": self.rel.shared_location_id}),
+            "relationship_truth": self.rel.truth,
+            "product_truth": pd.DataFrame({
+                "world_id": ctx.world_id, "style_id": style_ids, "defect_state": np.where(defect_prone, "defect_prone", "ordinary"),
+                "latent_defect_probability": np.where(defect_prone, defaults["defect_prone_style"], defaults["ordinary_style"]),
+                "hot_listed": False, "targeting_level": "none", "targeted": False}),
+        }
+        world = World(world_id=ctx.world_id, seed=ctx.seed, n_customers=ctx.n, purpose=ctx.s.purpose_of(ctx.seed),
+                      abuse_enabled=ctx.abuse_enabled, tables=tables, truth=truth, context=ctx)
+        world.summary = {name: len(table) for name, table in tables.items()}
+        return world
+
     def run(self) -> World:
         self.build_profiles()
         self.build_relationships()
         self.build_orders()
+        if not len(self.orders):
+            return self._finalize_without_orders()
         self.build_honest_returns()
         self.build_abuse()
         return self.finalize()
@@ -174,8 +225,10 @@ def _sha256(path: Path) -> str:
 
 
 def _code_sha256() -> str:
+    """Hash of the code that determines a world's content: the generator, catalog adapter, settings and streams."""
     h = hashlib.sha256()
-    for path in sorted((paths.REPO_ROOT / "src" / "arai").rglob("*.py")):
+    package = paths.REPO_ROOT / "src" / "arai"
+    for path in sorted([*(package / "generator").rglob("*.py"), package / "catalog.py", package / "settings.py", package / "rng.py"]):
         h.update(path.relative_to(paths.REPO_ROOT).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
     return h.hexdigest()
 
@@ -223,3 +276,13 @@ def write_world(world: World, artifact_root: Path | None = None, private_root: P
                         "files": truth_files}
     (private / "private-manifest.json").write_text(json.dumps(private_manifest, indent=2) + "\n", encoding="utf-8")
     return {"operational": operational, "parquet": parquet, "private": private, "manifest": manifest}
+
+
+def load_world(world_id: str, artifact_root: Path | None = None, private_root: Path | None = None) -> StoredWorld:
+    """Read a written world: operational tables from Parquet and private truth from its separate root."""
+    base = Path(artifact_root or paths.ARTIFACT_ROOT) / "worlds" / world_id
+    private = Path(private_root or paths.PRIVATE_TRUTH_ROOT) / world_id
+    manifest = json.loads((base / "operational" / "manifest.json").read_text(encoding="utf-8"))
+    tables = {name: pd.read_parquet(base / "parquet" / f"{name}.parquet") for name in assemble.OPERATIONAL_TABLES}
+    truth = {path.stem: pd.read_parquet(path) for path in sorted(private.glob("*.parquet"))}
+    return StoredWorld(world_id=manifest["world_id"], purpose=manifest["purpose"], tables=tables, truth=truth, manifest=manifest)

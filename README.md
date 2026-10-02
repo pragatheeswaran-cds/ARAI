@@ -8,8 +8,9 @@ It contains separate component requirements, acceptance criteria, bundled contra
 - [Decision provenance](final-spec/DECISIONS.md)
 - [Package verification](final-spec/verification/REPORT.md)
 
-The folder is at version 1.1 (amended 2026-10-02; see the amendment section of the decision provenance).
-Copy the entire final-spec folder or the ARAI-final-spec-v1.1.zip archive to another system.
+The folder is at version 1.2 (amended 2026-10-02; see the amendment sections of the decision provenance).
+Copy the entire final-spec folder or the ARAI-final-spec-v1.2.zip archive to another system.
+After any edit to final-spec, run `uv run python scripts/spec_package.py` to rebuild its register and hashes.
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
 Existing code/synthetic-data assets remain preserved; the final package bundles the required inputs.
@@ -29,6 +30,8 @@ uv run jupyter lab                        # then open notebooks/01_synthetic_dat
 - `src/arai/generator/` builds a synthetic world from the specification's contracts and assets.
 - `src/arai/validation.py` checks an operational world against the data contract.
 - `notebooks/01_synthetic_data_generation.ipynb` walks through generation stage by stage with checks and charts.
-- `records/` holds dated development records, starting with the generator's open choices and first observations.
+- `src/arai/eda.py` and `notebooks/02_exploratory_data_analysis.ipynb` explore the development worlds; summary
+  tables are saved under `reports/eda/`.
+- `records/` holds dated development records: the generator's open choices and the exploration findings.
 - `data/` (ignored by git) receives generated worlds: operational tables under `data/artifacts/`, private truth
   under `data/private/`.

@@ -70,21 +70,23 @@ def run_campaigns(ctx: Context, profiles: pd.DataFrame, rel: Relationships, unit
 
     campaigns, attempts = [], []
     for group_id, group in rel.groups.items():
-        if group["type"] != "coordination":
+        capable = [m for m in group["members"] if claim_capable[m]]
+        if group["type"] != "coordination" or not capable:
             continue
         rng = stream(seed, group_id, "campaign")
+        # the ring forms when its last claim-capable member signs up; campaigns fall between then and the snapshot
+        first_day = int((max(ctx.history_start, signup[capable].max()) - ctx.history_start) / DAY)
         n_styles = min(int(rng.integers(s_lo, s_hi + 1)), len(hot_list))
         weights = price[hot_list] / price[hot_list].sum()
         group_styles = rng.choice(hot_list, size=n_styles, replace=False, p=weights)
-        days = np.sort(rng.choice(len(ctx.history), size=int(rng.integers(c_lo, c_hi + 1)), replace=False))
+        open_days = len(ctx.history) - first_day
+        days = first_day + np.sort(rng.choice(open_days, size=min(int(rng.integers(c_lo, c_hi + 1)), open_days), replace=False))
         for j, day in enumerate(days):
             style = int(group_styles[rng.integers(len(group_styles))])
             campaign_date = ctx.history[day]
             campaign_id = f"{world}-K{token(seed, group_id, 'campaign:' + str(j))}"
             campaigns.append((world, campaign_id, group_id, cat.styles["style_id"].iloc[style], campaign_date))
-            for member in group["members"]:
-                if not claim_capable[member]:
-                    continue
+            for member in capable:
                 cid = ctx.customer_ids[member]
                 member_rng = stream(seed, cid, "campaign:" + campaign_id)
                 u = member_rng.random(16)

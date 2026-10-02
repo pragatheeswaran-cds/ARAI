@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-02",
+  "specification": "1.2",
+  "worlds": {
+    "fixture": [
+      "W2001",
+      "W2002",
+      "W2003"
+    ],
+    "training": [
+      "W2101",
+      "W2102",
+      "W2103",
+      "W2104",
+      "W2105",
+      "W2106",
+      "W2107",
+      "W2108",
+      "W2109",
+      "W2110"
+    ],
+    "stress": [
+      "W2501",
+      "W2502",
+      "W2503",
+      "W2504",
+      "W2505",
+      "W2506",
+      "W2507"
+    ]
+  },
+  "validation_and_test_worlds_generated": false,
+  "training_pooled": {
+    "customers": 100000,
+    "eligible_customers": 59328,
+    "abusers_all": 3897,
+    "abusers_eligible": 3326,
+    "prevalence_eligible": 0.05606121898597627,
+    "excluded_abuse_share": 0.14652296638439827,
+    "rule_precision_at_5pct": {
+      "rank by number of claims": 0.417,
+      "rank by raw return rate": 0.2161
+    },
+    "segment_sizes_five_worlds": {
+      "legit_heavy_returner": 2591,
+      "defective_product_buyer": 5747,
+      "benign_household": 3157
+    }
+  },
+  "shortcut_auc_held_out": [
+    {
+      "population": "all customers",
+      "customers": 50000,
+      "abusers": 1922,
+      "persona_only_auc": 0.62,
+      "order_count_only_auc": 0.687,
+      "raw_return_rate_auc": 0.801,
+      "claim_count_auc": 0.837
+    },
+    {
+      "population": "eligible customers",
+      "customers": 29679,
+      "abusers": 1618,
+      "persona_only_auc": 0.544,
+      "order_count_only_auc": 0.564,
+      "raw_return_rate_auc": 0.765,
+      "claim_count_auc": 0.807
+    }
+  ],
+  "style_signals": [
+    {
+      "signal": "targeting, linked share >= 0.05",
+      "truth_positive_styles": 40,
+      "fired": 37,
+      "true_positives": 37,
+      "fired_on_sub_threshold": 0,
+      "precision": 1.0,
+      "recall": 0.925
+    },
+    {
+      "signal": "targeting, linked share >= 0.075",
+      "truth_positive_styles": 40,
+      "fired": 34,
+      "true_positives": 34,
+      "fired_on_sub_threshold": 0,
+      "precision": 1.0,
+      "recall": 0.85
+    },
+    {
+      "signal": "targeting, linked share >= 0.1",
+      "truth_positive_styles": 40,
+      "fired": 33,
+      "true_positives": 33,
+      "fired_on_sub_threshold": 0,
+      "precision": 1.0,
+      "recall": 0.825
+    },
+    {
+      "signal": "quality, damage share >= 0.3",
+      "truth_positive_styles": 30,
+      "fired": 30,
+      "true_positives": 30,
+      "fired_on_sub_threshold": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "signal": "quality, damage share >= 0.5",
+      "truth_positive_styles": 30,
+      "fired": 0,
+      "true_positives": 0,
+      "fired_on_sub_threshold": 0,
+      "precision": NaN,
+      "recall": 0.0
+    }
+  ],
+  "w2507_allocation_independence": {
+    "chi2": 0.24,
+    "dof": 4,
+    "p_value": 0.9933
+  }
+}

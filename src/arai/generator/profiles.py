@@ -47,6 +47,8 @@ def build_profiles(ctx: Context) -> pd.DataFrame:
     personas = list(cfg["segment_mix"])
     mix = np.array([cfg["segment_mix"][p] for p in personas], dtype=float)
     persona = np.array(personas, dtype=object)[rng.choice(len(personas), size=n, p=mix / mix.sum())]
+    if s.overrides.get("all_dormant"):          # boundary fixture: accounts exist, nobody has ordered
+        persona[:] = "Dormant"
     tenure = np.zeros(n, dtype=int)
     orders = np.zeros(n, dtype=int)
     festive = np.zeros(n)
@@ -114,7 +116,7 @@ def allocate_abuse(ctx: Context, profiles: pd.DataFrame) -> pd.DataFrame:
     if s.overrides.get("actionable_multipliers_all_one"):
         multipliers = {k: (1.0 if v > 0 else 0.0) for k, v in multipliers.items()}
     m = profiles["persona"].map(multipliers).to_numpy(dtype=float) * (profiles["target_order_count"].to_numpy() > 0)
-    if s.overrides.get("disable_overlays"):
+    if s.overrides.get("disable_overlays") or s.overrides.get("all_dormant"):
         m = np.zeros(n)
     mean = m.mean()
     w = m / mean if mean > 0 else np.zeros(n)

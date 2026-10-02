@@ -33,7 +33,7 @@ segments:
     display_name: Dormant
     tenure_days:
     - 7
-    - 365
+    - 1095
     orders:
       always: 0
     festive_order_ratio:
@@ -49,7 +49,7 @@ segments:
     display_name: Occasional
     tenure_days:
     - 14
-    - 365
+    - 1095
     orders:
       masses:
         0: 0.08
@@ -71,7 +71,7 @@ segments:
     display_name: Seasonal
     tenure_days:
     - 45
-    - 365
+    - 1095
     orders:
       masses:
         1: 0.08
@@ -92,7 +92,7 @@ segments:
     display_name: Loyalist
     tenure_days:
     - 120
-    - 365
+    - 1095
     orders:
       masses: {}
       range:
@@ -219,6 +219,8 @@ action_template_reference:
     - 1
     - 3
 notes:
+- Dormant, Occasional, Seasonal and Loyalist tenures reach 1095 days (amended 2026-10-02) so
+  most accounts predate the 12-month history window; order targets cover the history window only.
 - High_Intensity ranges are consolidation engineering defaults for a label-neutral
   persona; change only on development worlds with a dated record.
 - Action templates are private patterns, not persona-based abuse selectors.

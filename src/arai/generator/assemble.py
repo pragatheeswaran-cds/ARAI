@@ -85,6 +85,24 @@ def build_return_tables(ctx: Context, events: pd.DataFrame):
     return headers, lines, events
 
 
+def empty_table(columns: dict) -> pd.DataFrame:
+    """A table with the contract's columns and types and no rows."""
+    dtype = {"date": "datetime64[s]", "timestamp": "datetime64[s]", "number": "float64", "integer": "Int64", "string": "object"}
+    return pd.DataFrame({name: pd.Series(dtype=dtype[spec["type"]]) for name, spec in columns.items()})
+
+
+def build_reference_tables(ctx: Context, profiles) -> dict:
+    cat, constants = ctx.catalog, ctx.s.amendment["emitted_constants"]
+    return {
+        "customer_master": pd.DataFrame({
+            "customer_id": profiles["customer_id"], "signup_date": _days(profiles["signup_date"]),
+            "account_status": "unknown", "loyalty_tier": constants["loyalty_tier"],
+            "marketing_channel": constants["marketing_channel"]}),
+        "sku_master": cat.sku_master.assign(launch_date=_days(cat.sku_launch)),
+        "reason_code": cat.reason_code.copy(),
+    }
+
+
 def build_operational(ctx: Context, profiles, orders, lines, return_headers, return_lines) -> dict:
     cat = ctx.catalog
     subtotal = lines.groupby("order_id", sort=False)["total_p"].sum()
@@ -93,12 +111,7 @@ def build_operational(ctx: Context, profiles, orders, lines, return_headers, ret
     shipping = np.where(subtotal >= accepted["free_shipping_subtotal"] * 100, 0, accepted["otherwise_shipping"] * 100)
     sku = cat.sku_master["sku"].to_numpy()
     tables = {
-        "customer_master": pd.DataFrame({
-            "customer_id": profiles["customer_id"], "signup_date": _days(profiles["signup_date"]),
-            "account_status": "unknown", "loyalty_tier": ctx.s.amendment["emitted_constants"]["loyalty_tier"],
-            "marketing_channel": ctx.s.amendment["emitted_constants"]["marketing_channel"]}),
-        "sku_master": cat.sku_master.assign(launch_date=_days(cat.sku_launch)),
-        "reason_code": cat.reason_code.copy(),
+        **build_reference_tables(ctx, profiles),
         "sales_order": pd.DataFrame({
             "order_id": orders["order_id"].to_numpy(), "customer_id": ctx.customer_ids[orders["cust"].to_numpy(dtype=int)],
             "order_date": _days(orders["order_date"]), "channel": orders["channel"].to_numpy(),

@@ -1,4 +1,4 @@
-version: '1.1'
+version: '1.2'
 status: engineering defaults; tune on development only before validation; record changes
 snapshot: '2026-09-09T23:59:59+05:30'
 history_start: '2025-09-10'
@@ -168,7 +168,10 @@ amendment_1_1:
     group_campaign_dates:
     - 2
     - 4
-    campaign_date_sampling: uniform over the history window; one group style per date
+    campaign_date_sampling: uniform between ring formation and the snapshot; one group
+      style per date
+    ring_formation: latest signup among the ring's claim-capable members, not before
+      history_start; a ring without claim-capable members plans nothing
     participant_probability_per_date: 0.6
     participants: claim-capable members only
     reuse_window_days_before_campaign_date: 14
@@ -209,3 +212,12 @@ amendment_1_1:
     marketing_channel: unknown
     reason_text: null
     disposition: null
+amendment_1_2:
+  note: Added 2026-10-02 after the first fixture worlds. See records/ in the code repository
+    for the evidence. These clarify scope; they add no new mechanism.
+  tenure: Dormant, Occasional, Seasonal and Loyalist tenures reach 1095 days (assets/profile-config.yaml);
+    order targets cover the history window only
+  max_order_intensity_per_day: 1.0
+  power_user_scope: Loyalist accounts only (power_user_share is a share of Loyalists)
+  defect_prone_style_count: exactly round(defect_style_share x styles), at least 1, chosen
+    at random per world

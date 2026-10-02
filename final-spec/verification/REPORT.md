@@ -42,3 +42,10 @@ Final archive extracted into a separate directory containing spaces. The bundled
 - Relative links and package hashes re-checked by the bundled verifier after the manifest was regenerated.
 
 Limits are unchanged: nothing is built or measured. The thresholds and distributions introduced by the amendment are engineering defaults, and the reasons given for several changes are estimates from configuration values. The 1.0 package remains available as ARAI-final-spec-v1.0.zip.
+
+## Amendment 1.2 checks (2026-10-02)
+
+- The package verifier passes after the register, document index and hashes were rebuilt with scripts/spec_package.py in the code repository.
+- All YAML contracts and assets parse; the acceptance criteria are unchanged in number (101).
+- The acceptance register now carries implementation evidence for part of the GEN, DATA, VAL and EDA criteria. Evidence paths are relative to the code repository root, outside this package. Every other criterion remains NOT_RUN.
+- A generator, validator and exploration now exist in the code repository. No feature, model, API, database or application has been built, and no validation or test world has been generated.

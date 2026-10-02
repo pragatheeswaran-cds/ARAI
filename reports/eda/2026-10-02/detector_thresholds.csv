@@ -1,0 +1,6 @@
+signal,truth_positive_styles,fired,true_positives,fired_on_sub_threshold,precision,recall
+"targeting, linked share >= 0.05",40,37,37,0,1.0,0.925
+"targeting, linked share >= 0.075",40,34,34,0,1.0,0.85
+"targeting, linked share >= 0.1",40,33,33,0,1.0,0.825
+"quality, damage share >= 0.3",30,30,30,0,1.0,1.0
+"quality, damage share >= 0.5",30,0,0,0,,0.0

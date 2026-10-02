@@ -15,11 +15,14 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from arai.catalog import load_catalog
 from arai.paths import SPEC_ROOT
 
 TABLES = ("customer_master", "sku_master", "reason_code", "sales_order", "sales_order_line", "return_order", "return_order_line")
 OFFSET = "+05:30"
 EPSILON = 0.005     # money is written to the paisa; comparisons allow half a paisa
+MAX_UPLOAD_BYTES = 500_000_000     # final-spec component 11 resource limits
+MAX_UPLOAD_ROWS = 2_000_000
 
 
 @dataclass
@@ -120,6 +123,11 @@ def validate_world(directory: Path, spec_root: Path | None = None) -> Report:
     if present != expected:
         return report
 
+    size = sum((directory / f"{t}.csv").stat().st_size for t in TABLES)
+    if size > MAX_UPLOAD_BYTES:
+        report.add("L001", None, "upload exceeds the size limit", [f"{size} bytes"], 1)
+        return report
+
     raw = {}
     for name in TABLES:
         path = directory / f"{name}.csv"
@@ -134,6 +142,8 @@ def validate_world(directory: Path, spec_root: Path | None = None) -> Report:
         report.add("S001", name, "unknown or private column", [c for c in frame.columns if c not in wanted])
         report.add("S002", name, "required column missing", [c for c in wanted if c not in frame.columns])
         raw[name] = frame
+    if sum(report.counts.values()) > MAX_UPLOAD_ROWS:
+        report.add("L001", None, "upload exceeds the row limit", [f"{sum(report.counts.values())} rows"], 1)
     if report.violations:
         return report
 
@@ -142,6 +152,25 @@ def validate_world(directory: Path, spec_root: Path | None = None) -> Report:
         key = schema[name]["primary_key"]
         data[name] = _parse(report, name, raw[name], schema[name], key)
         _flag(report, "K001", name, "duplicate primary key", raw[name], raw[name].duplicated(key, keep=False), key)
+    if report.violations:
+        return report
+
+    # ---- reference conformance: the codebook always, the bundled catalog for generated worlds
+    codebook = pd.read_csv(spec_root / "assets" / "reason_codes.csv", dtype=str, keep_default_na=False)
+    listed = raw["reason_code"].sort_values("reason_code").reset_index(drop=True)
+    if not listed.equals(codebook[listed.columns].sort_values("reason_code").reset_index(drop=True)):
+        differing = sorted(set(map(tuple, listed.to_numpy())) ^ set(map(tuple, codebook[listed.columns].to_numpy())))
+        report.add("G001", "reason_code", "reason_code differs from the bundled codebook", [row[0] for row in differing][:5],
+                   max(1, len(differing)))
+    if manifest["purpose"] != "external":
+        catalog = load_catalog(spec_root).sku_master.assign(launch_date=lambda f: pd.to_datetime(f["launch_date"]))
+        compared = ["style_id", "brand", "category", "size", "colour", "unit_price", "price_band", "return_window_days",
+                    "is_occasion_wear", "launch_date", "active_flag"]
+        both = data["sku_master"].merge(catalog, on="sku", how="outer", suffixes=("", "_catalog"), indicator=True)
+        wrong = both["_merge"] != "both"
+        for column in compared:
+            wrong |= ~(both[column].astype(str) == both[column + "_catalog"].astype(str)) & (both["_merge"] == "both")
+        _flag(report, "G002", "sku_master", "sku_master differs from the bundled catalog", both, wrong, ["sku"])
     if report.violations:
         return report
 

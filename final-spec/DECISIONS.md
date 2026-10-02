@@ -97,3 +97,17 @@ The user agreed the direction of every item above. The specific values below wer
 - Targeting signal at >=3 linked claimants and linked-claim share >=.10; the no_elevated_signal style state.
 - The five rules of the analyst rulebook and the groups of the error account.
 - Order channel mobile_app .60/web .30/marketplace .10.
+
+## Amendment 1.2 (2026-10-02)
+
+The user asked for the two open findings of the first generator run to be resolved and for work to continue through exploration. These changes were made on fixture, training and stress worlds only; no validation or test world exists. Evidence: records/2026-10-02-generator-implementation.md and records/2026-10-02-eda.md in the code repository, with tables under reports/eda/2026-10-02.
+
+| ID | Decision | Supersedes | Final owner |
+|---|---|---|---|
+| AM-14 | Dormant, Occasional, Seasonal and Loyalist tenures reach 1,095 days, so most accounts predate the history window; order targets describe the history window only | Tenures of at most 365 days, which made every customer new and order volume climb from zero | assets/profile-config.yaml, 02 generation |
+| AM-15 | A ring's campaign dates fall between its formation (the latest signup among its claim-capable members) and the snapshot; a ring without claim-capable members plans nothing | Campaign dates uniform over the whole history window, where over half of the attempts failed because the member had not signed up | 02 generation, generator-config.yaml |
+| AM-16 | Clarified scope: power users are 8% of Loyalists; exactly round(8% of styles) are defect-prone per world; order targets are capped at one order per eligible day | Ambiguous wording of the same settings | 02 generation, generator-config.yaml amendment_1_2 |
+| AM-17 | Style-targeting signal uses a linked-claim share of at least .05 with at least three linked claimants. On the ten training worlds (370 style-worlds) precision is 1.0 at .05, .075 and .10 and recall is .925, .85 and .825; no untargeted style exceeds .034. The quality threshold of .30 is kept: it detects all 30 defect-prone style-worlds (.369-.448) and .50 detects none | The 0.10 engineering default of AM-05 | 06 features |
+| AM-18 | The acceptance register records first evidence for the generation, data-contract, validation and exploration criteria, with owner sign-off pending | All criteria NOT_RUN | acceptance-register.csv |
+
+AM-14 and AM-15 change what a world contains, so every world generated before them is void and was regenerated. The seven operational tables and manifest schema_version remain 1.0.
