@@ -1,0 +1,3 @@
+band,flagged,true_temporary_use,precision,recall,temporary_use_customers
+elevated,598,143,0.2391304347826087,0.12894499549143373,1109
+elevated or possible,1678,280,0.16686531585220502,0.25247971145175835,1109

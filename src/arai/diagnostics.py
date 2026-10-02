@@ -7,21 +7,13 @@ from __future__ import annotations
 
 import hashlib
 import math
-from itertools import combinations
 
 import numpy as np
 import pandas as pd
 
-
-CLAIM_CODES = ("wrong_item_sent", "missing_parts", "item_not_received", "empty_package")
-QUALITY_CODES = ("defective", "poor_quality", "not_as_described")
-ELIGIBLE_MIN_LINES = 3      # experiment.yaml eligibility
-FANOUT_CAP = 25             # an identifier shared by more accounts than this is dropped
-LINK_DAYS = 7
-# style signals (final-spec component 06; the targeting share was confirmed on the training worlds, AM-25)
-QUALITY_DAMAGE_SHARE = 0.30
-TARGETING_LINKED_CLAIMERS = 3
-TARGETING_LINKED_SHARE = 0.075
+from arai import features
+from arai.features import (CLAIM_CODES, ELIGIBLE_MIN_LINES, FANOUT_CAP, LINK_DAYS, QUALITY_CODES,  # noqa: F401  re-exported
+                           QUALITY_DAMAGE_SHARE, TARGETING_LINKED_CLAIMERS, TARGETING_LINKED_SHARE)
 
 
 def sale_lines(world) -> pd.DataFrame:
@@ -82,75 +74,23 @@ def precision_at(world, summary: pd.DataFrame, score: str, fraction: float = 0.0
 
 
 def observed_graph(world) -> dict:
-    """Supported neighbours from operational identifiers: an edge needs at least two shared identifier types."""
-    orders = world.tables["sales_order"]
-    shared = {}
-    for kind in ("address_id", "device_id", "payment_id"):
-        for accounts in orders.groupby(kind)["customer_id"].unique():
-            if 2 <= len(accounts) <= FANOUT_CAP:
-                for pair in combinations(sorted(accounts), 2):
-                    shared.setdefault(pair, set()).add(kind)
-    neighbours = {}
-    for (a, b), kinds in shared.items():
-        if len(kinds) >= 2:
-            neighbours.setdefault(a, set()).add(b)
-            neighbours.setdefault(b, set()).add(a)
-    return neighbours
+    """Supported neighbours from operational identifiers (the feature module's graph)."""
+    return features.build_graph(world.tables["sales_order"]).neighbours
 
 
-def linked_claims(world, returns: pd.DataFrame | None = None) -> pd.DataFrame:
+def linked_claims(world) -> pd.DataFrame:
     """Visible transaction-claim lines with `linked`: a supported neighbour claimed on the same style within 7 days."""
-    if returns is None:
-        lines = sale_lines(world)
-        returns = world.tables["return_order_line"].merge(
-            lines[["order_id", "order_line_no", "style_id", "customer_id", "mature"]], on=["order_id", "order_line_no"])
-        returns = returns[returns["line_status"] != "withdrawn"]
-    neighbours = observed_graph(world)
-    claims = returns[returns["reason_code"].isin(CLAIM_CODES)].copy()
-    claims["day"] = claims["requested_at"].dt.normalize()
-    linked = np.zeros(len(claims), dtype=bool)
-    for _, group in claims.groupby("style_id"):
-        customers, days = group["customer_id"].to_numpy(), group["day"].to_numpy()
-        positions = claims.index.get_indexer(group.index)
-        for i in range(len(group)):
-            near = np.abs((days - days[i]) / np.timedelta64(1, "D")) <= LINK_DAYS
-            linked[positions[i]] = any(c in neighbours.get(customers[i], ()) for c in customers[near])
-    claims["linked"] = linked
-    return claims
+    _, requests, _ = features._prepare(world.tables, world.snapshot_date)
+    return features.linked_claims(requests, observed_graph(world))
 
 
 def style_evidence(world) -> pd.DataFrame:
-    """Style-level quality and targeting evidence (final-spec component 06) beside the private style truth."""
-    t = world.tables
-    lines = sale_lines(world)
-    mature = lines[lines["mature"]]
-    base = mature.groupby("style_id").agg(category=("category", "first"), mature_sale_lines=("sku", "size"),
-                                          purchased_units=("quantity", "sum"), requested_units=("requested_units", "sum"))
-    returns = t["return_order_line"].merge(lines[["order_id", "order_line_no", "style_id", "customer_id", "mature"]],
-                                           on=["order_id", "order_line_no"])
-    returns = returns[returns["line_status"] != "withdrawn"]
-    mature_returns = returns[returns["mature"]]
-    quality_units = mature_returns[mature_returns["reason_code"].isin(QUALITY_CODES)].groupby("style_id")["quantity_returned"].sum()
-    claim_units = mature_returns[mature_returns["reason_code"].isin(CLAIM_CODES)].groupby("style_id")["quantity_returned"].sum()
-
-    claims = linked_claims(world, returns)
-    link = claims.groupby("style_id").agg(claim_lines=("linked", "size"), linked_claim_lines=("linked", "sum"))
-    link["linked_claimers"] = claims[claims["linked"]].groupby("style_id")["customer_id"].nunique()
-
-    out = base.join(quality_units.rename("quality_units")).join(claim_units.rename("claim_units")).join(link).fillna(0)
-    out["return_rate"] = out["requested_units"] / out["purchased_units"]
-    out["damage_share"] = np.where(out["requested_units"] > 0, out["quality_units"] / out["requested_units"].replace(0, np.nan), np.nan)
-    out["claim_share"] = np.where(out["requested_units"] > 0, out["claim_units"] / out["requested_units"].replace(0, np.nan), np.nan)
-    out["linked_claim_share"] = np.where(out["claim_lines"] > 0, out["linked_claim_lines"] / out["claim_lines"].replace(0, np.nan), np.nan)
-    out["quality_signal"] = out["damage_share"] >= QUALITY_DAMAGE_SHARE
-    out["targeting_signal"] = (out["linked_claimers"] >= TARGETING_LINKED_CLAIMERS) & (out["linked_claim_share"] >= TARGETING_LINKED_SHARE)
-    supported = out["mature_sale_lines"] >= 20
-    out["state"] = np.select(
-        [~supported, (out["requested_units"] == 0) & (out["claim_lines"] == 0), out["quality_signal"] & out["targeting_signal"],
-         out["quality_signal"], out["targeting_signal"]],
-        ["insufficient_support", "no_return_evidence", "mixed_or_uncertain", "quality", "targeting"], default="no_elevated_signal")
-    truth = world.truth["product_truth"].set_index("style_id")[["defect_state", "hot_listed", "targeting_level"]]
-    return out.join(truth).reset_index()
+    """Style-level quality and targeting evidence (the feature module's, unchanged) beside the private style truth."""
+    lines, requests, _ = features._prepare(world.tables, world.snapshot_date)
+    claims = features.linked_claims(requests, observed_graph(world))
+    styles, _ = features.style_evidence(lines, requests, claims, reference=None)
+    truth = world.truth["product_truth"][["style_id", "defect_state", "hot_listed", "targeting_level"]]
+    return styles.assign(return_rate=styles["raw_return_rate"]).merge(truth, on="style_id", how="left")
 
 
 def generation_report(world) -> dict:

@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-02",
+  "specification": "1.3",
+  "training_worlds": [
+    "W2101",
+    "W2102",
+    "W2103",
+    "W2104",
+    "W2105",
+    "W2106",
+    "W2107",
+    "W2108",
+    "W2109",
+    "W2110"
+  ],
+  "customers": 100000,
+  "eligible": 53024,
+  "eligible_abusers": 2876,
+  "category_fallback_uses": 0,
+  "univariate_auc": {
+    "mature_sale_lines": 0.5675,
+    "log_order_count": 0.5707,
+    "raw_return_rate": 0.7858,
+    "expected_return_rate": 0.5006,
+    "residual_z": 0.7865,
+    "claim_share": 0.7834,
+    "requested_refund_ratio": 0.7922,
+    "damage_reason_share": 0.5103,
+    "bracketing_share": 0.5115,
+    "late_window_share": 0.6292,
+    "median_window_ratio": 0.4901,
+    "occasion_return_share": 0.6128,
+    "discretionary_share": 0.394,
+    "trend_90d": 0.4901,
+    "open_window_share": 0.5251,
+    "max_identifier_fanout": 0.7098,
+    "supported_neighbor_count": 0.6576,
+    "coordinated_claim_share": 0.5972
+  },
+  "auc_of_missing": {
+    "claim_share": 0.4004,
+    "damage_reason_share": 0.4004,
+    "late_window_share": 0.4004,
+    "median_window_ratio": 0.4004,
+    "occasion_return_share": 0.4004,
+    "discretionary_share": 0.4004,
+    "trend_90d": 0.4601,
+    "coordinated_claim_share": 0.2225
+  },
+  "wardrobing": [
+    {
+      "band": "elevated",
+      "flagged": 598,
+      "true_temporary_use": 143,
+      "precision": 0.2391304347826087,
+      "recall": 0.12894499549143373,
+      "temporary_use_customers": 1109
+    },
+    {
+      "band": "elevated or possible",
+      "flagged": 1678,
+      "true_temporary_use": 280,
+      "precision": 0.16686531585220502,
+      "recall": 0.25247971145175835,
+      "temporary_use_customers": 1109
+    }
+  ]
+}
