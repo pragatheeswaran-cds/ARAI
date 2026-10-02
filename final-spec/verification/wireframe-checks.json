@@ -1,0 +1,17 @@
+{
+  "browser": "Edge Chromium 153.0.4234.48",
+  "mode": "headless file://",
+  "checks": [
+    "Queue/default/all/search, case tabs and escaped append-only note",
+    "Filename failure, queued/running/succeeded simulation and cross-run note origin",
+    "Style detail, variant support and queue state filter",
+    "Explicit truth reveal only in evaluation",
+    "Fallback scenario banners, correct baseline top customer and selection-not-completed state",
+    "Loading/empty/error/not-ready states",
+    "390px layouts avoid page-level horizontal overflow across all main views",
+    "No JavaScript errors or HTTP(S) network requests; keyboard focus available"
+  ],
+  "javascript_errors": [],
+  "external_requests": [],
+  "limits": "Prototype verification only; no API/model tests, no full accessibility audit"
+}

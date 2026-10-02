@@ -1,0 +1,615 @@
+spec_version: 0.1.0
+status: DRAFT ? NOT APPROVED
+id: FEATURE-CONTRACT
+sources:
+- LLD M04?M12
+- Data Dictionary
+features:
+- id: FEAT-001
+  name: n_orders
+  meaning: purchase frequency
+  source_columns:
+  - sales_order.order_id
+  type: integer
+  transformation: count distinct eligible order_id per customer
+  range: '>=0'
+  null_handling: zero for empty history
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-002
+  status: BLOCKED
+- id: FEAT-002
+  name: n_lines
+  meaning: Bernoulli exposures
+  source_columns:
+  - sales_order_line.order_id
+  - sales_order_line.order_line_no
+  type: integer
+  transformation: count eligible sales lines per customer
+  range: '>=0'
+  null_handling: zero
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-002
+  status: BLOCKED
+- id: FEAT-003
+  name: n_returns
+  meaning: observed returned exposures
+  source_columns:
+  - return_order_line.order_id
+  - return_order_line.order_line_no
+  - return_order.return_status
+  type: integer
+  transformation: count eligible returned sales lines; not units; status eligibility
+    unresolved
+  range: 0..n_lines
+  null_handling: zero
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: outcome known only after observation period; excluded from forest
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-002
+  status: BLOCKED
+- id: FEAT-004
+  name: spend
+  meaning: purchase value excluding shipping
+  source_columns:
+  - sales_order_line.line_total
+  type: number
+  transformation: sum eligible line_total
+  range: '>=0'
+  null_handling: zero
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-002
+  status: BLOCKED
+- id: FEAT-005
+  name: tenure_days
+  meaning: account age
+  source_columns:
+  - customer_master.signup_date
+  - run_date
+  type: integer
+  transformation: (run_date - signup_date).days
+  range: '>=0'
+  null_handling: no first-order substitution; missing master fails
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: archive master absent Q-001
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: null
+  status: specified subject to input eligibility Q-002
+- id: FEAT-006
+  name: raw_rate
+  meaning: baseline comparator
+  source_columns:
+  - n_returns
+  - n_lines
+  type: number
+  transformation: n_returns / n_lines
+  range: '[0,1]'
+  null_handling: null if no eligible lines
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: evaluation comparator/display only; never forest input
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-002
+  status: BLOCKED
+- id: FEAT-007
+  name: mu_cat
+  meaning: category empirical return prior
+  source_columns:
+  - sku_master.category
+  - eligible sales/return lines
+  type: number
+  transformation: sum category returned lines / sum category sales lines; exclusions
+    and empty-category fallback TBD
+  range: '[0,1]'
+  null_handling: TBD Q-006
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: never generator base_return_rate; own/community contributions may
+    remain in prior
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-006
+  status: BLOCKED
+- id: FEAT-008
+  name: shrunk_rate
+  meaning: SKU rate shrunk to observed category
+  source_columns:
+  - N_s
+  - R_s
+  - mu_cat
+  type: number
+  transformation: (R_s + k*mu_cat)/(N_s+k), k=20
+  range: '[0,1]'
+  null_handling: zero sales gives mu_cat
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: null
+  status: specified subject to input eligibility Q-002
+- id: FEAT-009
+  name: p_hat
+  meaning: customer-specific SKU expectation
+  source_columns:
+  - SKU totals
+  - customer SKU contributions
+  - exclude
+  - mu_cat
+  type: number
+  transformation: (R_s - R_Cs + k*mu_cat)/(N_s - N_Cs + k) in pass 1; pass 2 exclusion
+    union semantics in transformations
+  range: '[0,1]'
+  null_handling: sole buyer gives mu_cat
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-006
+  status: BLOCKED
+- id: FEAT-010
+  name: expected_returns
+  meaning: expected count for basket
+  source_columns:
+  - p_hat
+  type: number
+  transformation: sum(p_hat_i) over customer eligible lines
+  range: '[0,n_lines]'
+  null_handling: empty basket zero
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: null
+  status: specified subject to input eligibility Q-002
+- id: FEAT-011
+  name: variance
+  meaning: Poisson-binomial null variance
+  source_columns:
+  - p_hat
+  type: number
+  transformation: sum(p_hat_i*(1-p_hat_i))
+  range: '>=0'
+  null_handling: empty basket zero
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: null
+  status: specified subject to input eligibility Q-002
+- id: FEAT-012
+  name: design_effect
+  meaning: within-order/style dependence adjustment
+  source_columns:
+  - sales_order_line.order_id
+  - sku_master.style_id
+  type: number
+  transformation: min(4.0, mean(count lines per (order_id, style_id) group))
+  range: '[1,4]'
+  null_handling: thin-history 1.5 fallback trigger unspecified
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-013
+  name: residual_z
+  meaning: design-adjusted basket excess
+  source_columns:
+  - n_returns
+  - expected_returns
+  - variance
+  - design_effect
+  type: number
+  transformation: (n_returns-expected_returns)/sqrt(variance*design_effect)
+  range: finite real or null
+  null_handling: null if n_lines<3 or variance=0; forest/ranking treatment TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: true
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-014
+  name: refund_ratio
+  meaning: paid refunds relative to spend
+  source_columns:
+  - return_order_line.refund_amount
+  - sales_order_line.line_total
+  type: number
+  transformation: sum paid eligible refund_amount / sum eligible line_total; shipping
+    excluded
+  range: '[0,1] under valid linked eligibility'
+  null_handling: zero-denominator treatment TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: true
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-015
+  name: median_days_to_return
+  meaning: typical return latency
+  source_columns:
+  - return_order_line.days_to_return
+  - sales_order_line.delivered_date
+  - return_order.return_created_date
+  type: number
+  transformation: median eligible return latency per customer; timestamp source Q-003
+  range: '>=1 or null'
+  null_handling: no-return treatment TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-003
+  status: BLOCKED
+- id: FEAT-016
+  name: median_days_to_return_z
+  meaning: category-normalised latency
+  source_columns:
+  - median_days_to_return
+  - sku_master.category
+  - eligible return latency
+  type: number
+  transformation: 'TBD: category norm statistic, dispersion, multi-category aggregation'
+  range: finite real or null
+  null_handling: zero variance/no returns TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: true
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-017
+  name: claim_mix
+  meaning: transaction-claim return share
+  source_columns:
+  - reason_code.claim_class
+  - eligible returns
+  type: number
+  transformation: count(transaction_claim eligible returns)/count(eligible returns)
+  range: '[0,1]'
+  null_handling: zero denominator TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: true
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-018
+  name: device_fanout
+  meaning: linked accounts sharing device
+  source_columns:
+  - sales_order.device_id
+  - sales_order.customer_id
+  type: number
+  transformation: identifier degree=count distinct customer_id; aggregation across
+    customer identifiers TBD
+  range: '>=0'
+  null_handling: missing identifiers/empty history TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: use salted equality only, never prefixes or literal IDs
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: true
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-019
+  name: address_fanout
+  meaning: linked accounts sharing address
+  source_columns:
+  - sales_order.address_id
+  - sales_order.customer_id
+  type: number
+  transformation: identifier degree=count distinct customer_id; aggregation across
+    customer identifiers TBD
+  range: '>=0'
+  null_handling: missing identifiers/empty history TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: use salted equality only, never prefixes or literal IDs
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: true
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-020
+  name: payment_fanout
+  meaning: linked accounts sharing payment
+  source_columns:
+  - sales_order.payment_id
+  - sales_order.customer_id
+  type: number
+  transformation: identifier degree=count distinct customer_id; aggregation across
+    customer identifiers TBD
+  range: '>=0'
+  null_handling: missing identifiers/empty history TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: use salted equality only, never prefixes or literal IDs
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: true
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-021
+  name: trend_90d
+  meaning: recent change in behaviour
+  source_columns:
+  - sales_order.order_date
+  - return_order.return_created_date
+  - run_date
+  type: number
+  transformation: 'TBD: statistic, denominator, previous comparison window and inclusive
+    boundaries'
+  range: TBD
+  null_handling: TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: true
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-022
+  name: bracketing_flag
+  meaning: multi-size purchase signature
+  source_columns:
+  - sales_order_line.order_id
+  - sku_master.style_id
+  - sku_master.size
+  type: boolean
+  transformation: 'TBD: minimum distinct variants, return/keep conditions and customer
+    aggregation'
+  range: true/false
+  null_handling: TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-023
+  name: window_ratio
+  meaning: fraction of historical policy window consumed
+  source_columns:
+  - return_order_line.days_to_return
+  - return_order_line.return_window_days
+  type: number
+  transformation: line days_to_return / line return_window_days; customer aggregation
+    TBD
+  range: '>=0; may exceed 1 for goodwill'
+  null_handling: no-return customer handled by wardrobe policy
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-003
+  status: BLOCKED
+- id: FEAT-024
+  name: wardrobe_score
+  meaning: separate five-signal risk indicator
+  source_columns:
+  - latency_z
+  - window_ratio
+  - sku_master.is_occasion_wear
+  - reason_code.intent_class
+  - bracketing_flag
+  type: number
+  transformation: .30*I(latency_z>=1)+.25*I(window_ratio>=.75)+.15*I(occasion)+.20*I(discretionary)+.10*I(not
+    bracketing); customer boolean aggregation TBD
+  range: '[0,1]'
+  null_handling: no returns -> 0 and empty signals
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-025
+  name: keyword_flags
+  meaning: text-derived evidence without raw text
+  source_columns:
+  - return_order_line.reason_text
+  type: object
+  transformation: TBD dictionary, normalization, SKU-coincidence down-weighting
+  range: TBD
+  null_handling: empty text -> no hits proposed; Q-013
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: template/author shortcuts; raw text cannot enter model or logs
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-013
+  status: BLOCKED
+- id: FEAT-026
+  name: graph_score
+  meaning: corroborated coordination contribution
+  source_columns:
+  - identity_edges
+  - communities
+  - customer behavioural evidence
+  type: number
+  transformation: 'TBD: no numeric mapping in M10'
+  range: '[0,1] expected by blend'
+  null_handling: unusable graph fallback TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-005
+  status: BLOCKED
+- id: FEAT-027
+  name: connectivity
+  meaning: SKU verdict evidence
+  source_columns:
+  - communities
+  - eligible returns
+  type: number
+  transformation: max distinct returners in one community / distinct SKU returners
+  range: '[0,1] for shares; nonnegative latency; [0,100] for risk'
+  null_handling: empty denominator TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-016
+  status: BLOCKED
+- id: FEAT-028
+  name: damage_mix
+  meaning: SKU verdict evidence
+  source_columns:
+  - reason_code
+  - eligible returns
+  type: number
+  transformation: TBD reason membership and aggregation
+  range: '[0,1] for shares; nonnegative latency; [0,100] for risk'
+  null_handling: empty denominator TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-016
+  status: BLOCKED
+- id: FEAT-029
+  name: latency_ratio
+  meaning: SKU verdict evidence
+  source_columns:
+  - eligible return latency
+  - sku_master.category
+  type: number
+  transformation: median SKU return latency / category norm; category norm TBD
+  range: '[0,1] for shares; nonnegative latency; [0,100] for risk'
+  null_handling: empty denominator TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-004
+  status: BLOCKED
+- id: FEAT-030
+  name: returner_risk_median
+  meaning: SKU verdict evidence
+  source_columns:
+  - scores
+  - eligible returns
+  type: number
+  transformation: median risk_score among distinct SKU returners; pass selection TBD
+  range: '[0,1] for shares; nonnegative latency; [0,100] for risk'
+  null_handling: empty denominator TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-006
+  status: BLOCKED
+- id: FEAT-031
+  name: no_item_return_share
+  meaning: SKU verdict evidence
+  source_columns:
+  - return_order_line.return_received_flag
+  type: number
+  transformation: count eligible returns with return_received_flag=0 / count eligible
+    returns
+  range: '[0,1] for shares; nonnegative latency; [0,100] for risk'
+  null_handling: empty denominator TBD
+  categorical_encoding: none; forest features are numeric
+  availability: complete batch snapshot at run_date; not point-of-return
+  leakage_risk: as-of data only
+  consistency: one versioned transform path for generated/upload and both passes
+  forest_input: false
+  blocking_question: Q-016
+  status: BLOCKED
+forest_allow_list:
+- residual_z
+- refund_ratio
+- median_days_to_return_z
+- claim_mix
+- device_fanout
+- address_fanout
+- payment_fanout
+- trend_90d
+categorical_reference_features: is_occasion_wear and intent_class converted to documented
+  booleans only; no one-hot expansion approved
+not_model_inputs:
+- customer_id
+- sku
+- account_status
+- loyalty_tier
+- marketing_channel
+- reason_text
+- raw_rate
+- n_returns
+- population
+- ring_id
+- household_id
+- base_return_rate
+derived_output_contracts:
+  sku_features:
+    key:
+    - sku
+    n_sales: count eligible sales lines for SKU; Q-002
+    n_returns: count eligible returned lines for SKU; Q-002
+    raw_rate: n_returns/n_sales; zero denominator null
+    reason_mix: counts/shares by approved reason classes; denominator/status Q-002
+    n_returners: count distinct eligible customer_id with a SKU return
+    top_community_share: same quantity as connectivity; community selection Q-006
+  identity_edges:
+    key:
+    - account_a
+    - account_b
+    shared_types: distinct surviving identifier types
+    weight: sum 1/log2(1+d(v)) over shared surviving values
+    contributing_degrees: map each contributing hashed value/type to distinct-account
+      degree; raw values forbidden
+    ordering: account-pair canonical ordering TBD Q-012
+  communities:
+    key:
+    - customer_id
+    component_id: connected-component membership
+    louvain_id: seeded Louvain membership
+    community_size: distinct member customer count
+    label_ordering: stable label assignment TBD Q-012
+  scores:
+    key:
+    - customer_id
+    - pass
+    contract: ../05-inference/prediction-contract.yaml
+  wardrobe_band:
+    contract: ../04-model/threshold-policy.yaml
+    signals_fired: names of true approved five booleans
+  latency_z_alias: LLD M07 latency_z versus M09 median_days_to_return_z equivalence
+    is unapproved; resolve Q-004 before implementation

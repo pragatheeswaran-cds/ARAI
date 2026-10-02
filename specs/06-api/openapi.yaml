@@ -1,0 +1,698 @@
+openapi: 3.0.3
+info:
+  title: Adaptive Return Abuse Intelligence ? Draft API
+  version: 0.1.0
+  description: Specification only. Six LLD operations, no application implementation.
+    All endpoints have no authentication in the local MVP (HLD section 10). Actor
+    field is not identity assurance. Upload registration, opener/run binding, scorecard
+    access and decision lifecycle unresolved Q-008; this contract is NOT approved
+    for implementation.
+servers:
+- url: http://127.0.0.1:8000
+  description: Proposed local development address, A-002/A-009; no externally exposed
+    deployment approved
+security: []
+x-approval-status: DRAFT ? NOT READY FOR IMPLEMENTATION
+x-assumptions:
+- A-003
+- A-009
+paths:
+  /jobs:
+    post:
+      operationId: createJob
+      summary: Queue a whole-population scoring run
+      x-source: LLD section 6
+      x-status: draft; not approved
+      x-open-questions:
+      - Q-008
+      - Q-014
+      x-timeout: TBD Q-014; request must not await batch execution
+      x-observability: record operation/status/duration and safe run/job correlation;
+        no bodies/raw identifiers
+      responses:
+        '202':
+          description: Accepted for background processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+        '422':
+          description: Malformed request; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Sanitized internal failure; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown job, run, customer, file or configuration as applicable;
+            A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run/config/state conflict; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobRequest'
+  /jobs/{job_id}:
+    get:
+      operationId: getJob
+      summary: Poll run status and progress
+      x-source: LLD section 6
+      x-status: draft; not approved
+      x-open-questions:
+      - Q-011
+      - Q-014
+      x-timeout: TBD Q-014; request must not await batch execution
+      x-observability: record operation/status/duration and safe run/job correlation;
+        no bodies/raw identifiers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '422':
+          description: Malformed request; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Sanitized internal failure; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown job, run, customer, file or configuration as applicable;
+            A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: &id001
+          type: string
+          minLength: 1
+  /flagged:
+    get:
+      operationId: getFlagged
+      summary: List flagged cases for one completed run
+      x-source: LLD section 6
+      x-status: draft; not approved
+      x-open-questions:
+      - Q-012
+      - Q-014
+      x-timeout: TBD Q-014; request must not await batch execution
+      x-observability: record operation/status/duration and safe run/job correlation;
+        no bodies/raw identifiers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FlaggedCase'
+        '422':
+          description: Malformed request; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Sanitized internal failure; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown job, run, customer, file or configuration as applicable;
+            A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run/config/state conflict; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: run_id
+        in: query
+        required: true
+        schema: *id001
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+  /case/{customer_id}:
+    get:
+      operationId: getCase
+      summary: Read case evidence for a selected run
+      x-source: LLD section 6
+      x-status: draft; not approved
+      x-open-questions:
+      - Q-008
+      - Q-013
+      x-timeout: TBD Q-014; request must not await batch execution
+      x-observability: record operation/status/duration and safe run/job correlation;
+        no bodies/raw identifiers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseDetail'
+        '422':
+          description: Malformed request; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Sanitized internal failure; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown job, run, customer, file or configuration as applicable;
+            A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run/config/state conflict; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema: *id001
+      - name: run_id
+        in: query
+        required: true
+        schema: *id001
+  /skus:
+    get:
+      operationId: getSkus
+      summary: Read product verdicts for a selected run
+      x-source: LLD section 6
+      x-status: draft; not approved
+      x-open-questions:
+      - Q-016
+      x-timeout: TBD Q-014; request must not await batch execution
+      x-observability: record operation/status/duration and safe run/job correlation;
+        no bodies/raw identifiers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SkuVerdict'
+        '422':
+          description: Malformed request; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Sanitized internal failure; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown job, run, customer, file or configuration as applicable;
+            A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run/config/state conflict; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: run_id
+        in: query
+        required: true
+        schema: *id001
+  /case/{customer_id}/approve:
+    post:
+      operationId: approveCase
+      summary: Record distinct-actor review decision
+      x-source: LLD section 6
+      x-status: draft; not approved
+      x-open-questions:
+      - Q-007
+      - Q-008
+      - Q-011
+      x-timeout: TBD Q-014; request must not await batch execution
+      x-observability: record operation/status/duration and safe run/job correlation;
+        no bodies/raw identifiers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalResult'
+        '422':
+          description: Malformed request; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Sanitized internal failure; A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown job, run, customer, file or configuration as applicable;
+            A-003
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Self approval refused and logged; exact LLD error code. Other
+            state conflicts require Q-008.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: SELF_APPROVAL_REFUSED
+      parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema: *id001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalRequest'
+components:
+  schemas:
+    GeneratedJob:
+      type: object
+      additionalProperties: false
+      required:
+      - source
+      - seed
+      - config_hash
+      properties:
+        source:
+          type: string
+          enum:
+          - generated
+        seed:
+          type: integer
+        config_hash: *id001
+    UploadedJob:
+      type: object
+      additionalProperties: false
+      required:
+      - source
+      - file_id
+      - config_hash
+      properties:
+        source:
+          type: string
+          enum:
+          - upload
+        file_id: *id001
+        config_hash: *id001
+    JobRequest:
+      oneOf:
+      - $ref: '#/components/schemas/GeneratedJob'
+      - $ref: '#/components/schemas/UploadedJob'
+      discriminator:
+        propertyName: source
+      description: LLD section 6. Source-specific required fields proposed by A-003.
+        Upload registration is unresolved Q-008.
+    JobAccepted:
+      type: object
+      additionalProperties: false
+      required:
+      - job_id
+      - status
+      properties:
+        job_id: *id001
+        status:
+          type: string
+          enum:
+          - queued
+    JobStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - job_id
+      - status
+      - stage
+      - progress
+      properties:
+        job_id: *id001
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - done
+          - failed
+        stage: &id002
+          type: string
+        progress: &id003
+          type: number
+          minimum: 0
+          maximum: 1
+        run_id:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+      description: Proposed progress 0..1 per A-009; done requires run_id, failed
+        requires sanitized error. No monotonic stage list was supplied.
+    RiskTier:
+      type: string
+      enum:
+      - LOW
+      - MEDIUM
+      - HIGH
+    WardrobeBand:
+      type: string
+      enum:
+      - none
+      - possible
+      - elevated
+    FlaggedCase:
+      type: object
+      additionalProperties: false
+      required:
+      - customer_id
+      - risk_score
+      - tier
+      - top_signals
+      - wardrobe_band
+      properties:
+        customer_id: *id001
+        risk_score: &id004
+          type: number
+          minimum: 0
+          maximum: 100
+        tier:
+          $ref: '#/components/schemas/RiskTier'
+        top_signals: &id005
+          type: array
+          items: *id002
+        wardrobe_band:
+          $ref: '#/components/schemas/WardrobeBand'
+    PassScore:
+      type: object
+      additionalProperties: false
+      required:
+      - rule_score
+      - iforest_score
+      - graph_score
+      - blended_raw
+      - risk_score
+      - tier
+      - rules_fired
+      properties:
+        rule_score: *id003
+        iforest_score: *id003
+        graph_score: *id003
+        blended_raw: *id003
+        risk_score: *id004
+        tier:
+          $ref: '#/components/schemas/RiskTier'
+        rules_fired: *id005
+      description: Proposed expansion of LLD scores.pass1/pass2 (A-009); unusable/null
+        component policy Q-005/Q-012 blocks approval.
+    EvidenceItem:
+      type: object
+      additionalProperties: false
+      required:
+      - signal_id
+      - value
+      properties:
+        signal_id: *id001
+        value:
+          oneOf:
+          - type: number
+          - type: string
+          - type: boolean
+        peer_percentile: *id004
+      description: Proposed typed evidence representation A-009. Grounding/token identifiers
+        Q-013; raw source text and identifiers forbidden.
+    Neighbour:
+      type: object
+      additionalProperties: false
+      required:
+      - customer_id
+      - shared_types
+      - weight
+      properties:
+        customer_id: *id001
+        shared_types:
+          type: array
+          minItems: 2
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - device
+            - address
+            - payment
+        weight:
+          type: number
+          minimum: 0
+      description: UI-only internal pseudonymous customer ID, never raw identity value
+        or provider packet. Proposed A-009.
+    SkuVerdict:
+      type: object
+      additionalProperties: false
+      required:
+      - sku
+      - raw_rate
+      - shrunk_rate
+      - verdict
+      - connectivity
+      - claim_mix
+      - latency_ratio
+      properties:
+        sku: *id001
+        raw_rate:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        shrunk_rate:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        verdict:
+          type: string
+          enum:
+          - quality_issue
+          - abuse_target
+          - normal
+          - null
+          nullable: true
+        connectivity:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        claim_mix:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        latency_ratio:
+          type: number
+          minimum: 0
+          nullable: true
+      description: LLD section 6; null verdict for n_sales<20. Undefined statistics
+        null with UI indication; Q-016.
+    Memo:
+      type: object
+      additionalProperties: false
+      required:
+      - tier
+      - pattern
+      - evidence_cited
+      - recommendation
+      - counterfactual_text
+      properties:
+        tier:
+          type: string
+          enum:
+          - LOW
+          - WARNING
+          - HOLD
+          - ESCALATE
+          - BAN
+        pattern: *id002
+        evidence_cited: *id005
+        recommendation: *id002
+        counterfactual_text: *id002
+      description: LLD M15 exact model response fields; business-action policy is
+        separate and blocked Q-007.
+    Wardrobe:
+      type: object
+      additionalProperties: false
+      required:
+      - band
+      - signals
+      properties:
+        band:
+          $ref: '#/components/schemas/WardrobeBand'
+        signals: *id005
+    CaseDetail:
+      type: object
+      additionalProperties: false
+      required:
+      - scores
+      - evidence
+      - neighbours
+      - sku_verdicts
+      - memo
+      - counterfactual
+      - wardrobe
+      properties:
+        scores:
+          type: object
+          additionalProperties: false
+          required:
+          - pass1
+          - pass2
+          - delta
+          properties:
+            pass1:
+              $ref: '#/components/schemas/PassScore'
+            pass2:
+              $ref: '#/components/schemas/PassScore'
+            delta:
+              type: number
+              minimum: -100
+              maximum: 100
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+        neighbours:
+          type: array
+          items:
+            $ref: '#/components/schemas/Neighbour'
+        sku_verdicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkuVerdict'
+        memo:
+          type: object
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/Memo'
+        counterfactual: *id005
+        wardrobe:
+          $ref: '#/components/schemas/Wardrobe'
+      description: LLD outer shape retained; nested representations proposed A-009.
+        Model/config versions live in run manifest; public exposure Q-008.
+    ApprovalRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - actor
+      - action
+      properties:
+        actor: *id001
+        action:
+          type: string
+          enum:
+          - HOLD
+          - ESCALATE
+          - BAN
+          - CLEAR
+      description: LLD section 6 exact fields. Actor is unauthenticated in MVP. Missing
+        run/opener binding blocks implementation Q-008.
+    ApprovalResult:
+      type: object
+      additionalProperties: false
+      required:
+      - ok
+      - decision_id
+      properties:
+        ok:
+          type: boolean
+          enum:
+          - true
+        decision_id: *id001
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+      - error
+      properties:
+        error: *id001
+        message: *id002
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - field
+            - code
+            properties:
+              field: *id001
+              code: *id001
+      description: Preserves LLD SELF_APPROVAL_REFUSED shape; optional sanitized message/details
+        A-003. Never echo field values.

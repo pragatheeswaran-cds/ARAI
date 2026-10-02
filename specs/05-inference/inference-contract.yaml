@@ -1,0 +1,46 @@
+spec_version: 0.1.0
+status: DRAFT ? NOT APPROVED
+id: INF-CONTRACT-001
+mode: asynchronous whole-population batch scoring with a frozen selected model artifact
+approved_update_ref: ../04-model/model-comparison-plan.md
+fit_policy: no model or fitted-preprocessing refit during inference; retraining is separate and explicit
+pipeline_revision: legacy rules/forest/blend/two-pass steps below require reconciliation; they are not mandatory algorithm choices
+not_supported:
+- single-row predict endpoint
+- calibrated fraud probability
+- direct account action
+request_ref: ../06-api/openapi.yaml#/components/schemas/JobRequest
+data_ref: ../02-data/data-contract.yaml
+required:
+- source
+- config_hash
+- all seven tables for upload
+- run_date in resolved dataset manifest
+conditional:
+- seed for generated source
+- registered file_id for upload source; registration TBD Q-008
+pipeline:
+- resolve immutable config and dataset
+- load and validate the selected frozen model/preprocessing bundle
+- validate contract/quarantine rows
+- hash identifiers and extract text flags at boundary
+- derive pass-1 features
+- rules/forest/graph and blend
+- SKU verdict and exclusion set
+- approved second pass using same transformations
+- persist both passes and complete population queue
+- build safe packets and optional validated memos
+- publish completed run atomically per Q-011
+outputs_ref: prediction-contract.yaml
+preprocessing_ref: preprocessing-contract.yaml
+model_version: manifest/model bundle metadata; scores tied to run_id, not customer_id
+  alone
+blocking_questions:
+- Q-001
+- Q-002
+- Q-004
+- Q-005
+- Q-006
+- Q-007
+- Q-008
+- Q-012

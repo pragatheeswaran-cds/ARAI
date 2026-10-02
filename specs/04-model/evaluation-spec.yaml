@@ -1,0 +1,101 @@
+spec_version: 0.1.0
+approved_direction_update:
+  plan_ref: model-comparison-plan.md
+  label_policy: supervised training labels allowed; final test labels remain sealed
+  historical_truth_warning: serial_returner cannot be positive solely from return volume; action-based targets and denominators must be revised
+  comparison: both approaches evaluated on the same held-out population and customer-review budget
+status: DRAFT ? NOT APPROVED
+id: MODEL-EVAL-001
+sources:
+- Architecture ?6
+- LLD M16
+evaluation_only_truth:
+  positive:
+  - serial_returner
+  - refund_fraudster
+  - collusion_ring
+  - wardrober
+  negative:
+  - normal
+  - legit_heavy_returner
+  - defective_cluster_buyer
+  - benign_household
+budget:
+  primary_fraction: 0.05
+  sweep_fractions:
+  - 0.01
+  - 0.05
+  - 0.10
+  denominator: same eligible customer population for every candidate
+  primary_example: 10000 eligible customers -> 500 reviewed
+  rounding: TBD; define before evaluation
+  approval: user Q16 on 2026-09-25; replaces historical fixed budget of 625
+  same_population: true
+  tie_rule: TBD Q-012
+  k_exceeds_eligible_n: TBD Q-012; do not silently compare unequal budgets
+offline_metrics:
+- name: precision_at_k
+  formula: abuse customers selected / k
+  why: review yield at equal workload
+- name: recall_at_k
+  formula: abuse customers selected / all abuse customers
+  why: coverage under review capacity
+- name: segment_recall_at_k
+  formula: selected customers in abuse segment / all customers in that segment
+  why: all four abuse types visible
+- name: false_positive_rate_at_k
+  formula: selected benign / all benign
+  why: harm stated first
+- name: benign_segment_burn_count_and_rate
+  formula: selected benign segment count; count / segment population
+  why: protect heavy returners, defect buyers and households separately
+- name: confusion_counts_at_k
+  formula: TP=selected abuse; FP=selected benign; FN=unselected abuse; TN=unselected
+    benign
+  why: auditable denominators
+- name: wardrobe_band_recovery
+  formula: band counts and planted wardrober recall; no claim of confirmed wear
+  why: indicator is not blended risk
+- name: sku_verdict_confusion
+  formula: predicted verdict against defective/targeted flags; no-verdict coverage
+    separate
+  why: product disambiguation
+business_metrics:
+  review_load: k customers, not return-line count
+  burned_reviews: benign selected counts
+  real_fraud_loss_or_roi: not measurable from synthetic propensity labels; no such
+    claim
+operational_metrics:
+- stage duration
+- total duration
+- API latency
+- quarantine counts
+- missing/invalid memo count
+- provider cost and latency
+- graph unusable indicator
+intervals:
+  seed_metric: mean +/- 2*sample_standard_deviation/sqrt(number_of_seeds)
+  segment_binomial: 95% Wilson; aggregation of per-seed intervals TBD Q-009
+  undefined: null plus reason per A-008
+comparisons:
+- raw-return-rate rank at same k
+- rules alone
+- rules plus forest
+- rules plus forest plus graph
+ablation_weight_normalization: TBD Q-009
+ceiling: TBD Q-009; known generator parameters alone are not an implemented Bayes-optimal
+  estimator
+additional_metrics:
+  accuracy: not primary; hides class imbalance
+  roc_auc_pr_auc_f1: not mandated by design; may be diagnostics only after approval
+  calibration: not applicable to non-probability percentile scores
+acceptance_thresholds:
+  primary_budget_fraction: 0.05
+  precision_vs_raw_return_rate: strictly greater
+  legitimate_segment_fpr_vs_raw_return_rate: less than or equal for each heavy-returner, defective-product-buyer and household segment
+  same_population_and_budget: required
+  approval: user Q17 on 2026-09-25
+  aggregation_and_uncertainty: TBD fixed protocol before evaluation
+threshold_question: Q-009
+publication: sealed approved protocol only; historical illustrative source values
+  not newly verified

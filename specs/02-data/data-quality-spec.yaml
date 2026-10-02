@@ -1,0 +1,76 @@
+spec_version: 0.1.0
+status: DRAFT ? NOT APPROVED
+review_date: '2026-09-25'
+id: DATA-003
+checks:
+- id: DQ-001
+  predicate: missing table/required column
+  failure: fail_contract
+- id: DQ-002
+  predicate: invalid type/range/enum or forbidden null
+  failure: quarantine
+- id: DQ-003
+  predicate: broken foreign key
+  failure: 'quarantine: REF_INTEGRITY or CUSTOMER_UNKNOWN'
+- id: DQ-004
+  predicate: duplicate primary key
+  failure: quarantine; winner policy TBD Q-002
+- id: DQ-005
+  predicate: same sales order line returned twice
+  failure: 'quarantine later: DUPLICATE_RETURN; equal-date tie TBD Q-003'
+- id: DQ-006
+  predicate: quantity_returned > quantity
+  failure: 'quarantine: QTY_EXCEEDS_ORDER'
+- id: DQ-007
+  predicate: refund_amount > line_total * quantity_returned / quantity
+  failure: 'quarantine: REFUND_EXCEEDS_LINE; rounding tolerance TBD Q-002'
+- id: DQ-008
+  predicate: return_created_date < any linked delivered_date
+  failure: 'quarantine: RETURN_BEFORE_DELIVERY'
+- id: DQ-009
+  predicate: return on cancelled order
+  failure: 'quarantine: RETURN_ON_CANCELLED'
+- id: DQ-010
+  predicate: signup_date > first order
+  failure: warn
+- id: DQ-011
+  predicate: historical return window differs from current SKU window
+  failure: warn; record dated policy evidence
+- id: DQ-012
+  predicate: return sku/customer differs from referenced sale sku/customer
+  failure: 'quarantine: REF_INTEGRITY'
+- id: DQ-013
+  predicate: line_total != price * quantity - discount; negative discount/net amount
+  failure: quarantine; currency rounding Q-002
+- id: DQ-014
+  predicate: order_subtotal != sum(line_total)
+  failure: warn per dictionary
+- id: DQ-015
+  predicate: refund_total != sum(return line refund_amount), or non-refunded amount
+    nonzero
+  failure: quarantine
+- id: DQ-016
+  predicate: n_lines / n_source_orders disagree with member lines / distinct orders
+  failure: quarantine
+- id: DQ-017
+  predicate: within_window_flag != int(days_to_return <= historical window)
+  failure: quarantine; date interpretation Q-003
+- id: DQ-018
+  predicate: ground-truth field enters input/feature/packet
+  failure: fail_run
+- id: DQ-019
+  predicate: raw identifier or reason_text downstream of ingestion boundary
+  failure: fail_run
+- id: DQ-020
+  predicate: unmatured exposure at run_date
+  failure: report; eligible treatment Q-002
+quarantine: retain redacted lineage and machine-readable reasons; count by table/reason;
+  invalid parent propagation must not duplicate or silently reclassify outcomes
+warning_threshold: null
+warning_threshold_question: Q-014
+no_silent_imputation: true
+existing_validator_limitations:
+- requires absent customer_master
+- refund check only line_total + 0.01, weaker than pro-rata contract
+- does not establish all declared type/PK/date/amount checks
+- ground truth allowed for synthetic verification only, not reusable detector validation

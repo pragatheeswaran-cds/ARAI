@@ -1,0 +1,88 @@
+spec_version: '1.0'
+codebook_source: assets/reason_codes.csv
+principle: reasons are customer claims, not adjudications. Groups are explicit code
+  lists, not claim_class, because late_delivery is claim_class=transaction_claim but
+  not a deceptive-claim reason (D-018).
+feature_groups:
+  transaction_claim:
+    codes:
+    - wrong_item_sent
+    - missing_parts
+    - item_not_received
+    - empty_package
+    excludes:
+    - late_delivery
+    rationale: the only public codes shared by genuine fulfilment failures and deceptive
+      claims; the only coordinated action codes (D-016)
+  item_complaint_customer:
+    codes:
+    - damaged
+    - defective
+    - poor_quality
+    - not_as_described
+  item_complaint_sku_quality:
+    codes:
+    - defective
+    - poor_quality
+    - not_as_described
+    excludes:
+    - damaged
+  discretionary:
+    codes:
+    - didnt_suit
+    - changed_my_mind
+    - not_as_expected
+    - found_better_price
+    - ordered_by_mistake
+    - late_delivery
+  fit:
+    codes:
+    - wrong_size
+    - didnt_fit
+  no_item_return:
+    codes:
+    - item_not_received
+    - empty_package
+generator_reason_selection:
+  ordinary_fit_or_preference_return:
+    draw_from:
+    - fit
+    - discretionary
+  genuine_defect_return:
+    draw_from:
+    - defective
+    - poor_quality
+    - not_as_described
+  carrier_damage:
+    code: damaged
+    rate: ~0.5% of delivered lines
+  genuine_fulfilment_failure:
+    rate: ~1.5% of delivered lines, all customer groups, independent of abuse propensity
+    nonreceipt_on_scanned_line: item_not_received
+    contents:
+    - wrong_item_sent
+    - missing_parts
+    - empty_package
+    code_split:
+      item_not_received: 0.5%
+      wrong_item_sent: 0.4%
+      missing_parts: 0.4%
+      empty_package: 0.2%
+  deceptive_nonreceipt_claim:
+    code: item_not_received
+  deceptive_contents_claim:
+    codes:
+    - wrong_item_sent
+    - missing_parts
+    - empty_package
+  temporary_use_return:
+    draw:
+      discretionary_or_fit: ~0.85
+      false_quality_complaint: ~0.15
+    note: no dedicated code; false quality complaints test that SKU quality evidence
+      does not clear a wardrober (Q9)
+  constraints:
+  - every code used by a deceptive action is also used by genuine events in the same
+    world (validation check)
+  - realised genuine vs deceptive claim counts are reported per world; the ~1,200
+    vs ~650 per 10k world figure is a planning estimate, not a target

@@ -1,0 +1,82 @@
+# DRAFT: verbatim LLD section 4 design values; unresolved questions override readiness.
+# This is a specification artifact, not runtime configuration.
+# Historical excerpt: model/budget choices are superseded by ../04-model/model-comparison-plan.md.
+# New generation policy is ../02-data/retail-simulation-policy.yaml (12 calendar months).
+# packet.history_window_days below is an evidence-packet limit, not transaction-history duration.
+seed: 20250901              # global; every module derives from this
+run:
+  alert_budget: 625         # the k in the matched-budget comparison
+  passes: 2
+ 
+shrinkage:
+  k: 20                     # M04, M05 — pulls thin SKUs to the category mean
+ 
+residual:
+  design_effect: per_customer   # M06 — see below; 1.5 is the fallback for thin histories
+  design_effect_max: 4.0        # cap, so one odd order cannot mute a real signal
+  min_lines: 3              # below this, residual is reported as null not zero
+ 
+wardrobing:                 # M07 — weights must sum to 1.0
+  w_latency_z: 0.30
+  w_window_ratio: 0.25
+  w_category: 0.15
+  w_reason: 0.20
+  w_no_bracketing: 0.10
+  latency_z_min: 1.0
+  window_ratio_min: 0.75
+  occasion_source: sku_master.is_occasion_wear   # not a category list in config
+  discretionary_intent: discretionary   # read from reason_code.intent_class, not a hardcoded list
+  band_elevated: 0.65
+  band_possible: 0.45
+ 
+rules:                      # M08 — each entry emits its id when it fires
+  R_REFUND_RATIO:  { field: refund_ratio,   op: gt, value: 0.50, weight: 0.25 }
+  R_RESIDUAL:      { field: residual_z,     op: gt, value: 2.00, weight: 0.35 }
+  R_CLAIM_MIX:     { field: claim_mix,      op: gt, value: 0.40, weight: 0.20 }
+  R_DEVICE_FANOUT: { field: device_fanout,  op: gte, value: 5,   weight: 0.20 }
+ 
+iforest:                    # M09
+  contamination: 0.03
+  n_estimators: 300
+  random_state: 20250901
+  features: [residual_z, refund_ratio, median_days_to_return_z, claim_mix,
+             device_fanout, address_fanout, payment_fanout, trend_90d]
+  # raw return rate is deliberately absent — see M09
+ 
+graph:                      # M10
+  degree_cap: 25            # identifiers shared by more accounts are dropped
+  min_shared_types: 2
+  louvain_resolution: 1.0
+  louvain_seed: 20250901
+ 
+blend:                      # M11 — weights must sum to 1.0
+  w_rule: 0.40
+  w_model: 0.35
+  w_graph: 0.25
+  tier_high_pct: 97.5       # percentile cutoffs, not absolute scores
+  tier_medium_pct: 90.0
+ 
+sku_verdict:                # M12
+  connectivity_target: 0.50
+  connectivity_quality: 0.15
+  claim_mix_target: 0.40
+  damage_mix_quality: 0.50
+  latency_ratio_target: 0.50
+  min_sales: 20
+ 
+packet:                     # M14
+  max_evidence_items: 12
+  max_graph_neighbours: 15
+  history_window_days: 180
+  max_bytes: 8192
+ 
+model:                      # M15
+  provider: <named in the decision log>
+  max_retries: 1
+  timeout_seconds: 30
+ 
+evaluation:                 # M16
+  dev_seeds:    [1, 2, 3, 4, 5]
+  sealed_seeds: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  budget_sweep: [100, 250, 625, 1000, 2000]
+  review_sample_rate: 0.01

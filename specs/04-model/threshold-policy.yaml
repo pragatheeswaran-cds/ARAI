@@ -1,0 +1,45 @@
+spec_version: 0.1.0
+status: DRAFT ? NOT APPROVED
+id: POLICY-001
+source: LLD ?4/M07/M08/M11/M12/M15
+owner: Lead; business safety review required
+prediction: risk_score percentile 0..100, not probability
+configuration_ref: ../00-governance/design-config.yaml
+risk_tiers:
+  HIGH: risk_score >= 97.5
+  MEDIUM: 90 <= risk_score < 97.5
+  LOW: risk_score < 90
+  rank_definition: TBD Q-012
+wardrobing:
+  elevated: score >= .65
+  possible: .45 <= score < .65
+  none: score < .45
+  no_returns:
+    score: 0
+    signals: []
+  customer_aggregation: TBD Q-004
+  blend_contribution: 0
+sku_verdict:
+  insufficient_sales: n_sales < 20 -> null verdict with evidence
+  abuse_target: connectivity >= .50 AND (claim_mix >= .40 OR latency_ratio <= .50)
+  quality_issue: connectivity <= .15 AND damage_mix >= .50
+  normal: otherwise, if all necessary signals valid
+  missing_signal_policy: TBD Q-016
+  no_item_return_share: report only; formula-to-decision mapping absent Q-016
+flagged_predicate: null
+flagged_question: Q-012
+business_decision:
+  state: BLOCKED Q-007
+  score_to_action_mapping: null
+  model_memo_tiers:
+  - LOW
+  - WARNING
+  - HOLD
+  - ESCALATE
+  - BAN
+  source_conflict: M15 auto-clears LOW/WARNING; HLD F8 forbids automatic customer
+    action; risk and memo tier enums differ
+  severe: queue for distinct-actor review; no automatic execution
+  customer_actions: no real retailer action integration in MVP
+alert_budget: 625 is evaluation workload, not HIGH boundary or forest contamination
+safety: LLM prose or tier never defines a new business rule

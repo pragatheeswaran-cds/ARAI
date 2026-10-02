@@ -1,0 +1,12 @@
+# Feature Tests
+
+DRAFT ? verification specifications only, not implemented or executed tests. Sources: LLD ?5/?9 and referenced canonical specs.
+
+| Test ID | Requirements | Level / concern | Fixture and expected result |
+|---|---|---|---|
+| FEATURE-001 | FR-001/002; AC-001; FEAT-001?FEAT-014 | Arithmetic units | M04: (60+6)/220=.3; (2+3)/24=.208333; zero sales -> .2. M05: 65/218=.298165; 4/23=.173913; sole buyer -> .2. M06: 18/sqrt(42)=2.777460 and 1.8/sqrt(.84)=1.963961; first outranks second. Set deff=1 for raw-z fixtures; separately test per-customer deff/cap once thin fallback approved. |
+| FEATURE-002 | FR-004; AC-003; FEAT-024 | Wardrobe and rule boundaries | LLD one-return fixtures -> 1/elevated, 0/none, .55/possible; no returns -> zero/empty signals. Exact .45/.65 boundaries. Rules test refund_ratio>.50, residual_z>2, claim_mix>.40 and device_fanout>=5; hit IDs/weights correct. Multi-return/null cases blocked Q-004. |
+| FEATURE-003 | FR-003; AC-002; FEAT-018?FEAT-020/026 | Graph units and properties | Device degree 2 contributes 1/log2(3)=.630930; address degree 400 drops; device degree2 plus payment degree4 creates weight 1.061606. One shared type cannot create an edge; degree25 retained, 26 dropped; repeated orders do not inflate distinct-account degree. Same seed/order gives same partition. Graph-score assertions blocked Q-005. |
+| FEATURE-004 | FR-005; AC-004; FEAT-027?FEAT-031 | SKU verdict and minimum history | With n_sales>=20 and valid norms, connectivity .02/damage .71 -> quality_issue; .78/claim .67/latency .11 -> abuse_target; .30/.35/.20 -> normal. At n_sales19 -> null verdict while evidence remains. Zero-return/undefined evidence and customer suppression blocked Q-016. |
+| FEATURE-005 | FR-006; AC-005; LEAK-005 | Exclusion regression | Empty exclusion yields identical passes; customer included in exclude is removed once; unrelated excluded accounts cannot change SKU totals they never touched. Sole buyer gives prior. Category prior exclusions, ring recovery deltas and household tolerance need Q-006; do not assert every percentile delta must be positive. |
+| FEATURE-006 | CONS-001; FEATURE-CONTRACT | Transform contract | All named features have approved formulas/types/ranges/null handling before implementation. Check column order, all eight forest inputs, rank ties, multiple identities, mixed categories, zero variance, empty history and 90-day boundaries. Generated/upload identical snapshots yield identical feature tables; missing definitions fail readiness rather than receive defaults. |

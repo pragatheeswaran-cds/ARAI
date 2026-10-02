@@ -1,0 +1,50 @@
+# NOTEBOOK CELL 1 (zero-based)
+from pathlib import Path
+
+import pandas as pd
+from faker import Faker
+
+from sku_config_v2 import CONFIG_V2, build_config
+from sku_generator_v2 import generate_sku_master, validate_config
+
+SEED = 42
+fake = Faker()
+fake.seed_instance(SEED)
+
+CONFIG = build_config(SEED)
+pd.set_option("display.max_columns", None)
+print(f"Configured {CONFIG['num_brands']} brands, {CONFIG['num_styles']} styles, {CONFIG['total_skus']} SKU slots")
+
+# NOTEBOOK CELL 3 (zero-based)
+validate_config(CONFIG)
+print("Configuration is valid.")
+
+# NOTEBOOK CELL 5 (zero-based)
+coverage = (
+    pd.DataFrame(CONFIG["styles"])
+    .groupby(["brand", "category"], as_index=False)["sku_count"]
+    .sum()
+    .sort_values(["brand", "category"])
+)
+coverage["expected"] = coverage.apply(
+    lambda r: CONFIG["coverage_sku_slots"][(r["brand"], r["category"])], axis=1
+)
+coverage
+
+# NOTEBOOK CELL 7 (zero-based)
+sku_master = generate_sku_master(CONFIG, fake)
+print(f"shape: {sku_master.shape}")
+print("Brands:", sku_master["brand"].value_counts().to_dict())
+print("Categories:", sku_master["category"].value_counts().to_dict())
+sku_master.head(10)
+
+# NOTEBOOK CELL 9 (zero-based)
+from sku_generator_v2 import validate_sku_master
+
+target_report = validate_sku_master(sku_master, CONFIG)
+target_report
+
+# NOTEBOOK CELL 11 (zero-based)
+output_path = Path("sku_master.csv")
+sku_master.to_csv(output_path, index=False)
+print(f"Wrote {len(sku_master)} rows to {output_path.resolve()}")

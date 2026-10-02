@@ -1,0 +1,226 @@
+as_of_date: '2026-09-09'
+n_customers: 10000
+seed: null
+id_prefix: ''
+id_width: 5
+segment_mix:
+  Dormant: 0.11
+  Occasional: 0.38
+  Seasonal: 0.18
+  Loyalist: 0.16
+  New_Growth: 0.15
+  High_Intensity: 0.02
+realism:
+  household_share_prob: 0.12
+  household_devices:
+  - 2
+  - 4
+  bleed_prob: 0.1
+  high_return_legit_prob: 0.06
+  high_return_legit_range:
+  - 0.28
+  - 0.48
+  festive_bleed_prob: 0.08
+  festive_bleed_range:
+  - 0.42
+  - 0.72
+  power_user_prob: 0.08
+  power_user_orders:
+  - 55
+  - 140
+segments:
+  Dormant:
+    display_name: Dormant
+    tenure_days:
+    - 7
+    - 365
+    orders:
+      always: 0
+    festive_order_ratio:
+    - 0.0
+    - 0.0
+    return_rate:
+    - 0.0
+    - 0.0
+    shared_device_count:
+    - 1
+    - 1
+  Occasional:
+    display_name: Occasional
+    tenure_days:
+    - 14
+    - 365
+    orders:
+      masses:
+        0: 0.08
+        1: 0.26
+        2: 0.22
+      range:
+      - 3
+      - 10
+    festive_order_ratio:
+    - 0.0
+    - 0.4
+    return_rate:
+    - 0.0
+    - 0.22
+    shared_device_count:
+    - 1
+    - 1
+  Seasonal:
+    display_name: Seasonal
+    tenure_days:
+    - 45
+    - 365
+    orders:
+      masses:
+        1: 0.08
+        2: 0.1
+      range:
+      - 3
+      - 28
+    festive_order_ratio:
+    - 0.48
+    - 0.88
+    return_rate:
+    - 0.06
+    - 0.35
+    shared_device_count:
+    - 1
+    - 1
+  Loyalist:
+    display_name: Loyalist
+    tenure_days:
+    - 120
+    - 365
+    orders:
+      masses: {}
+      range:
+      - 8
+      - 70
+      skew: lognormal
+    festive_order_ratio:
+    - 0.1
+    - 0.45
+    return_rate:
+    - 0.03
+    - 0.24
+    shared_device_count:
+    - 1
+    - 1
+  New_Growth:
+    display_name: New Growth
+    tenure_days:
+    - 5
+    - 160
+    orders:
+      masses:
+        0: 0.1
+        1: 0.16
+        2: 0.16
+      range:
+      - 3
+      - 18
+    festive_order_ratio:
+    - 0.0
+    - 0.38
+    return_rate:
+    - 0.0
+    - 0.26
+    shared_device_count:
+    - 1
+    - 1
+  High_Intensity:
+    display_name: High Intensity
+    tenure_days:
+    - 3
+    - 160
+    orders:
+      range:
+      - 3
+      - 48
+    return_rate:
+    - 0.28
+    - 0.6
+    festive_order_ratio:
+    - 0.0
+    - 0.7
+action_template_reference:
+  burst_return:
+    weight: 0.38
+    tenure_days:
+    - 3
+    - 50
+    orders:
+      range:
+      - 10
+      - 48
+    festive_order_ratio:
+    - 0.0
+    - 0.9
+    return_rate:
+    - 0.42
+    - 0.85
+    shared_device_count:
+    - 3
+    - 10
+  wardrober:
+    weight: 0.27
+    tenure_days:
+    - 60
+    - 300
+    orders:
+      range:
+      - 5
+      - 28
+    festive_order_ratio:
+    - 0.15
+    - 0.7
+    return_rate:
+    - 0.32
+    - 0.68
+    shared_device_count:
+    - 1
+    - 2
+  device_ring:
+    weight: 0.2
+    tenure_days:
+    - 8
+    - 140
+    orders:
+      range:
+      - 3
+      - 22
+    festive_order_ratio:
+    - 0.05
+    - 0.55
+    return_rate:
+    - 0.12
+    - 0.38
+    shared_device_count:
+    - 4
+    - 12
+  quiet_fraud:
+    weight: 0.15
+    tenure_days:
+    - 20
+    - 200
+    orders:
+      range:
+      - 2
+      - 14
+    festive_order_ratio:
+    - 0.05
+    - 0.5
+    return_rate:
+    - 0.2
+    - 0.4
+    shared_device_count:
+    - 1
+    - 3
+notes:
+- High_Intensity ranges are consolidation engineering defaults for a label-neutral
+  persona; change only on development worlds with a dated record.
+- Action templates are private patterns, not persona-based abuse selectors.
+- Ignore scalar shared_device_count; use actual relationships.
+- Experiment seed overrides this reference configuration.

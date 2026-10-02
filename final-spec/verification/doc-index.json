@@ -1,0 +1,204 @@
+[
+  [
+    "01-goals-and-scope.md",
+    "Goals, scope and domain language",
+    "GOAL",
+    [
+      "Walkthrough covers legitimate heavy returns, defective buyers, benign sharing, deceptive claims, coordination, temporary use and mixed cases without revealing truth on cases.",
+      "No UI/API can suspend accounts, refund orders, generate LLM verdicts or route inspections.",
+      "Review budget is 5% of eligible customers; excluded-history counts and fallback are visible.",
+      "Synthetic and prototype data are clearly labelled; mock values are not evaluated results."
+    ]
+  ],
+  [
+    "02-synthetic-data-generation.md",
+    "Synthetic data generation",
+    "GEN",
+    [
+      "Pinned seed/config/lock reproduces canonical sorted tables; different seeds vary; CSV/Parquet values match.",
+      "Adapter preserves 300 SKUs/37 styles, prices/windows/variants/launch dates and source hash.",
+      "Abuse-off preserves base/honest events; quantity-three fixture with one honest/one abusive request yields two requested units.",
+      "Five sale states and all cutoff chronology pass; future plans do not enter snapshot.",
+      "Population-average probabilities equal .04/.03/.005; invalid allocation fails; no forced realized quotas.",
+      "Labels reconstruct from action/request/unit joins; nonacting group members and planned-only targets are not positive.",
+      "Assigned sharing and realized links differ legitimately; one-order usage may be 0%/100%.",
+      "Coverage, eligibility, excluded abuse, segment support and blocked-campaign reports precede full generation."
+    ]
+  ],
+  [
+    "03-data-contracts.md",
+    "Operational and private data contracts",
+    "DATA",
+    [
+      "Duplicate/missing keys, bad ownership, excess quantities and impossible chronology reject complete upload with table/key diagnostics.",
+      "Exactly seven file hashes/counts validate; unknown columns/private files reject.",
+      "Two request dates under one header retain separate latency.",
+      "Future evidence never survives; IST dates and paise values round-trip.",
+      "Same world+content registration is stable; changed world content conflicts.",
+      "Every customer/style label reconstructs privately; no truth columns occur operationally."
+    ]
+  ],
+  [
+    "04-data-validation-cleaning.md",
+    "Data validation, cleaning and snapshot clearance",
+    "VAL",
+    [
+      "Each rule class has valid/invalid fixtures; invalid command exits nonzero without accepted publication.",
+      "Return aggregation before sales joins prevents duplicated exposure.",
+      "Negative values/future availability/unknown category/cross-customer fixtures report correct keys.",
+      "Optional missing evidence does not remove customers.",
+      "Original hashes and all allowed adapter transforms are recorded."
+    ]
+  ],
+  [
+    "05-data-exploration.md",
+    "Exploratory data analysis and diagnostics",
+    "EDA",
+    [
+      "Reports include eligibility/excluded abuse and denominators per world.",
+      "Enrichment fixture yields .667/.20; undefined metrics are null.",
+      "Reports identify disjoint feature support and genuine/deceptive code overlap.",
+      "Equal propensity may coexist with unequal completed prevalence without false failure.",
+      "Configuration changes are justified on development data before validation manifests."
+    ]
+  ],
+  [
+    "06-feature-engineering.md",
+    "Feature engineering and explanatory evidence",
+    "FEAT",
+    [
+      "Hand-calculated partial quantity, two-level shrinkage, sole buyer, single-SKU style/no peers and V=0 fixtures match.",
+      "Ordered 18-feature schema enforced; identity renaming preserving equality leaves features unchanged.",
+      "Eligibility threshold exactly three mature lines; recent requests affect composition but not mature rate.",
+      "One shared type no edge; two edge; fanout26 value removed; empty vs failed graph distinguished.",
+      "All five style states and threshold boundaries correct; diluted/multi-group misses reported.",
+      "Wardrobing boundary/zero-IQR/capped-latency/no-return fixtures match without mixing into model risk.",
+      "Changing private labels with operational inputs fixed changes no features or predictions."
+    ]
+  ],
+  [
+    "07-training-and-validation.md",
+    "Training dataset, model fitting and validation",
+    "TRAIN",
+    [
+      "Seed sets disjoint; linked customers never cross worlds; scorecard rejects demo/fixture IDs.",
+      "Held-out data fit no learned transform or fallback; assembly audits world IDs.",
+      "Each OOF row scored by a pipeline excluding its world; serving contains one final estimator.",
+      "Five candidate records include expanded params/hashes/durations/warnings/rejections.",
+      "Unsupervised fit cannot read customer labels."
+    ]
+  ],
+  [
+    "08-model-evaluation.md",
+    "Model and evidence evaluation",
+    "EVAL",
+    [
+      "Hand-labelled ceil/tie/pooled fixtures give correct precision/recall/FPR at1/5/10%.",
+      "Segment<200 fails validation coverage; zero denominator never becomes0% FPR.",
+      "Quantile ties/kept defective unit/unused household identifier/overlap fixtures have correct segment membership.",
+      "Reports include paired whole-world intervals and per-world results without significance claims.",
+      "Style/wardrobing misses, no-return state, coverage and null metrics are present.",
+      "Private evaluation joins happen after score freeze; no truth on inference routes."
+    ]
+  ],
+  [
+    "09-model-selection.md",
+    "Model selection and promotion gate",
+    "SEL",
+    [
+      "Higher precision/worse household FPR fails; equal precision fails.",
+      "Passing ties follow worst FPR then ordinal.",
+      "No winner produces fallback without fabricated promotion.",
+      "Selection record precedes test; test failure prevents runner-up switching.",
+      "Test-informed iteration retains failure and uses untouched test worlds."
+    ]
+  ],
+  [
+    "10-artifacts-and-versioning.md",
+    "Artifacts, reproducibility and baseline bundle",
+    "ART",
+    [
+      "Save/load score tolerance1e-10 absolute/1e-8 relative and exact ranked selection pass fixed fixtures.",
+      "Unknown type/hash/schema/library mismatch fails before use.",
+      "Run preserves bound model through promotion/restart.",
+      "Baseline works without any candidate estimator; inference fits are blocked.",
+      "Hashes have no circular metadata; prior bundles remain immutable."
+    ]
+  ],
+  [
+    "11-inference-service.md",
+    "Batch inference and job lifecycle",
+    "INF",
+    [
+      "Submission acknowledgement precedes scoring completion and stages persist.",
+      "Duplicate scoped key/body returns same resource; changed body409.",
+      "Crash cannot publish partial success; restart preserves notes/bindings.",
+      "Population counts and eligible/ineligible nullable fields reconcile.",
+      "No-winner path yields complete labelled baseline evidence; corrupt active model fails."
+    ]
+  ],
+  [
+    "12-fastapi-and-api-contract.md",
+    "FastAPI and API contract",
+    "API",
+    [
+      "All actual requests/responses validate against OpenAPI including201/202 and documented errors.",
+      "Upload parts/limits/hash/count/ownership/path-traversal fixtures enforced.",
+      "Cursors return no duplicates/gaps and cannot cross run/filter.",
+      "Every UI action has an endpoint, with no training/refund/block/delete-note operation.",
+      "Unknown404, unfinished409, conflict409 and validation422 are distinguished.",
+      "Unlisted CORS origin denied; VM API unauthenticated denied."
+    ]
+  ],
+  [
+    "13-react-vite-ui.md",
+    "React/Vite frontend and analyst workflows",
+    "UI",
+    [
+      "Walkthrough traverses dataset/run/queue/case/style/SKU/notes/evaluation with stable context and back.",
+      "Prototype opens offline via file://; production consumes API instead of inline metrics.",
+      "Fallback/loading/failed/empty/insufficient-history states truthful and distinct.",
+      "No AI confidence/USD/non-apparel/calibrated bands/loss-prevented claims remain.",
+      "Keyboard user filters, opens cases, navigates tabs, appends note and returns.",
+      "Implemented notes persist cross-run; prototype labels memory-only behavior.",
+      "Truth reveal isolated to evaluation; examples never presented as measured results."
+    ]
+  ],
+  [
+    "14-storage-and-audit.md",
+    "PostgreSQL, immutable storage and audit",
+    "STORE",
+    [
+      "Concurrent duplicate requests yield one resource.",
+      "Two worker claims cannot both own same job.",
+      "Crash/restart never exposes succeeded with missing files.",
+      "RunA note appears in runB same world/customer with original attribution.",
+      "Backup restores to relocated root without laptop path dependencies."
+    ]
+  ],
+  [
+    "15-security-deployment-portability.md",
+    "Security, deployment and portability",
+    "OPS",
+    [
+      "Extracted folder in a path with spaces passes tools/verify_package.py without repo siblings.",
+      "Wireframe opens offline on another machine/browser without dependency installation.",
+      "Fresh supported second environment bootstraps from locks/migrations and reproduces small-world canonical data/score ranks.",
+      "Serving cannot read truth; upload cannot escape root.",
+      "VM HTTPS/shared-login401/IP block/closed public DB smoke checks pass.",
+      "Local rehearsal works without cloud credentials and restores at relocated root."
+    ]
+  ],
+  [
+    "16-testing-and-delivery.md",
+    "Testing, traceability and delivery",
+    "TEST",
+    [
+      "Every AC has evidence or explicit NOT_RUN; syntax success never stands in for runtime acceptance.",
+      "Small-world gate precedes full generation; selection freezes before test exposure.",
+      "Integration cases execute with retained output and no truth leakage.",
+      "Target-machine rehearsal has measured runtime and working baseline fallback.",
+      "Release includes failures/limitations/hashes and enough reference material for another developer."
+    ]
+  ]
+]

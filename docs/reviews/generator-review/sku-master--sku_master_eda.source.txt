@@ -1,0 +1,274 @@
+# NOTEBOOK CELL 1 (zero-based)
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+
+try:
+    from IPython.display import display
+except ImportError:
+    display = print
+
+from sku_config_v2 import build_config
+from sku_generator_v2 import band_from_price, style_lookup, validate_sku_master
+
+DATA_PATH = Path("sku_master.csv")
+CONFIG = build_config(42)
+STYLES = style_lookup(CONFIG)
+
+pd.set_option("display.max_rows", 200)
+pd.set_option("display.max_columns", None)
+pd.set_option("display.width", 140)
+
+
+def actual_vs_target_table(counts: pd.Series, targets: dict, name: str) -> pd.DataFrame:
+    rows = []
+    for key, target in targets.items():
+        got = int(counts.get(key, 0))
+        rows.append({"dimension": name, "value": key, "actual": got, "target": target, "gap": got - target})
+    return pd.DataFrame(rows)
+
+
+def show_fig(fig):
+    """Display Plotly figure in Jupyter."""
+    return fig.show()
+
+
+def count_bar(series: pd.Series, title: str) -> pd.DataFrame:
+    counts = series.value_counts().reset_index()
+    counts.columns = [series.name or "category", "count"]
+    fig = px.bar(counts, x=counts.columns[0], y="count", title=title, text="count")
+    fig.update_traces(textposition="outside")
+    show_fig(fig)
+    return counts
+
+
+print("Setup complete (v2 CONFIG loaded).")
+
+# NOTEBOOK CELL 3 (zero-based)
+df = pd.read_csv(DATA_PATH)
+df["launch_date"] = pd.to_datetime(df["launch_date"])
+df["is_occasion_wear"] = df["is_occasion_wear"].astype(bool)
+df["active_flag"] = df["active_flag"].astype(bool)
+df["derived_band"] = df["unit_price"].map(band_from_price)
+df.head()
+
+# NOTEBOOK CELL 5 (zero-based)
+overview = pd.DataFrame(
+    {
+        "metric": [
+            "rows",
+            "columns",
+            "unique sku_id",
+            "unique style_id",
+            "unique brand",
+            "unique category",
+            "launch_date range",
+        ],
+        "value": [
+            len(df),
+            len(df.columns),
+            df["sku_id"].nunique(),
+            df["style_id"].nunique(),
+            df["brand"].nunique(),
+            df["category"].nunique(),
+            f"{df['launch_date'].min().date()} to {df['launch_date'].max().date()}",
+        ],
+    }
+)
+display(overview)
+df.info()
+
+# NOTEBOOK CELL 6 (zero-based)
+df.describe(include="all").T
+
+# NOTEBOOK CELL 8 (zero-based)
+missing = df.isna().sum().to_frame("missing_count")
+missing["missing_pct"] = (missing["missing_count"] / len(df) * 100).round(2)
+missing
+
+# NOTEBOOK CELL 10 (zero-based)
+dup_sku = df[df.duplicated(subset=["sku_id"], keep=False)]
+dup_rows = df[df.duplicated(keep=False)]
+dup_variant = df[df.duplicated(subset=["style_id", "color", "size"], keep=False)]
+print("Duplicate sku_id:", len(dup_sku))
+print("Fully duplicate rows:", len(dup_rows))
+print("Duplicate (style_id, color, size):", len(dup_variant))
+display(dup_variant.head())
+
+# NOTEBOOK CELL 12 (zero-based)
+count_bar(df["brand"], "Brand distribution")
+count_bar(df["category"], "Category distribution")
+count_bar(df["style_id"], "Style distribution")
+count_bar(df["color"], "Colour distribution")
+count_bar(df["size"], "Size distribution")
+count_bar(df["price_band"], "Price-band distribution")
+count_bar(df["is_occasion_wear"], "Occasion-wear distribution")
+count_bar(df["return_window_days"], "Return-window distribution")
+count_bar(df["active_flag"], "Active / inactive distribution")
+
+# NOTEBOOK CELL 14 (zero-based)
+style_color = pd.crosstab(df["style_id"], df["color"])
+style_size = pd.crosstab(df["style_id"], df["size"])
+color_size = pd.crosstab(df["color"], df["size"])
+style_color_size = (
+    df.groupby(["style_id", "color", "size"]).size().reset_index(name="sku_count").sort_values(["style_id", "color", "size"])
+)
+display(style_color)
+display(style_size)
+display(color_size)
+style_color_size.head(20)
+
+# NOTEBOOK CELL 15 (zero-based)
+show_fig(px.imshow(style_color, text_auto=True, aspect="auto", title="Style x Colour"))
+show_fig(px.imshow(style_size, text_auto=True, aspect="auto", title="Style x Size"))
+show_fig(px.imshow(color_size, text_auto=True, aspect="auto", title="Colour x Size"))
+
+# NOTEBOOK CELL 17 (zero-based)
+display(df["unit_price"].describe().to_frame("unit_price"))
+show_fig(px.histogram(df, x="unit_price", nbins=40, title="Unit-price distribution"))
+show_fig(px.box(df, x="style_id", y="unit_price", title="Unit Price x Style"))
+show_fig(px.box(df, x="price_band", y="unit_price", title="Unit Price x Price Band"))
+df.groupby("style_id")["unit_price"].agg(["min", "max", "nunique"])
+
+# NOTEBOOK CELL 19 (zero-based)
+display(pd.crosstab(df["style_id"], df["price_band"]))
+display(pd.crosstab(df["style_id"], df["is_occasion_wear"]))
+display(pd.crosstab(df["style_id"], df["return_window_days"]))
+show_fig(px.imshow(pd.crosstab(df["style_id"], df["price_band"]), text_auto=True, title="Price-band x Style"))
+show_fig(px.imshow(pd.crosstab(df["style_id"], df["is_occasion_wear"]), text_auto=True, title="Occasion Wear x Style"))
+show_fig(px.imshow(pd.crosstab(df["style_id"], df["return_window_days"]), text_auto=True, title="Return Window x Style"))
+
+# NOTEBOOK CELL 21 (zero-based)
+show_fig(px.histogram(df, x="launch_date", title="Launch-date distribution"))
+show_fig(px.box(df, x="style_id", y="launch_date", title="Launch Date x Style"))
+show_fig(px.histogram(df, x="launch_date", color="active_flag", barmode="overlay", title="Launch Date x Active Flag"))
+df.groupby("style_id")["launch_date"].agg(["min", "max", "nunique"])
+
+# NOTEBOOK CELL 23 (zero-based)
+invalid_color_rows: list[str] = []
+invalid_size_rows: list[str] = []
+violations: list[dict] = []
+
+for row in df.itertuples(index=False):
+    st = STYLES.get(row.style_id)
+    if st is None:
+        violations.append({"rule": "unknown_style", "detail": row.style_id})
+        continue
+    if row.color not in st["allowed_colors"]:
+        invalid_color_rows.append(row.sku_id)
+    if row.size not in st["allowed_sizes"]:
+        invalid_size_rows.append(row.sku_id)
+    if row.unit_price != st["unit_price"] or row.price_band != st["price_band"]:
+        violations.append({"rule": "price", "detail": row.sku_id})
+    if band_from_price(row.unit_price) != row.price_band:
+        violations.append({"rule": "band_derive", "detail": row.sku_id})
+    if row.return_window_days != CONFIG["return_window_by_category"][st["category"]]:
+        violations.append({"rule": "return_window", "detail": row.sku_id})
+    exp_occ = row.style_id in CONFIG["occasion_styles"]
+    if row.is_occasion_wear != exp_occ:
+        violations.append({"rule": "occasion", "detail": row.sku_id})
+
+dup_var = df[df.duplicated(subset=["style_id", "color", "size"], keep=False)]
+print("Invalid style-colour:", len(invalid_color_rows))
+print("Invalid style-size:", len(invalid_size_rows))
+print("Duplicate style-colour-size:", len(dup_var))
+display(pd.DataFrame(violations).head(20))
+
+try:
+    validate_sku_master(df.assign(launch_date=df["launch_date"].dt.strftime("%Y-%m-%d")), CONFIG)
+    print("validate_sku_master: all hard constraints passed.")
+except AssertionError as e:
+    print("validate_sku_master failed:", e)
+
+# NOTEBOOK CELL 25 (zero-based)
+def realism_checks(frame: pd.DataFrame) -> pd.DataFrame:
+    invalid_color = 0
+    invalid_size = 0
+    for row in frame.itertuples(index=False):
+        st = STYLES[row.style_id]
+        if row.color not in st["allowed_colors"]:
+            invalid_color += 1
+        if row.size not in st["allowed_sizes"]:
+            invalid_size += 1
+
+    per_style = frame.groupby("style_id").agg(
+        n_price=("unit_price", "nunique"),
+        n_band=("price_band", "nunique"),
+        n_launch=("launch_date", "nunique"),
+        n_occ=("is_occasion_wear", "nunique"),
+        n_active=("active_flag", "nunique"),
+    )
+    inconsistent_styles = int((per_style > 1).any(axis=1).sum())
+
+    rows = [
+        ("Style -> allowed colours/sizes", invalid_color == 0 and invalid_size == 0),
+        ("Style -> price band (constant per style)", per_style["n_band"].max() == 1),
+        ("Style -> single list price", per_style["n_price"].max() == 1),
+        ("Size/colour -> price (independent)", frame.groupby(["style_id", "color"])["unit_price"].nunique().max() == 1),
+        ("Band <-> numeric price (v2)", (frame["price_band"] == frame["derived_band"]).all()),
+        ("Style -> single launch / occasion / active", inconsistent_styles == 0),
+        ("Category -> return window", frame.groupby("category")["return_window_days"].nunique().max() == 1 and frame["category"].nunique() >= 5),
+    ]
+    return pd.DataFrame(rows, columns=["relationship", "realistic"])
+
+
+realism_scorecard = realism_checks(df)
+realism_scorecard
+if not realism_scorecard["realistic"].all():
+    raise AssertionError("Realism scorecard failed — regenerate sku_master.csv with v2 generator or fix CONFIG.")
+print("All realism scorecard checks passed.")
+
+# NOTEBOOK CELL 26 (zero-based)
+per_style = df.groupby("style_id").agg(
+    n_price=("unit_price", "nunique"),
+    n_band=("price_band", "nunique"),
+    n_launch=("launch_date", "nunique"),
+    n_occ=("is_occasion_wear", "nunique"),
+    n_active=("active_flag", "nunique"),
+)
+inconsistent = per_style[(per_style > 1).any(axis=1)]
+print("Styles with inconsistent style-level fields:", len(inconsistent))
+inconsistent
+
+# NOTEBOOK CELL 28 (zero-based)
+def iqr_outliers(series: pd.Series) -> pd.Series:
+    q1, q3 = series.quantile(0.25), series.quantile(0.75)
+    iqr = q3 - q1
+    return (series < q1 - 1.5 * iqr) | (series > q3 + 1.5 * iqr)
+
+
+global_out = df[iqr_outliers(df["unit_price"])]
+print("Global IQR outliers on unit_price:", len(global_out))
+display(global_out[["sku_id", "style_id", "brand", "unit_price", "price_band"]].head(20))
+
+price_inconsistency = (
+    df.groupby(["style_id", "color"])["unit_price"].nunique().reset_index(name="n_prices")
+)
+price_inconsistency = price_inconsistency[price_inconsistency["n_prices"] > 1]
+print("Style x colour with >1 price (v2 expects 0):", len(price_inconsistency))
+price_inconsistency.head()
+
+# NOTEBOOK CELL 30 (zero-based)
+summary = pd.Series(
+    {
+        "rows": len(df),
+        "expected_rows": CONFIG["total_skus"],
+        "brands": df["brand"].nunique(),
+        "missing_cells": int(df.isna().sum().sum()),
+        "duplicate_sku_id": int(df.duplicated(subset=["sku_id"]).sum()),
+        "duplicate_variants": int(df.duplicated(subset=["style_id", "color", "size"]).sum()),
+        "invalid_style_color": len(invalid_color_rows),
+        "invalid_style_size": len(invalid_size_rows),
+        "other_violations": len(violations),
+        "styles_inconsistent_fields": len(inconsistent),
+        "style_x_color_multi_price": len(price_inconsistency),
+        "prices_not_x99": int((df["unit_price"] % 100 != 99).sum()),
+        "band_mismatch": int((df["price_band"] != df["derived_band"]).sum()),
+    },
+    name="value",
+)
+summary

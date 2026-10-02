@@ -1,0 +1,25 @@
+{
+  "purpose": "Provenance only, not external dependencies",
+  "sha256": {
+    "specs/v0.2/data.md": "e25357864a79cae58d42ade377658b582d0eeb9b3845dfc3e6224ddfbfa26ca8",
+    "specs/v0.2/delivery.md": "7e89b8fc3c315cea72abe311712787d2a302920c73a8a32c6b7312b08f24ab93",
+    "specs/v0.2/existing-generator-disposition.md": "902f7db601f9a86549f4f6912d924bb1c28af3c95a14d20b20c144c3cc1f17f1",
+    "specs/v0.2/experiment.yaml": "4a7401897e08d8dcd931fa17c208a331ff2ff481aa4170825c9ade1dbbcf2e3d",
+    "specs/v0.2/features.md": "cdb5aac4b48b40a19869a36050f6249f2a3b3ca2b069f729765bf678e0bea862",
+    "specs/v0.2/modeling.md": "5900836f4b254d5de6560e3d49cd5abe41ccbf8b777a32fe166c990c1d51e553",
+    "specs/v0.2/README.md": "e74afebd928c3d02facfc44dfd0276f22f940b265b1a16feae054045c5afca34",
+    "specs/v0.2/serving.md": "59b28393a85a52ac7df6a42326ba015ef7975fc2a030390bb332bf8f44632e45",
+    "specs/v0.2/verification.md": "488cdf71d40e63ed63ddcb0b42f952a8e22d2fa1b5f08ab2bae9be61171d5022",
+    "specs/v0.3/decision-log.md": "744ed6f47fe8804d94fff3ae4a6732a373026c68fbdd75a7ffaeefbe1dd016bc",
+    "specs/v0.3/gap-review.md": "d9d1c5502fc99b2bdacc5a91489ca72fecf7b7f991885eb0d6562e496a597906",
+    "specs/v0.3/README.md": "6203b9a8115258dd1d9aacf24fb8f467dba5f35c8ee976121b412155a6b47830",
+    "specs/v0.3/reason-code-mapping.yaml": "41b55bd9f8abaaa50faebdd8efd49c45e4bee1f8d072b8c03f598456b0b0ea4c",
+    "specs/v0.3/schema.yaml": "668eb1487ecd0bf43e7621e494f0656757939c8d53a37601bf9d086c00587db2",
+    "specs/v0.3.1/amendment.md": "c9b72d9fdacb4de0f343ecffc9ba1c251db7438bdf7dd1afdccb2e327eea751c",
+    "specs/v0.3.1/generator-policy.yaml": "dd67f65f2de101f9de18d7236d8e43518d9227e3afdd4d9d736385472da84acb",
+    "specs/v0.3.1/README.md": "b1774088c1d909af8de75299efa56a32904680d7342584375cd2a8f4cf6c264d",
+    "specs/v0.3.1/schema.yaml": "2a071aa1958369cc6c4fb870935f1abd193855e2106004463585940fb05f1706",
+    "specs/v0.3.1/source-hashes.json": "77e09d916de4b9f0c817c82bc99dc1ed9db0a26a755f2da9fdd6e73bb4e44ed7",
+    "specs/v0.3.1/verification.md": "6fb440e4b517a2799d83c4d893abe21c4e479317800f6a8ae5ac8ccd91a3a091"
+  }
+}

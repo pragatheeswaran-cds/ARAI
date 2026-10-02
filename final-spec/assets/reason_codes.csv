@@ -1,0 +1,17 @@
+reason_code,description,claim_class,intent_class,fault_attribution,requires_item_return,is_high_risk
+damaged,Arrived damaged,item_complaint,mechanical,carrier,1,0
+defective,Faulty or stopped working,item_complaint,mechanical,retailer,1,0
+poor_quality,Quality below expectation,item_complaint,mechanical,retailer,1,0
+not_as_described,Differs from listing,item_complaint,mechanical,retailer,1,0
+wrong_size,Size did not fit,fit,mechanical,customer,1,0
+didnt_fit,Cut or shape did not fit,fit,mechanical,customer,1,0
+didnt_suit,Did not suit the customer,preference,discretionary,customer,1,0
+changed_my_mind,No longer wanted,preference,discretionary,customer,1,0
+not_as_expected,Not what the customer pictured,preference,discretionary,customer,1,0
+found_better_price,Cheaper elsewhere,preference,discretionary,customer,1,0
+ordered_by_mistake,Ordered in error,preference,discretionary,customer,1,0
+late_delivery,Arrived too late to be wanted,transaction_claim,discretionary,carrier,1,0
+wrong_item_sent,A different item was sent,transaction_claim,mechanical,retailer,1,1
+missing_parts,Parts or pieces absent,transaction_claim,mechanical,retailer,1,1
+item_not_received,Parcel never arrived,transaction_claim,not_applicable,disputed,0,1
+empty_package,Parcel arrived empty,transaction_claim,not_applicable,disputed,0,1

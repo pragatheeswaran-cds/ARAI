@@ -1,0 +1,10 @@
+{
+  "purpose": "Preserved v0.3 full-file hashes measured before drafting; not a new approval or verification of the embedded signing hash.",
+  "sha256": {
+    "specs/v0.3/decision-log.md": "744ed6f47fe8804d94fff3ae4a6732a373026c68fbdd75a7ffaeefbe1dd016bc",
+    "specs/v0.3/gap-review.md": "d9d1c5502fc99b2bdacc5a91489ca72fecf7b7f991885eb0d6562e496a597906",
+    "specs/v0.3/README.md": "6203b9a8115258dd1d9aacf24fb8f467dba5f35c8ee976121b412155a6b47830",
+    "specs/v0.3/reason-code-mapping.yaml": "41b55bd9f8abaaa50faebdd8efd49c45e4bee1f8d072b8c03f598456b0b0ea4c",
+    "specs/v0.3/schema.yaml": "668eb1487ecd0bf43e7621e494f0656757939c8d53a37601bf9d086c00587db2"
+  }
+}

@@ -1,0 +1,149 @@
+version: '1.0'
+status: IMPLEMENTATION BASELINE
+snapshot_date: '2026-09-09'
+history_start: '2025-09-10'
+timezone: Asia/Kolkata
+customers_per_world: 10000
+catalog_skus: 300
+history_calendar_months: 12
+currency: INR
+seed_namespace: return-abuse-v02
+train_seeds:
+- 2101
+- 2102
+- 2103
+- 2104
+- 2105
+- 2106
+- 2107
+- 2108
+- 2109
+- 2110
+validation_seeds:
+- 2201
+- 2202
+- 2203
+- 2204
+- 2205
+test_seeds:
+- 2301
+- 2302
+- 2303
+- 2304
+- 2305
+demo_seeds:
+- 2401
+test_reuse: prohibited after any model/config/generator change prompted by test results
+eligibility:
+  min_mature_sale_lines: 3
+  excluded_status: insufficient_history
+  report_excluded_abuse_coverage: true
+budgets:
+  primary_fraction: 0.05
+  sensitivity_fractions:
+  - 0.01
+  - 0.1
+  rounding: ceil
+  tie_break: ascending SHA256 of world_id/customer_id with fixed public tie namespace
+selection:
+  aggregate: pooled confusion counts over validation worlds, with k calculated per
+    world
+  gate: precision above raw-rate baseline; FPR no higher in each benign group
+  order: descending precision, ascending worst benign-group FPR, ascending registered
+    candidate ordinal
+  no_pass: no_selected_model
+  refit_after_selection: false
+candidates:
+- id: logreg_c1
+  ordinal: 1
+  family: LogisticRegression
+  supervised: true
+  preprocessing: training-median imputation, missing indicators, StandardScaler
+  params:
+    C: 1.0
+    solver: lbfgs
+    max_iter: 1000
+    class_weight: null
+    random_state: 20260925
+  ranking_score: decision_function
+- id: hgb_leaf15
+  ordinal: 2
+  family: HistGradientBoostingClassifier
+  supervised: true
+  preprocessing: training-median imputation, missing indicators
+  params:
+    learning_rate: 0.05
+    max_iter: 200
+    max_leaf_nodes: 15
+    min_samples_leaf: 50
+    l2_regularization: 1.0
+    early_stopping: false
+    random_state: 20260925
+  ranking_score: decision_function
+- id: hgb_leaf31
+  ordinal: 3
+  family: HistGradientBoostingClassifier
+  supervised: true
+  preprocessing: training-median imputation, missing indicators
+  params:
+    learning_rate: 0.05
+    max_iter: 200
+    max_leaf_nodes: 31
+    min_samples_leaf: 50
+    l2_regularization: 1.0
+    early_stopping: false
+    random_state: 20260925
+  ranking_score: decision_function
+- id: iforest_256
+  ordinal: 4
+  family: IsolationForest
+  supervised: false
+  preprocessing: training-median imputation, missing indicators
+  params:
+    n_estimators: 300
+    max_samples: 256
+    contamination: auto
+    max_features: 1.0
+    bootstrap: false
+    random_state: 20260925
+    n_jobs: 1
+  ranking_score: negative score_samples
+- id: iforest_1024
+  ordinal: 5
+  family: IsolationForest
+  supervised: false
+  preprocessing: training-median imputation, missing indicators
+  params:
+    n_estimators: 300
+    max_samples: 1024
+    contamination: auto
+    max_features: 1.0
+    bootstrap: false
+    random_state: 20260925
+    n_jobs: 1
+  ranking_score: negative score_samples
+uncertainty:
+  world_bootstrap_repetitions: 1000
+  seed: 20260926
+  interval_percentiles:
+  - 2.5
+  - 97.5
+  gate_uses: point estimates; intervals reported, not a significance claim
+dependency_policy: lock exact compatible versions before accepted generation/training
+fixture_seeds:
+- 2001
+- 2002
+- 2003
+fixture_customers: 1000
+stress_seeds:
+  2501: ordinary propensity x1.2
+  2502: ordinary propensity x0.8
+  2503: defect incidence x2
+  2504: household share x2
+  2505: action probability x0.5
+  2506: action probability x2
+  2507: actionable persona multipliers all 1
+risk_reference:
+  supervised: 5-fold grouped by world; fold-local preprocessing/fallback fitting
+  unsupervised: in-sample training scores
+  baseline: training raw_return_rate

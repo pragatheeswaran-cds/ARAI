@@ -1,0 +1,69 @@
+spec_version: 0.1.0
+approved_output_direction:
+  customer_output: overall abuse risk with separate supporting evidence signals
+  not_required: trained per-abuse-type predictions
+  model_policy: selected supervised or unsupervised model; Isolation Forest is not mandated
+  remaining_work: revise legacy forest/blend/pass fields and finalize score semantics; do not equate risk score with calibrated probability
+status: DRAFT ? NOT APPROVED
+id: INF-OUT-001
+key:
+- run_id
+- customer_id
+- pass
+score_fields:
+  rule_score:
+    type: number
+    range:
+    - 0
+    - 1
+  iforest_score:
+    type: number
+    range:
+    - 0
+    - 1
+    normalization: Q-012
+  graph_score:
+    type: number
+    range:
+    - 0
+    - 1
+    definition: Q-005
+  blended_raw:
+    type: number
+    range:
+    - 0
+    - 1
+  risk_score:
+    type: number
+    range:
+    - 0
+    - 100
+    meaning: within-run percentile, NOT probability
+  tier:
+    enum:
+    - LOW
+    - MEDIUM
+    - HIGH
+  delta:
+    formula: pass2.risk_score-pass1.risk_score
+    range:
+    - -100
+    - 100
+    assumption: difference convention made explicit for review Q-006
+required_evidence:
+- rules_fired
+- component scores
+- feature deviations/peer percentiles
+- computed counterfactual
+- wardrobe band/signals
+- relevant SKU verdicts
+- graph evidence
+memo:
+  nullable: true
+  reason: provider/schema/grounding failure is evidence-only fallback
+  schema_ref: ../06-api/openapi.yaml#/components/schemas/Memo
+business_action: separate blocked POLICY-001; never infer from score alone
+versions: run manifest links model, schema, feature, config and policy versions; public
+  per-response exposure Q-008
+nonfinite: never serialize NaN/Infinity; invalid score fails publication; eligible
+  null contract Q-012

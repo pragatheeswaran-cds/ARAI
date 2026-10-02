@@ -1,0 +1,9 @@
+# Scratch tooling and review copies (not part of the project)
+.work-tools/
+.work-review/
+tmp/
+__pycache__/
+node_modules/
+
+# Teammates' repository with its own Bitbucket remote; tracked there, not here
+code/synthetic-data/

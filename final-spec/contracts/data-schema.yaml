@@ -1,0 +1,557 @@
+spec_version: '1.0'
+status: IMPLEMENTATION BASELINE
+conventions:
+  timezone: Asia/Kolkata
+  date_format: ISO-8601 date (YYYY-MM-DD), local Asia/Kolkata date
+  timestamp_format: ISO-8601 with offset (e.g. 2026-03-14T18:22:05+05:30)
+  currency: INR; monetary values rounded to 2 decimals (paise)
+  ids: opaque world-namespaced strings; join keys only, never model features; no persona
+    or role prefix
+  cutoff_rule: every row and field value in an upload has availability <= manifest.cutoff
+  day_arithmetic: calendar days between Asia/Kolkata local dates; order gap from order_date
+    (D-026)
+  model_input: Only ordered fields in contracts/features.yaml enter X.
+tables:
+  customer_master:
+    grain: account
+    primary_key:
+    - customer_id
+    columns:
+      customer_id:
+        type: string
+        nullable: false
+      signup_date:
+        type: date
+        nullable: false
+      account_status:
+        type: string
+        nullable: false
+        enum:
+        - active
+        - suspended
+        - closed
+        - unknown
+        model_input: false
+        note: Generator emits unknown; do not derive from persona or private truth.
+      loyalty_tier:
+        type: string
+        nullable: false
+        enum:
+        - none
+        - bronze
+        - silver
+        - gold
+        - unknown
+        model_input: false
+      marketing_channel:
+        type: string
+        nullable: false
+        enum:
+        - organic
+        - paid_social
+        - referral
+        - affiliate
+        - unknown
+        model_input: false
+  sku_master:
+    grain: sellable SKU
+    primary_key:
+    - sku
+    adapter_from_team:
+      sku_id: sku
+      color: colour
+      color_id: colour_id
+      is_occasion_wear True/False: 1/0
+      active_flag True/False: 1/0
+    columns:
+      sku:
+        type: string
+        nullable: false
+      style_id:
+        type: string
+        nullable: false
+      brand:
+        type: string
+        nullable: false
+      category:
+        type: string
+        nullable: false
+        enum:
+        - T-shirt
+        - Shirt
+        - Jeans
+        - Jacket
+        - Dress
+      size:
+        type: string
+        nullable: false
+      colour:
+        type: string
+        nullable: false
+      colour_id:
+        type: string
+        nullable: true
+      unit_price:
+        type: number
+        nullable: false
+        exclusive_minimum: 0
+        unit: INR
+      price_band:
+        type: string
+        nullable: false
+        enum:
+        - Budget
+        - Mid
+        - Premium
+        - Luxury
+      return_window_days:
+        type: integer
+        nullable: false
+        enum:
+        - 30
+        - 45
+        - 60
+        note: current catalog policy; sale line captures the policy applied
+      is_occasion_wear:
+        type: integer
+        nullable: false
+        enum:
+        - 0
+        - 1
+      launch_date:
+        type: date
+        nullable: false
+      active_flag:
+        type: integer
+        nullable: false
+        enum:
+        - 0
+        - 1
+        note: current metadata only; never implies a historical retirement date
+    forbidden_columns:
+    - is_defective
+    - defect_rate
+    - is_ring_target
+    - base_return_rate
+  reason_code:
+    grain: reason code
+    primary_key:
+    - reason_code
+    source_rows: assets/reason_codes.csv
+    feature_groups: contracts/reason-groups.yaml
+    columns:
+      reason_code:
+        type: string
+        nullable: false
+      description:
+        type: string
+        nullable: false
+      claim_class:
+        type: string
+        nullable: false
+        enum:
+        - item_complaint
+        - fit
+        - preference
+        - transaction_claim
+      intent_class:
+        type: string
+        nullable: false
+        enum:
+        - discretionary
+        - mechanical
+        - not_applicable
+      fault_attribution:
+        type: string
+        nullable: false
+        enum:
+        - retailer
+        - customer
+        - carrier
+        - disputed
+      requires_item_return:
+        type: integer
+        nullable: false
+        enum:
+        - 0
+        - 1
+      is_high_risk:
+        type: integer
+        nullable: false
+        enum:
+        - 0
+        - 1
+        model_input: false
+        note: fixed codebook value; never derived from customer persona
+  sales_order:
+    grain: order
+    primary_key:
+    - order_id
+    columns:
+      order_id:
+        type: string
+        nullable: false
+      customer_id:
+        type: string
+        nullable: false
+        fk: customer_master.customer_id
+      order_date:
+        type: date
+        nullable: false
+        rule: '>= customer.signup_date and >= history_start and <= cutoff date'
+      channel:
+        type: string
+        nullable: false
+        enum:
+        - web
+        - mobile_app
+        - marketplace
+      address_id:
+        type: string
+        nullable: false
+        role: opaque identity reference (graph equality only)
+      device_id:
+        type: string
+        nullable: false
+        role: opaque identity reference (graph equality only)
+      payment_id:
+        type: string
+        nullable: false
+        role: opaque identity reference (graph equality only)
+      currency:
+        type: string
+        nullable: false
+        const: INR
+      order_subtotal:
+        type: number
+        nullable: false
+        minimum: 0
+        rule: = sum(line_total) at order time, including later-cancelled lines
+      order_shipping:
+        type: number
+        nullable: false
+        minimum: 0
+      order_total:
+        type: number
+        nullable: false
+        minimum: 0
+        rule: = order_subtotal + order_shipping
+  sales_order_line:
+    grain: ordered SKU line
+    primary_key:
+    - order_id
+    - order_line_no
+    columns:
+      order_id:
+        type: string
+        nullable: false
+        fk: sales_order.order_id
+      order_line_no:
+        type: integer
+        nullable: false
+        minimum: 1
+      sku:
+        type: string
+        nullable: false
+        fk: sku_master.sku
+        rule: order_date >= sku.launch_date
+      quantity:
+        type: integer
+        nullable: false
+        minimum: 1
+      unit_price:
+        type: number
+        nullable: false
+        exclusive_minimum: 0
+      line_discount:
+        type: number
+        nullable: false
+        minimum: 0
+      line_total:
+        type: number
+        nullable: false
+        minimum: 0
+        rule: = quantity*unit_price - line_discount
+      return_window_days:
+        type: integer
+        nullable: false
+        enum:
+        - 30
+        - 45
+        - 60
+        note: policy captured at sale
+      line_status:
+        type: string
+        nullable: false
+        enum:
+        - awaiting_dispatch
+        - cancelled
+        - shipped
+        - delivered
+        - lost_in_transit
+        decision: D-005 as amended by A-02
+        semantics:
+          awaiting_dispatch: order placed by cutoff; no cancellation or dispatch observed;
+            no exposure; both shipment and delivery dates null
+          cancelled: cancellation observed by cutoff before dispatch; no shipment,
+            no exposure
+          shipped: dispatched, no carrier delivery scan by cutoff; no exposure; not
+            mature
+          delivered: carrier delivery scan exists (delivered_date); exposure once
+            mature. A later nonreceipt claim does not change this status.
+          lost_in_transit: carrier confirms loss by cutoff; no delivery, no exposure;
+            not returnable
+      shipped_date:
+        type: date
+        nullable: true
+        rule: null iff line_status in {awaiting_dispatch, cancelled}; otherwise order_date
+          <= shipped_date <= cutoff date
+      delivered_date:
+        type: date
+        nullable: true
+        rule: non-null iff line_status=delivered; >= shipped_date; <= cutoff date
+    derived_not_stored:
+      mature: line_status=delivered and delivered_date + return_window_days <= cutoff
+        date
+  return_order:
+    grain: return submission (header)
+    primary_key:
+    - return_order_id
+    columns:
+      return_order_id:
+        type: string
+        nullable: false
+      customer_id:
+        type: string
+        nullable: false
+        fk: customer_master.customer_id
+      return_created_at:
+        type: timestamp
+        nullable: false
+        note: header submission time; NOT line latency
+      return_channel:
+        type: string
+        nullable: false
+        enum:
+        - courier_pickup
+        - drop_off_point
+        - post
+        - not_applicable
+        note: not_applicable when no line requires item return; in_store removed (online
+          scope); engineering rule
+      refund_method:
+        type: string
+        nullable: false
+        enum:
+        - original_payment
+        - store_credit
+        - gift_card
+      refund_total:
+        type: number
+        nullable: false
+        minimum: 0
+        rule: = sum(return_order_line.refund_amount) as of cutoff
+      available_at:
+        type: timestamp
+        nullable: false
+        rule: <= cutoff
+    derived_not_stored:
+      return_status: common status if all lines agree; otherwise mixed
+      n_lines: count of lines
+      n_source_orders: distinct order_id over lines
+  return_order_line:
+    grain: requested return of a sale line (partial quantities allowed)
+    primary_key:
+    - return_order_id
+    - return_line_no
+    columns:
+      return_order_id:
+        type: string
+        nullable: false
+        fk: return_order.return_order_id
+      return_line_no:
+        type: integer
+        nullable: false
+        minimum: 1
+      order_id:
+        type: string
+        nullable: false
+      order_line_no:
+        type: integer
+        nullable: false
+        fk: sales_order_line(order_id, order_line_no)
+        rule: referenced line_status=delivered
+      sku:
+        type: string
+        nullable: false
+        rule: = referenced sale line sku
+      quantity_returned:
+        type: integer
+        nullable: false
+        minimum: 1
+        rule: sum over non-withdrawn requests per sale line <= sale quantity (D-028)
+      reason_code:
+        type: string
+        nullable: false
+        fk: reason_code.reason_code
+      requested_at:
+        type: timestamp
+        nullable: false
+        rule: local date >= delivered_date; <= cutoff
+      available_at:
+        type: timestamp
+        nullable: false
+        rule: '>= requested_at; <= cutoff'
+      line_status:
+        type: string
+        nullable: false
+        enum:
+        - pending
+        - refunded
+        - rejected
+        - withdrawn
+        decision: D-028
+        note: withdrawn excluded from quantity cap and features; out-of-window requests
+          are rejected (D-029)
+      refund_amount:
+        type: number
+        nullable: false
+        minimum: 0
+        rule: 0 unless line_status=refunded; <= requested units * net unit value
+      return_received_flag:
+        type: integer
+        nullable: true
+        enum:
+        - 0
+        - 1
+        rule: null when reason requires_item_return=0
+      reason_text:
+        type: string
+        nullable: true
+        model_input: false
+        evidence_only: true
+      disposition:
+        type: string
+        nullable: true
+        enum:
+        - resalable
+        - refurbish
+        - damaged_out
+        - not_received
+        - quarantine
+        model_input: false
+        evidence_only: true
+        rule: only if observed by cutoff
+    derived_not_stored:
+      days_to_return: local_date(requested_at) - delivered_date, calendar days
+      window_ratio: days_to_return / sale return_window_days; may exceed 1; capped
+        at 2 in features (D-029)
+      within_window: days_to_return <= sale return_window_days
+manifest:
+  file: manifest.json uploaded with the seven CSVs (G-21)
+  required_fields:
+    schema_version: '1.0'
+    world_id: opaque string
+    cutoff: timestamp with offset (e.g. 2026-09-09T23:59:59+05:30)
+    history_start: date
+    timezone: Asia/Kolkata
+    currency: INR
+    files: '{table_name: {filename, sha256, row_count}} for all seven tables'
+    purpose:
+    - train
+    - validation
+    - test
+    - demo
+    - fixture
+    - stress
+    - external
+  optional_fields:
+    generator:
+      description: Mandatory for generated worlds; manifest.schema.json
+  rules:
+  - private truth files are never listed or accepted
+  - mismatched sha256 or row_count rejects the upload (422)
+private_truth:
+  location: outside operational upload bundles; never readable by inference
+  tables:
+    customer_profile: generator targets (target_order_count, target_return_propensity,
+      target_festive_share, target_days_per_order), persona, overlay flags
+    action_truth: world_id, customer_id, order_id, order_line_no, action_type (deceptive_nonreceipt_claim
+      | deceptive_contents_claim | temporary_use_return), action_time, completed_action,
+      coordination_group_id (nullable)
+    customer_truth: world_id, customer_id, y_abuse, action-type flags, high_return_legit_overlay
+      (diagnostic), household_id, coordination_group_id
+    evaluation_segments: derived at evaluation time, not stored by the generator (D-022
+      legit_heavy_returner from observed raw_return_rate; D-023 defective_product_buyer
+      from line_truth; D-024 benign_household from relationship_truth + orders; minimum
+      pooled size D-025)
+    product_truth: per style_id defect state, latent defect probability, planned_targeted_by,
+      completed_targeted_by, targeted (A-06; D-030 style grain); optional per-sku
+      fit_issue
+    relationship_truth: household_id / coordination_group_id membership and shared
+      identifier types
+    line_truth: genuine vs deceptive nonreceipt, received_defective_unit, temporary_use
+      (D-005 requires both genuine and deceptive nonreceipt on delivered lines)
+  contract: contracts/private-truth.yaml
+cross_table_rules:
+- return_order.customer_id equals the customer_id of every referenced sales_order
+- all non-cancelled future shipping plans remain private; observed shipped_date never
+  exceeds cutoff date
+- unavailable future cancellation or loss never changes current line_status
+- return header and every line are available by cutoff; generator line available_at
+  equals requested_at
+- headers containing multiple request times are available no earlier than their latest
+  included request
+- the operational non-withdrawn quantity cap remains unchanged; A-03 uses stricter
+  private unit reservations
+private_truth_additions:
+  action_truth:
+    required:
+    - action_id
+    - allocated_unit_keys
+    - completed_action
+    - action_type
+    - customer_id
+    - world_id
+    completed_action_requires:
+    - return_order_id
+    - return_line_no
+    - requested_at
+    - available_at
+    coordinated_action_requires:
+    - coordination_group_id
+    - campaign_id
+    uncompleted_action_requires:
+    - uncompleted_reason
+    note: one action may reference multiple units only when emitted on the same return
+      line; no unit has two completed actions
+  product_truth:
+    grain:
+    - world_id
+    - style_id
+    required:
+    - planned_targeted_by
+    - completed_targeted_by
+    - targeted
+    targeted_rule: completed_targeted_by is nonempty; see A-06
+  relationship_truth:
+    member_usage:
+    - world_id
+    - group_id
+    - group_type
+    - customer_id
+    - identifier_type
+    - sampled_usage_probability
+    note: sampled probability is not the realized usage proportion
+  unit_allocation:
+    required:
+    - world_id
+    - order_id
+    - order_line_no
+    - unit_index
+    - reservation_kind
+    - event_id
+    reservation_kind:
+    - honest_request
+    - abusive_action
+    note: private generator bookkeeping; never included in operational upload

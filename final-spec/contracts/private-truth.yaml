@@ -1,0 +1,136 @@
+version: '1.0'
+access: offline generation/training/evaluation only; never upload/mount to serving
+tables:
+  customer_profile:
+    key:
+    - world_id
+    - customer_id
+    fields:
+    - persona
+    - target_order_count
+    - target_return_propensity
+    - target_festive_share
+    - target_days_per_order
+    - claim_propensity
+    - temporary_use_propensity
+    - heavy_return_overlay
+  unit_truth:
+    key:
+    - world_id
+    - order_id
+    - order_line_no
+    - unit_index
+    fields:
+    - actual_receipt
+    - received_defective_unit
+    - genuine_fulfilment_cause
+    - carrier_damage
+    - temporary_use
+    rule: unit_index<=purchased quantity
+  campaign:
+    key:
+    - world_id
+    - campaign_id
+    fields:
+    - coordination_group_id
+    - target_style_ids
+    - campaign_date
+  relationship_truth:
+    key:
+    - world_id
+    - group_id
+    - customer_id
+    - identifier_type
+    fields:
+    - group_type
+    - shared_value
+    - sampled_usage_probability
+    group_type:
+    - household
+    - coordination
+    - shared_location
+  unit_allocation:
+    key:
+    - world_id
+    - order_id
+    - order_line_no
+    - unit_index
+    fields:
+    - reservation_kind
+    - event_id
+    reservation_kind:
+    - honest_request
+    - abusive_action
+  action_truth:
+    key:
+    - world_id
+    - action_id
+    fields:
+    - customer_id
+    - order_id
+    - order_line_no
+    - allocated_unit_indices
+    - action_type
+    - action_time
+    - completed_action
+    - return_order_id
+    - return_line_no
+    - requested_at
+    - available_at
+    - coordination_group_id
+    - campaign_id
+    - uncompleted_reason
+    nullable:
+    - return_order_id
+    - return_line_no
+    - requested_at
+    - available_at
+    - coordination_group_id
+    - campaign_id
+    - uncompleted_reason
+    rules:
+    - completed requires return line/time/allocated unit references
+    - coordinated requires campaign/group and claim type
+    - uncompleted requires reason, never positive label
+  customer_truth:
+    key:
+    - world_id
+    - customer_id
+    fields:
+    - y_abuse
+    - action_type_flags
+    - coordinated_action_flag
+    rule: derive from completed delivered actions requested by cutoff; no maturity
+      condition
+  product_truth:
+    key:
+    - world_id
+    - style_id
+    fields:
+    - defect_state
+    - latent_defect_probability
+    - planned_targeted_by
+    - completed_targeted_by
+    - targeted
+    rule: targeted iff completed_targeted_by nonempty
+  line_truth:
+    key:
+    - world_id
+    - order_id
+    - order_line_no
+    fields:
+    - received_defective_unit
+    - temporary_use
+    - genuine_nonreceipt
+    - deceptive_nonreceipt
+    rule: derived any-unit summaries; retain unit truth for returned-defective-unit
+      segment
+  evaluation_segments:
+    key:
+    - world_id
+    - customer_id
+    fields:
+    - legit_heavy_returner
+    - defective_product_buyer
+    - benign_household
+    rule: derived after frozen scores using component08, not generator-imposed truth

@@ -1,0 +1,1746 @@
+openapi: 3.0.3
+info:
+  title: ARAI development API
+  version: 1.0.0
+  description: Local profile has no app authentication. VM reverse proxy requires
+    Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
+    application errors follow Error; proxy auth response may be plain text.
+servers:
+- url: /api/v1
+paths:
+  /datasets:
+    get:
+      operationId: listDatasets
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetPage'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters: &id007
+      - &id002
+        name: cursor
+        in: query
+        required: false
+        schema: &id001
+          type: string
+      - &id003
+        name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 100
+    post:
+      operationId: registerDataset
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataset'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '200':
+          description: Identical already registered dataset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataset'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - manifest
+              - customer_master
+              - sku_master
+              - reason_code
+              - sales_order
+              - sales_order_line
+              - return_order
+              - return_order_line
+              properties:
+                manifest:
+                  type: string
+                  description: JSON string validated against bundled manifest.schema.json
+                customer_master:
+                  type: string
+                  format: binary
+                sku_master:
+                  type: string
+                  format: binary
+                reason_code:
+                  type: string
+                  format: binary
+                sales_order:
+                  type: string
+                  format: binary
+                sales_order_line:
+                  type: string
+                  format: binary
+                return_order:
+                  type: string
+                  format: binary
+                return_order_line:
+                  type: string
+                  format: binary
+  /datasets/{dataset_id}:
+    get:
+      operationId: getDataset
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataset'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: dataset_id
+        in: path
+        required: true
+        schema: *id001
+  /inference-jobs:
+    post:
+      operationId: submitRun
+      responses:
+        '202':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+    get:
+      operationId: listRuns
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPage'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - *id002
+      - *id003
+      - name: dataset_id
+        in: query
+        required: false
+        schema: *id001
+  /inference-jobs/{run_id}:
+    get:
+      operationId: getRun
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema: *id001
+  /inference-jobs/{run_id}/customers:
+    get:
+      operationId: listCustomers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerPage'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema: *id001
+      - *id002
+      - *id003
+      - name: review_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+      - name: eligibility
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - all
+          - eligible
+          - insufficient_history
+      - name: search
+        in: query
+        required: false
+        schema: *id001
+      - name: evidence
+        in: query
+        required: false
+        schema: *id001
+      - name: disposition
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - all
+          - unreviewed
+          - needs_investigation
+          - likely_legitimate
+          - unresolved
+  /inference-jobs/{run_id}/customers/{customer_id}:
+    get:
+      operationId: getCustomerCase
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters: &id006
+      - &id004
+        name: run_id
+        in: path
+        required: true
+        schema: *id001
+      - &id005
+        name: customer_id
+        in: path
+        required: true
+        schema: *id001
+  /inference-jobs/{run_id}/customers/{customer_id}/reviews:
+    get:
+      operationId: listReviews
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewPage'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - *id004
+      - *id005
+      - *id002
+      - *id003
+    post:
+      operationId: appendReview
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters: *id006
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+  /inference-jobs/{run_id}/styles:
+    get:
+      operationId: listStyles
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StylePage'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema: *id001
+      - *id002
+      - *id003
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - all
+          - quality
+          - targeting
+          - mixed_or_uncertain
+          - insufficient_support
+          - no_return_evidence
+  /inference-jobs/{run_id}/styles/{style_id}:
+    get:
+      operationId: getStyle
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StyleDetail'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema: *id001
+      - name: style_id
+        in: path
+        required: true
+        schema: *id001
+  /experiments:
+    get:
+      operationId: listExperiments
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentSummaryPage'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters: *id007
+  /experiments/{experiment_id}:
+    get:
+      operationId: getExperiment
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: experiment_id
+        in: path
+        required: true
+        schema: *id001
+  /experiments/{experiment_id}/truth:
+    get:
+      operationId: getEvaluationTruth
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TruthPage'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: experiment_id
+        in: path
+        required: true
+        schema: *id001
+      - *id002
+      - *id003
+      description: Synthetic evaluation-only reveal from published evaluation artifacts;
+        no raw private filesystem exposure or access through inference routes.
+  /health:
+    get:
+      operationId: getHealth
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: &id009
+      - error_code
+      - message
+      - request_id
+      - details
+      properties: &id010
+        error_code: *id001
+        message: *id001
+        request_id: *id001
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - rule_id
+            - table
+            - row_key
+            - count
+            properties:
+              rule_id: *id001
+              table:
+                type: string
+                nullable: true
+              row_key:
+                type: string
+                nullable: true
+              count: &id008
+                type: integer
+                minimum: 0
+    Dataset:
+      type: object
+      additionalProperties: false
+      required:
+      - dataset_id
+      - world_id
+      - manifest_hash
+      - schema_version
+      - cutoff
+      - history_start
+      - purpose
+      - validation_status
+      - customer_count
+      properties:
+        dataset_id: *id001
+        world_id: *id001
+        manifest_hash: *id001
+        schema_version:
+          type: string
+          enum:
+          - '1.0'
+        cutoff:
+          type: string
+          format: date-time
+        history_start:
+          type: string
+          format: date
+        purpose:
+          type: string
+          enum:
+          - train
+          - validation
+          - test
+          - demo
+          - fixture
+          - stress
+          - external
+        validation_status:
+          type: string
+          enum:
+          - accepted
+        customer_count: *id008
+    RunRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - dataset_id
+      - idempotency_key
+      properties:
+        dataset_id: *id001
+        model_id: *id001
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+    Run:
+      type: object
+      additionalProperties: false
+      required:
+      - run_id
+      - dataset_id
+      - world_id
+      - model_id
+      - model_kind
+      - status
+      - stage
+      - progress
+      - cutoff
+      - created_at
+      - completed_at
+      - error
+      - eligible_count
+      - excluded_count
+      - selected_count
+      properties:
+        run_id: *id001
+        dataset_id: *id001
+        world_id: *id001
+        model_id: *id001
+        model_kind:
+          type: string
+          enum:
+          - supervised
+          - unsupervised
+          - baseline_fallback
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          - interrupted
+        stage: *id001
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        cutoff:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        error:
+          type: object
+          additionalProperties: false
+          required: *id009
+          properties: *id010
+          nullable: true
+        eligible_count:
+          type: integer
+          minimum: 0
+          nullable: true
+        excluded_count:
+          type: integer
+          minimum: 0
+          nullable: true
+        selected_count:
+          type: integer
+          minimum: 0
+          nullable: true
+    Support:
+      type: object
+      additionalProperties: false
+      required:
+      - mature_sale_lines
+      - mature_purchased_units
+      - mature_requested_units
+      - all_requested_units
+      properties:
+        mature_sale_lines: *id008
+        mature_purchased_units: *id008
+        mature_requested_units: *id008
+        all_requested_units: *id008
+    Signal:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - label
+      - value
+      - denominator
+      - unit
+      - source_refs
+      properties:
+        code: *id001
+        label: *id001
+        value:
+          type: number
+          nullable: true
+        denominator:
+          type: number
+          nullable: true
+        unit: *id001
+        source_refs:
+          type: array
+          items: *id001
+    Customer:
+      type: object
+      additionalProperties: false
+      required:
+      - customer_id
+      - eligibility_status
+      - raw_score
+      - risk_score
+      - rank
+      - selected_for_review
+      - support_counts
+      - evidence_tags
+      - wardrobing_status
+      - latest_disposition
+      properties:
+        customer_id: *id001
+        eligibility_status:
+          type: string
+          enum:
+          - eligible
+          - insufficient_history
+        raw_score:
+          type: number
+          nullable: true
+        risk_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+        rank:
+          type: integer
+          minimum: 1
+          nullable: true
+        selected_for_review: &id011
+          type: boolean
+        support_counts:
+          $ref: '#/components/schemas/Support'
+        evidence_tags:
+          type: array
+          items: *id001
+        wardrobing_status:
+          type: string
+          enum:
+          - elevated
+          - possible
+          - no_elevated_signal
+          - insufficient_evidence
+          - incomplete
+        latest_disposition:
+          type: string
+          enum:
+          - needs_investigation
+          - likely_legitimate
+          - unresolved
+          nullable: true
+    ReviewRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - reviewer_name
+      - disposition
+      - note
+      - idempotency_key
+      properties:
+        reviewer_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        disposition:
+          type: string
+          enum:
+          - needs_investigation
+          - likely_legitimate
+          - unresolved
+        note:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+    Review:
+      type: object
+      additionalProperties: false
+      required:
+      - review_id
+      - world_id
+      - customer_id
+      - run_id
+      - model_id
+      - reviewer_name
+      - disposition
+      - note
+      - created_at
+      properties:
+        review_id: *id001
+        world_id: *id001
+        customer_id: *id001
+        run_id: *id001
+        model_id: *id001
+        reviewer_name: *id001
+        disposition:
+          type: string
+          enum:
+          - needs_investigation
+          - likely_legitimate
+          - unresolved
+        note: *id001
+        created_at:
+          type: string
+          format: date-time
+    TimelineEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - source_ref
+      - event_type
+      - observed_at
+      - description
+      - amount_inr
+      - style_id
+      - sku
+      properties:
+        source_ref: *id001
+        event_type: *id001
+        observed_at: *id001
+        description: *id001
+        amount_inr:
+          type: number
+          nullable: true
+        style_id:
+          type: string
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+    Neighbor:
+      type: object
+      additionalProperties: false
+      required:
+      - customer_id
+      - shared_types
+      - shared_value_count
+      - supported
+      - max_value_fanout
+      - coordinated_claim_matches
+      properties:
+        customer_id: *id001
+        shared_types:
+          type: array
+          items:
+            type: string
+            enum:
+            - address
+            - device
+            - payment
+        shared_value_count: *id008
+        supported: *id011
+        max_value_fanout: *id008
+        coordinated_claim_matches: *id008
+    Wardrobing:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - indicator_score
+      - signals
+      - limitation
+      properties:
+        status:
+          type: string
+          enum:
+          - elevated
+          - possible
+          - no_elevated_signal
+          - insufficient_evidence
+          - incomplete
+        indicator_score:
+          type: number
+          nullable: true
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signal'
+        limitation: *id001
+    Style:
+      type: object
+      additionalProperties: false
+      required:
+      - style_id
+      - category
+      - state
+      - mature_sale_lines
+      - purchased_units
+      - requested_units
+      - unique_returners
+      - raw_return_rate
+      - shrunk_return_rate
+      - damage_share
+      - claim_share
+      - component_share
+      - quality_signal
+      - targeting_signal
+      properties:
+        style_id: *id001
+        category: *id001
+        state:
+          type: string
+          enum:
+          - quality
+          - targeting
+          - mixed_or_uncertain
+          - insufficient_support
+          - no_return_evidence
+        mature_sale_lines: *id008
+        purchased_units: *id008
+        requested_units: *id008
+        unique_returners: *id008
+        raw_return_rate:
+          type: number
+          nullable: true
+        shrunk_return_rate:
+          type: number
+          nullable: true
+        damage_share:
+          type: number
+          nullable: true
+        claim_share:
+          type: number
+          nullable: true
+        component_share:
+          type: number
+          nullable: true
+        quality_signal: *id011
+        targeting_signal: *id011
+    Sku:
+      type: object
+      additionalProperties: false
+      required:
+      - sku
+      - style_id
+      - size
+      - colour
+      - unit_price_inr
+      - mature_sale_lines
+      - purchased_units
+      - requested_units
+      - support_status
+      properties:
+        sku: *id001
+        style_id: *id001
+        size: *id001
+        colour: *id001
+        unit_price_inr:
+          type: number
+        mature_sale_lines: *id008
+        purchased_units: *id008
+        requested_units: *id008
+        support_status:
+          type: string
+          enum:
+          - supported
+          - insufficient_support
+          - no_return_evidence
+    Case:
+      type: object
+      additionalProperties: false
+      required:
+      - run_id
+      - dataset_id
+      - world_id
+      - model_id
+      - model_kind
+      - cutoff
+      - customer
+      - signals
+      - timeline
+      - neighbors
+      - styles
+      - wardrobing
+      - reviews
+      properties:
+        run_id: *id001
+        dataset_id: *id001
+        world_id: *id001
+        model_id: *id001
+        model_kind:
+          type: string
+          enum:
+          - supervised
+          - unsupervised
+          - baseline_fallback
+        cutoff: *id001
+        customer:
+          $ref: '#/components/schemas/Customer'
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signal'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        neighbors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Neighbor'
+        styles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Style'
+        wardrobing:
+          $ref: '#/components/schemas/Wardrobing'
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+    StyleDetail:
+      type: object
+      additionalProperties: false
+      required:
+      - run_id
+      - style
+      - skus
+      - customer_ids
+      - signals
+      properties:
+        run_id: *id001
+        style:
+          $ref: '#/components/schemas/Style'
+        skus:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sku'
+        customer_ids:
+          type: array
+          items: *id001
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signal'
+    Metric:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - value
+      - numerator
+      - denominator
+      - lower_95
+      - upper_95
+      - scope
+      properties:
+        name: *id001
+        value:
+          type: number
+          nullable: true
+        numerator:
+          type: number
+          nullable: true
+        denominator:
+          type: number
+          nullable: true
+        lower_95:
+          type: number
+          nullable: true
+        upper_95:
+          type: number
+          nullable: true
+        scope: *id001
+    Candidate:
+      type: object
+      additionalProperties: false
+      required:
+      - candidate_id
+      - ordinal
+      - status
+      - reasons
+      - metrics
+      properties:
+        candidate_id: *id001
+        ordinal: *id008
+        status:
+          type: string
+          enum:
+          - passed
+          - rejected
+          - error
+          - not_evaluated
+        reasons:
+          type: array
+          items: *id001
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+    ExperimentSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - experiment_id
+      - config_hash
+      - selection_status
+      - selected_model_id
+      - final_test_status
+      properties:
+        experiment_id: *id001
+        config_hash: *id001
+        selection_status:
+          type: string
+          enum:
+          - not_completed
+          - selected
+          - no_selected_model
+        selected_model_id:
+          type: string
+          nullable: true
+        final_test_status:
+          type: string
+          enum:
+          - not_run
+          - passed
+          - failed
+          - unverifiable
+    Experiment:
+      type: object
+      additionalProperties: false
+      required:
+      - summary
+      - synthetic_only
+      - baseline_metrics
+      - candidates
+      - per_world_metrics
+      - sensitivity_metrics
+      - style_metrics
+      - wardrobing_metrics
+      - coverage_limitations
+      - report_only_evidence_metrics
+      properties:
+        summary:
+          $ref: '#/components/schemas/ExperimentSummary'
+        synthetic_only: *id011
+        baseline_metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/Candidate'
+        per_world_metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        sensitivity_metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        style_metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        wardrobing_metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        coverage_limitations:
+          type: array
+          items: *id001
+        report_only_evidence_metrics: *id011
+    TruthExample:
+      type: object
+      additionalProperties: false
+      required:
+      - customer_id
+      - y_abuse
+      - action_types
+      properties:
+        customer_id: *id001
+        y_abuse:
+          type: integer
+          enum:
+          - 0
+          - 1
+        action_types:
+          type: array
+          items: *id001
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+      - alive
+      - scoring_ready
+      - promoted_model_ready
+      - model_kind
+      properties:
+        alive: *id011
+        scoring_ready: *id011
+        promoted_model_ready: *id011
+        model_kind:
+          type: string
+          enum:
+          - supervised
+          - unsupervised
+          - baseline_fallback
+          nullable: true
+    DatasetPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Dataset'
+        next_cursor:
+          type: string
+          nullable: true
+    RunPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Run'
+        next_cursor:
+          type: string
+          nullable: true
+    CustomerPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Customer'
+        next_cursor:
+          type: string
+          nullable: true
+    StylePage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Style'
+        next_cursor:
+          type: string
+          nullable: true
+    ReviewPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        next_cursor:
+          type: string
+          nullable: true
+    ExperimentSummaryPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExperimentSummary'
+        next_cursor:
+          type: string
+          nullable: true
+    TruthPage:
+      type: object
+      additionalProperties: false
+      required:
+      - synthetic_only
+      - items
+      - next_cursor
+      properties:
+        synthetic_only: *id011
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TruthExample'
+        next_cursor:
+          type: string
+          nullable: true
+  securitySchemes:
+    SharedAccess:
+      type: http
+      scheme: basic
+      description: VM reverse proxy only; local profile exempt
+security: []

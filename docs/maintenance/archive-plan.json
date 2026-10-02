@@ -1,0 +1,318 @@
+﻿{
+    "source_root":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1",
+    "archive_root":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25",
+    "moves":  [
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-Architecture-and-Plan.docx",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-Architecture-and-Plan.docx",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-Architecture-and-Plan.docx"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-Architecture-and-Plan.pdf",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-Architecture-and-Plan.pdf",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-Architecture-and-Plan.pdf"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-Dataset-Build-Steps.docx",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-Dataset-Build-Steps.docx",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-Dataset-Build-Steps.docx"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-Dataset-Build-Steps.pdf",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-Dataset-Build-Steps.pdf",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-Dataset-Build-Steps.pdf"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-HLD.docx",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-HLD.docx",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-HLD.docx"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-HLD.pdf",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-HLD.pdf",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-HLD.pdf"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-LLD.docx",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-LLD.docx",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-LLD.docx"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-LLD.pdf",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-LLD.pdf",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-LLD.pdf"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-Judge-Pitch.pptx",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-Judge-Pitch.pptx",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-Judge-Pitch.pptx"
+                  },
+                  {
+                      "name":  "Adaptive-Return-Abuse-Intelligence-Team-Kickoff.pptx",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Adaptive-Return-Abuse-Intelligence-Team-Kickoff.pptx",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Adaptive-Return-Abuse-Intelligence-Team-Kickoff.pptx"
+                  },
+                  {
+                      "name":  "Return-Abuse-Data-Dictionary.html",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Return-Abuse-Data-Dictionary.html",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Return-Abuse-Data-Dictionary.html"
+                  },
+                  {
+                      "name":  "Return-Abuse-HLD-LLD-Summary.html",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Return-Abuse-HLD-LLD-Summary.html",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Return-Abuse-HLD-LLD-Summary.html"
+                  },
+                  {
+                      "name":  "Return-Abuse-HLD-LLD-Summary.md",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\Return-Abuse-HLD-LLD-Summary.md",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\Return-Abuse-HLD-LLD-Summary.md"
+                  },
+                  {
+                      "name":  "web-judge-pitch.html",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\web-judge-pitch.html",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\web-judge-pitch.html"
+                  },
+                  {
+                      "name":  "web-kickoff.html",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\web-kickoff.html",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\web-kickoff.html"
+                  },
+                  {
+                      "name":  "final_1.zip",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\final_1.zip",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\final_1.zip"
+                  },
+                  {
+                      "name":  "return-abuse-synthetic-data.zip",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\return-abuse-synthetic-data.zip",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\return-abuse-synthetic-data.zip"
+                  },
+                  {
+                      "name":  "figures",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\figures",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\figures"
+                  },
+                  {
+                      "name":  "datasets",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\datasets",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\datasets"
+                  },
+                  {
+                      "name":  "synthdata",
+                      "source":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1\\synthdata",
+                      "destination":  "E:\\Druva Exclude\\Pragatheeswaran\\XHackathon\\final_1-archive-2026-09-25\\synthdata"
+                  }
+              ],
+    "files":  [
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-Architecture-and-Plan.docx",
+                      "length":  2502843,
+                      "sha256":  "0CA6F557F361CFAE6EE96418BFEF55A6E95FC59438C1732C4B5C2B4635C2AEED"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-Architecture-and-Plan.pdf",
+                      "length":  2330690,
+                      "sha256":  "F3E765D5980695C50011B1D3358A426A3EE9DBAC72E822A5EC71AE2CBE1D5497"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-Dataset-Build-Steps.docx",
+                      "length":  14975,
+                      "sha256":  "7F583908ABCF19C345EBCF5399B1164CB9902C35D72C987A5135F9C01C847E48"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-Dataset-Build-Steps.pdf",
+                      "length":  94735,
+                      "sha256":  "9655C06337E9E6C49A601FE55B866941B8A073CFA7C9423689B49248D97DC15B"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-HLD.docx",
+                      "length":  1666918,
+                      "sha256":  "310B8C913F3F7E23676C01B608E7D27BECF0DAC65B47C25D2A817C98A3F84660"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-HLD.pdf",
+                      "length":  1466123,
+                      "sha256":  "0A5653375EF01AEF2E93100F6C3A88F0F1B78B7E3DB489A7D6385173919BA3AF"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-LLD.docx",
+                      "length":  704599,
+                      "sha256":  "52DD65B024114E60E665B2C09FB9FC3A75C91247DF6A861EE6032F0E2AAB1A4C"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-LLD.pdf",
+                      "length":  1113550,
+                      "sha256":  "BC3B11D9D5850B3FF1A3FF1E5DDCED968588EF84D1091ACF53064AE60F7ADB23"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-Judge-Pitch.pptx",
+                      "length":  1902015,
+                      "sha256":  "E7989342DF307938B7AAE02723F8C7DFAAC9346A6BECAC57959A4D93522825DD"
+                  },
+                  {
+                      "relative_path":  "Adaptive-Return-Abuse-Intelligence-Team-Kickoff.pptx",
+                      "length":  2529847,
+                      "sha256":  "E5125F4CBC87E760A6DF9FE79FB4D87266B69528B3FE171818BE48492B00971A"
+                  },
+                  {
+                      "relative_path":  "Return-Abuse-Data-Dictionary.html",
+                      "length":  391725,
+                      "sha256":  "7222C58C08226B33C36D1EC8ADDAE7020B1F1E37D3A87FAA09470503178E057A"
+                  },
+                  {
+                      "relative_path":  "Return-Abuse-HLD-LLD-Summary.html",
+                      "length":  7063,
+                      "sha256":  "7216A83661191B3409DE4C868EBC71B142225219D9BE97ED0FBA5CFDBFE87FFF"
+                  },
+                  {
+                      "relative_path":  "Return-Abuse-HLD-LLD-Summary.md",
+                      "length":  4031,
+                      "sha256":  "157513FF2795E390360B74698409FF9F873AD631B3A0C9FAECD54A44E2A88F92"
+                  },
+                  {
+                      "relative_path":  "web-judge-pitch.html",
+                      "length":  93751,
+                      "sha256":  "A44E4B373138B74822392FAABBEFA28EDD105232CCD6EB1E6E4AE11283EE4A92"
+                  },
+                  {
+                      "relative_path":  "web-kickoff.html",
+                      "length":  116364,
+                      "sha256":  "5346A3A19415D834FAA48BB5F4A1FB049F8E772A9D25D8DA11ECF33C5F7E50F9"
+                  },
+                  {
+                      "relative_path":  "final_1.zip",
+                      "length":  111127,
+                      "sha256":  "1EE86C1EE011DBE49A60E6A2DD9437FAE38BA9238F24A28AAFCE222BB42B161C"
+                  },
+                  {
+                      "relative_path":  "return-abuse-synthetic-data.zip",
+                      "length":  5399263,
+                      "sha256":  "405998C5F0EACC9D2A4E8AFE61A22883C1358A74C767D690733E92F23921E213"
+                  },
+                  {
+                      "relative_path":  "figures\\fig1-system-architecture.png",
+                      "length":  1195394,
+                      "sha256":  "9364A28D7A0D1DAAF538B77158D3916E22F422FD77323DA39E8B988255AA1F8A"
+                  },
+                  {
+                      "relative_path":  "figures\\fig2-defect-vs-abuse-target.png",
+                      "length":  449251,
+                      "sha256":  "39A9945D709AF65DC6D7155387DC5B6440A67F1C15BE2EB54F0522428FF36005"
+                  },
+                  {
+                      "relative_path":  "figures\\fig3-four-week-plan.png",
+                      "length":  837641,
+                      "sha256":  "AA8E181045B1F9DD8405888EEBA928BCEB8D4BC927DB42F6C445E637C91A9F2F"
+                  },
+                  {
+                      "relative_path":  "figures\\fig4-system-context.png",
+                      "length":  511456,
+                      "sha256":  "50FB35050CB40717B86582F7EE17F177160E3422F568F9DD6507EC55BD3FEC93"
+                  },
+                  {
+                      "relative_path":  "figures\\fig5-scoring-run.png",
+                      "length":  356078,
+                      "sha256":  "FA633DFAA2802B0E55A6943C87CE06D30053C02DFF14A8211CB644A68292B86B"
+                  },
+                  {
+                      "relative_path":  "figures\\fig6-module-map.png",
+                      "length":  314506,
+                      "sha256":  "51A4AD6D8F2C55351520A87BF8FB16607E7311AB59E0AFF0F090695399D04D98"
+                  },
+                  {
+                      "relative_path":  "figures\\fig7-data-model.png",
+                      "length":  467082,
+                      "sha256":  "85008BE7DD231942C5DCFAF83099930B6829DD8051C35AE6F65AFF59E7E2104D"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\ground_truth\\cohort_summary.csv",
+                      "length":  1170,
+                      "sha256":  "E63CD37252CA32357B38760818E48A910B4F521D146002E98BD9954F5A359EBE"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\ground_truth\\customers.csv",
+                      "length":  224734,
+                      "sha256":  "C9204003471D773848C4A0568912AD8C88F176DA1FCDD9F18EEAEE39CDA5D384"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\ground_truth\\inspection.json",
+                      "length":  89,
+                      "sha256":  "2B6AEE752B3556BE52A11F0E389794912AD0C1104041F377823BB13C84528C4F"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\ground_truth\\skus.csv",
+                      "length":  10448,
+                      "sha256":  "1C5F92103B3AB7D1BC604F63D5E38ED1AE4AA637A8954B682ECA093598660352"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\customer_master.csv",
+                      "length":  449946,
+                      "sha256":  "36AB4A708A4259F1C924962F99F3A4452D1B12258DB093B5F1742D107CC2E4E6"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\manifest.json",
+                      "length":  2744,
+                      "sha256":  "882549C70200FE55BD3CD8B8EB68990B8F95688449A372AC27155C23483DA00E"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\README.md",
+                      "length":  4263,
+                      "sha256":  "F882BBF3615AD795ECDADF609612E6F43C2B6769C9D88386E3B63A49B1D953FD"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\reason_code.csv",
+                      "length":  1309,
+                      "sha256":  "8B29ED523ACAEAD3F7641E63F908F3628E26C5249D45F95A6CA559D93315C21C"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\return_order.csv",
+                      "length":  1965621,
+                      "sha256":  "727C9F33FC131CC7AB1D995CD6DA238E359DC35E2BE214133667C9F50C557179"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\return_order_line.csv",
+                      "length":  2610857,
+                      "sha256":  "865385149D3690F6F3F44D1EB14E513BD8EB46C7C3BBA857C07FC3522117E852"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\sales_order.csv",
+                      "length":  5338273,
+                      "sha256":  "27D1D562DE554F97BB787B6BBC5A962BC174A0FFB89AB2BB0AA4F01254C637EC"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\sales_order_line.csv",
+                      "length":  5843113,
+                      "sha256":  "5027106450976F13D7BB53C0D8DFC38D90C68002840D51F8D3A3F3C9D5981E32"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\sku_master.csv",
+                      "length":  26061,
+                      "sha256":  "3CB0CDC737CF479338F3032F48D6BA96012B426507BCA879BC4EE09C09757263"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901\\validation-report.txt",
+                      "length":  4740,
+                      "sha256":  "53A3701E7EAE8C422A3BB0AC4F2099611685B1F67B841CBB892390B6B18B510F"
+                  },
+                  {
+                      "relative_path":  "datasets\\wardrobing-reference-20250901.zip",
+                      "length":  2703121,
+                      "sha256":  "E1C3DA51A62340C9EFF6DBA77643E138E9D42DFD8CE6CB24766F42DA41E8920A"
+                  },
+                  {
+                      "relative_path":  "synthdata\\generate.py",
+                      "length":  22068,
+                      "sha256":  "57BD8C5C7ABCE9442A08BFDF1A121A8AABAB5F1C8E65BD02520D442D47A90933"
+                  },
+                  {
+                      "relative_path":  "synthdata\\schema.py",
+                      "length":  11937,
+                      "sha256":  "3E65C60279965C3999174F36DB6909D2A590A50EE69A9333EF76DDEF935408FF"
+                  },
+                  {
+                      "relative_path":  "synthdata\\validate.py",
+                      "length":  9364,
+                      "sha256":  "35B4F49EE765D2F122D3A503CC2FD920684154A551F1CC3DDADA6EA2DF44D17B"
+                  }
+              ]
+}

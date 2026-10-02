@@ -1,0 +1,97 @@
+[
+  {
+    "path": "code\\synthetic-data\\customer-master\\notebooks\\customer_master_eda.ipynb",
+    "sha256": "b8095cf25a8c44a2b7e0789c13c4f492948527054dbb54084c7e5be9b38bd323",
+    "code_cells": 21,
+    "imports": [
+      "calendar",
+      "datetime",
+      "matplotlib.pyplot",
+      "numpy",
+      "pandas",
+      "pathlib",
+      "seaborn",
+      "sklearn.cluster",
+      "sklearn.decomposition",
+      "sklearn.metrics",
+      "sklearn.neighbors",
+      "sklearn.preprocessing",
+      "yaml"
+    ],
+    "syntax_errors": [],
+    "saved_errors": [],
+    "extracted": "notebooks--customer_master_eda.source.txt"
+  },
+  {
+    "path": "code\\synthetic-data\\customer-master\\notebooks\\dbscan_clustering.ipynb",
+    "sha256": "65025d967ddf2ae27037d835e18ce7958dd2a6a4cc195b9454b79558207e2677",
+    "code_cells": 7,
+    "imports": [
+      "matplotlib.pyplot",
+      "numpy",
+      "pandas",
+      "pathlib",
+      "seaborn",
+      "sklearn.cluster",
+      "sklearn.decomposition",
+      "sklearn.metrics",
+      "sklearn.neighbors",
+      "sklearn.preprocessing"
+    ],
+    "syntax_errors": [],
+    "saved_errors": [],
+    "extracted": "notebooks--dbscan_clustering.source.txt"
+  },
+  {
+    "path": "code\\synthetic-data\\customer-master\\notebooks\\kmeans_clustering.ipynb",
+    "sha256": "3ce04822b67b594baf5dc98221839ea0d06e906fbd704f57d7c9326c450d02e9",
+    "code_cells": 6,
+    "imports": [
+      "matplotlib.pyplot",
+      "numpy",
+      "pandas",
+      "pathlib",
+      "seaborn",
+      "sklearn.cluster",
+      "sklearn.decomposition",
+      "sklearn.metrics",
+      "sklearn.preprocessing"
+    ],
+    "syntax_errors": [],
+    "saved_errors": [],
+    "extracted": "notebooks--kmeans_clustering.source.txt"
+  },
+  {
+    "path": "code\\synthetic-data\\sku-master\\sku_master_eda.ipynb",
+    "sha256": "ebe50ce53c0047eadc60c443384780dc94868d9f439da898638092dc28a226d4",
+    "code_cells": 17,
+    "imports": [
+      "IPython.display",
+      "__future__",
+      "numpy",
+      "pandas",
+      "pathlib",
+      "plotly.express",
+      "sku_config_v2",
+      "sku_generator_v2"
+    ],
+    "syntax_errors": [],
+    "saved_errors": [],
+    "extracted": "sku-master--sku_master_eda.source.txt"
+  },
+  {
+    "path": "code\\synthetic-data\\sku-master\\sku_master_generation.ipynb",
+    "sha256": "5b6820522083467521f1f4756dc7617adb63ff293a4eddc2806ae089bc829dce",
+    "code_cells": 6,
+    "imports": [
+      "faker",
+      "pandas",
+      "pathlib",
+      "sku_config_v2",
+      "sku_generator_v2"
+    ],
+    "syntax_errors": [],
+    "saved_errors": [],
+    "extracted": "sku-master--sku_master_generation.source.txt"
+  }
+]

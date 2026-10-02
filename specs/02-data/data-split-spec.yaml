@@ -1,0 +1,48 @@
+spec_version: 0.1.0
+status: DRAFT ? NOT APPROVED
+review_date: '2026-09-25'
+id: DATA-004
+strategy: independent synthetic population seeds, not random transaction rows
+source: Architecture ?6.2; LLD ?4/M16
+design_values_pending_Q_010:
+  development_seeds:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  sealed_test_seeds:
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  development_fraction_of_seeds: 0.25
+  sealed_fraction_of_seeds: 0.75
+training: fit models and fitted transforms on training worlds only; supervised targets allowed only in supervised training
+validation: development seeds only for config comparison; inner-validation procedure
+  TBD Q-009
+supervised_train_validation_test_proportions: TBD independent training, validation and test worlds for both approaches
+grouping: all orders, returns, accounts, rings and households in one seed world remain
+  together; never split linked transactional rows independently
+identity: same customer_id across seeds is a reused synthetic identifier, not longitudinal
+  evidence; key evaluation rows by seed and customer_id
+stratification: fixed generator population counts per seed; no row-level resampling
+temporal: no random split; real historical backtest requires approved as-of/maturity
+  policy Q-002, snapshots and leakage-safe time boundaries
+leakage_controls:
+- supervised training labels allowed; validation labels used for declared selection only; final test labels joined after scores frozen
+- fit transforms on training worlds only and reuse them unchanged for validation/test/inference; never fit transforms on held-out worlds
+- sealed seeds once after code/config/generator freeze; no selection on sealed results
+freeze_evidence: missing; Q-010
+seed_20250901: reference data already inspected, never newly call it sealed

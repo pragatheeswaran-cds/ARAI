@@ -1,0 +1,83 @@
+spec_version: 0.1.0
+approved_update:
+  ref: model-comparison-plan.md
+  bundle: selected model plus fitted preprocessing, feature/input schema, score semantics and versioned provenance
+  lifecycle: trained during development; immutable during inference; retraining explicit
+  algorithm_policy: Isolation Forest and per-pass forests below are legacy reference artifacts, not universal requirements
+  remaining_work: distinguish reusable model bundle from per-inference evidence/output artifacts
+status: DRAFT ? NOT APPROVED
+id: MODEL-ARTIFACT-001
+source: HLD ?6.2/?8.2; LLD ?3.2/M09
+bundle_identity: immutable run_id plus content hashes; version policy ../08-mlops/model-versioning.md
+required_artifacts:
+- fitted forest for each fitted pass
+- rank-transform state and exact feature order/schema
+- customer_features and sku_features
+- identity_edges and communities/partition
+- scores for both passes and deltas
+- sku_verdicts
+- effective configuration including threshold policy
+- metrics and selection record when evaluated
+- run manifest
+- dependency/environment manifest
+- evidence packet hashes and memo cache provenance
+formats:
+  derived_tables: Parquet per LLD
+  model_serialization: null
+  model_format_question: Q-013; choose safe version-compatible local format before
+    artifact implementation
+  audit_storage: Q-011 unresolved; do not choose SQLite or JSONL silently
+metadata_required:
+- model_name
+- model_version
+- training_timestamp_utc
+- run_id
+- dataset_version
+- dataset_hash
+- feature_version
+- schema_version
+- code_version_or_unavailable_reason
+- config_hash
+- threshold_policy_version
+- metrics_or_not_evaluated
+- random_seed
+- all_model_parameters
+- dependency_versions
+- rank_transform_definition
+- graph_partition_hash
+- exclusion_set_hash
+- pass
+- as_of_date
+- salt_version_not_secret
+success: all required artifacts present, hashes valid, schemas compatible and run
+  acceptance checks pass; presence is not business approval
+load_failure: incompatible/missing/hash-mismatched bundle cannot be published as ready
+table_keys:
+  customer_features:
+  - customer_id
+  sku_features:
+  - sku
+  identity_edges:
+  - account_a
+  - account_b
+  communities:
+  - customer_id
+  scores:
+  - customer_id
+  - pass
+  sku_verdicts:
+  - sku
+  memos:
+  - customer_id
+  - packet_hash
+  queue_log:
+  - run_id
+  - customer_id
+  decision_log: append-only event identity/sequence Q-011
+  run_manifest:
+  - run_id
+artifact_schema_references:
+  feature_tables: ../03-features/feature-spec.yaml
+  scores: ../05-inference/prediction-contract.yaml
+  memo_response: ../06-api/openapi.yaml#/components/schemas/Memo
+  audit: LLD ?3.2; event storage/case-open updates unresolved Q-008/Q-011

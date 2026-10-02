@@ -1,0 +1,146 @@
+version: '1.0'
+status: engineering defaults; tune on development only before validation; record changes
+snapshot: '2026-09-09T23:59:59+05:30'
+history_start: '2025-09-10'
+timezone: Asia/Kolkata
+currency: INR
+source_assets:
+  catalog: assets/sku_master_source.csv
+  profiles: assets/profile-config.yaml
+  festive: assets/festive-windows.yaml
+  reasons: assets/reason_codes.csv
+accepted_settings:
+  customers: 10000
+  household_member_share: 0.12
+  household_size:
+  - 2
+  - 5
+  grouped_propensity_share: 0.4
+  abuse_group_size:
+  - 3
+  - 6
+  shared_location_share:
+  - 0.01
+  - 0.02
+  shared_location_size:
+  - 26
+  - 60
+  heavy_return_share: 0.06
+  heavy_return_range:
+  - 0.28
+  - 0.48
+  power_user_share: 0.08
+  defect_style_share: 0.08
+  action_probability_per_relevant_order: 0.2
+  cancel_probability: 0.03
+  dispatch_days:
+  - 0
+  - 2
+  carrier_regular_days:
+  - 2
+  - 7
+  carrier_tail_probability: 0.05
+  carrier_tail_days:
+  - 8
+  - 12
+  loss_probability_of_shipped: 0.003
+  basket: min(6,1+Poisson(.6))
+  quantity_values:
+  - 1
+  - 2
+  - 3
+  quantity_probabilities:
+  - 0.92
+  - 0.07
+  - 0.01
+  no_discount_probability: 0.55
+  discount_steps:
+  - 0.1
+  - 0.15
+  - 0.2
+  - 0.25
+  - 0.3
+  - 0.35
+  - 0.4
+  free_shipping_subtotal: 999
+  otherwise_shipping: 49
+  item_refund_days:
+  - 3
+  - 10
+  no_item_refund_days:
+  - 1
+  - 5
+  in_window_rejection_probability: 0.02
+  honest_withdraw_probability: 0.03
+  max_late_request_share: 0.02
+  channels:
+    courier_pickup: 0.8
+    drop_off_point: 0.12
+    post: 0.08
+  refund_methods:
+    original_payment: 0.7
+    store_credit: 0.25
+    gift_card: 0.05
+  temp_reason_mix:
+    fit_or_discretionary: 0.85
+    false_quality: 0.15
+  genuine_claim_rates:
+    item_not_received: 0.005
+    wrong_item_sent: 0.004
+    missing_parts: 0.004
+    empty_package: 0.002
+  carrier_damage_rate: 0.005
+consolidation_defaults:
+  note: New explicit engineering choices, not claims of prior user-selected numbers
+    or market facts. Freeze after small-world diagnostics.
+  integer_range_sampling: discrete uniform unless profile says otherwise
+  continuous_range_sampling: uniform
+  defect_unit_probability:
+    ordinary_style: 0.01
+    defect_prone_style: 0.25
+  ordinary_category_rate:
+    T-shirt: 0.15
+    Shirt: 0.18
+    Jeans: 0.2
+    Jacket: 0.15
+    Dress: 0.22
+  ordinary_logit:
+    base: logit(profile honest target clipped[.001,.999]) + logit(category_rate)-logit(.20)
+    bracketing_increment: 0.5
+    fit_issue_increment: 0.7
+    defective_unit_increment: 1.5
+    noise_normal_sd: 0.35
+  honest_cause_priority:
+  - genuine_fulfilment_failure
+  - carrier_damage
+  - latent_defect
+  - ordinary_fit_preference
+  reason_selection: uniform within applicable declared reason group; ordinary fit
+    vs discretionary equal probability
+  claim_action_selection: nonreceipt vs contents equal probability; contents codes
+    uniform
+  request_latency:
+    honest: round(Beta(2,5)*captured_window)
+    temporary_use: round(Beta(5,2)*captured_window)
+    solo_claim: discrete_uniform(0,min(10,window))
+    late: at most floor(.02*submitted_count) seeded requests reassigned to uniform(window+1,2*window)
+      if visible; else opportunity uncompleted
+  campaign_gamma:
+    shape: 2.0
+    scale_days: 3.0
+    truncate_after_days: 30
+  campaign_matching: earliest compatible unreserved delivered unit among target styles
+    for scheduled claim; no new purchases
+  festive_discount: conditional on discount, uniform .25,.30,.35,.40 rather than all
+    steps
+  loss_confirmation: shipping_date+12 days; earlier cutoff remains shipped
+  return_receipt: 'item required: requested date+2 days if observed; no-item null'
+  refund: never before receipt for item returns; pending if due date beyond cutoff
+  signup: sample tenure from persona bounds, subtract from snapshot; purchases restricted
+    to history
+  order_count: draw target from config then Poisson intensity distributed over eligible
+    calendar dates; targets not quotas
+  sku_choice: uniform style then available SKU, excluding not-yet-launched variants
+  rng: NumPy PCG64, independent seed derived from SHA256(world_seed|entity_key|purpose),
+    first128 bits
+  quantiles: linear interpolation

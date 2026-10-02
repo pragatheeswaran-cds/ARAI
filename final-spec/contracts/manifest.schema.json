@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ARAI operational world manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "world_id",
+    "cutoff",
+    "history_start",
+    "timezone",
+    "currency",
+    "purpose",
+    "files"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "world_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cutoff": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "history_start": {
+      "type": "string",
+      "format": "date"
+    },
+    "timezone": {
+      "const": "Asia/Kolkata"
+    },
+    "currency": {
+      "const": "INR"
+    },
+    "purpose": {
+      "enum": [
+        "train",
+        "validation",
+        "test",
+        "demo",
+        "fixture",
+        "stress",
+        "external"
+      ]
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "customer_master",
+        "sku_master",
+        "reason_code",
+        "sales_order",
+        "sales_order_line",
+        "return_order",
+        "return_order_line"
+      ],
+      "properties": {
+        "customer_master": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "row_count"
+          ],
+          "properties": {
+            "filename": {
+              "const": "customer_master.csv"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "row_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "sku_master": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "row_count"
+          ],
+          "properties": {
+            "filename": {
+              "const": "sku_master.csv"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "row_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "reason_code": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "row_count"
+          ],
+          "properties": {
+            "filename": {
+              "const": "reason_code.csv"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "row_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "sales_order": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "row_count"
+          ],
+          "properties": {
+            "filename": {
+              "const": "sales_order.csv"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "row_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "sales_order_line": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "row_count"
+          ],
+          "properties": {
+            "filename": {
+              "const": "sales_order_line.csv"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "row_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "return_order": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "row_count"
+          ],
+          "properties": {
+            "filename": {
+              "const": "return_order.csv"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "row_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "return_order_line": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "row_count"
+          ],
+          "properties": {
+            "filename": {
+              "const": "return_order_line.csv"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "row_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "seed",
+        "config_sha256",
+        "catalog_sha256",
+        "dependency_lock_sha256",
+        "code_sha256"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "config_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "catalog_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "dependency_lock_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "code_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "injected_case_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "not": {
+              "const": "external"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "generator"
+        ]
+      }
+    }
+  ]
+}

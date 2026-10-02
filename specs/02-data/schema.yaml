@@ -1,0 +1,849 @@
+spec_version: 0.1.0
+status: DRAFT ? NOT APPROVED
+review_date: '2026-09-25'
+id: DATA-001
+sources:
+- LLD ?3.1
+- Return-Abuse-Data-Dictionary.html
+- archived CSV headers
+null_policy_assumption: A-004
+tables:
+  customer_master:
+    grain: account
+    primary_key:
+    - customer_id
+    columns:
+      customer_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        allow_empty: false
+      signup_date:
+        type: date
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+      account_status:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - active
+        - suspended
+        - closed
+      loyalty_tier:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - none
+        - bronze
+        - silver
+        - gold
+      marketing_channel:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - organic
+        - paid_social
+        - referral
+        - affiliate
+  sku_master:
+    grain: sellable SKU
+    primary_key:
+    - sku
+    columns:
+      sku:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/sku
+      style_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/style_id
+      brand:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/brand
+      category:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - T-shirt
+        - Shirt
+        - Jeans
+        - Jacket
+        - Dress
+        current_policy_ref: retail-simulation-policy.yaml
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/category
+      size:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/size
+      colour:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/colour
+      unit_price:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        exclusive_minimum: true
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/unit_price
+      price_band:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - Budget
+        - Mid
+        - Premium
+        - Luxury
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/price_band
+      return_window_days:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 1
+        enum:
+        - 30
+        - 45
+        - 60
+        category_policy_ref: retail-simulation-policy.yaml
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/return_window_days
+      is_occasion_wear:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        enum:
+        - 0
+        - 1
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/is_occasion_wear
+      launch_date:
+        type: date
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/launch_date
+      active_flag:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        enum:
+        - 0
+        - 1
+        observed_profile: observed-data-profile.json#/tables/sku_master.csv/columns/active_flag
+  reason_code:
+    grain: reason enum row
+    primary_key:
+    - reason_code
+    columns:
+      reason_code:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/reason_code.csv/columns/reason_code
+      description:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/reason_code.csv/columns/description
+      claim_class:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - item_complaint
+        - fit
+        - preference
+        - transaction_claim
+        observed_profile: observed-data-profile.json#/tables/reason_code.csv/columns/claim_class
+      intent_class:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - discretionary
+        - mechanical
+        - not_applicable
+        observed_profile: observed-data-profile.json#/tables/reason_code.csv/columns/intent_class
+      fault_attribution:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - retailer
+        - customer
+        - carrier
+        - disputed
+        observed_profile: observed-data-profile.json#/tables/reason_code.csv/columns/fault_attribution
+      requires_item_return:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        enum:
+        - 0
+        - 1
+        observed_profile: observed-data-profile.json#/tables/reason_code.csv/columns/requires_item_return
+      is_high_risk:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        enum:
+        - 0
+        - 1
+        observed_profile: observed-data-profile.json#/tables/reason_code.csv/columns/is_high_risk
+  sales_order:
+    grain: order
+    primary_key:
+    - order_id
+    columns:
+      order_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/order_id
+      customer_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/customer_id
+      order_date:
+        type: date
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/order_date
+      channel:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - web
+        - mobile_app
+        - marketplace
+        - store
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/channel
+      address_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        privacy: salted hash at ingestion; no raw downstream
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/address_id
+      device_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        privacy: salted hash at ingestion; no raw downstream
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/device_id
+      payment_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        privacy: salted hash at ingestion; no raw downstream
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/payment_id
+      order_status:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - delivered
+        - cancelled
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/order_status
+      currency:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        scope: INR simulation per approved Q18; historical observed-profile data describes prior GBP artifacts
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/currency
+      order_subtotal:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/order_subtotal
+      order_shipping:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/order_shipping
+      order_total:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        exclusive_minimum: true
+        observed_profile: observed-data-profile.json#/tables/sales_order.csv/columns/order_total
+  sales_order_line:
+    grain: ordered SKU line
+    primary_key:
+    - order_id
+    - order_line_no
+    columns:
+      order_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sales_order_line.csv/columns/order_id
+      order_line_no:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        minimum: 1
+        observed_profile: observed-data-profile.json#/tables/sales_order_line.csv/columns/order_line_no
+      sku:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/sales_order_line.csv/columns/sku
+      quantity:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 1
+        observed_profile: observed-data-profile.json#/tables/sales_order_line.csv/columns/quantity
+      unit_price:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        exclusive_minimum: true
+        observed_profile: observed-data-profile.json#/tables/sales_order_line.csv/columns/unit_price
+      line_discount:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        observed_profile: observed-data-profile.json#/tables/sales_order_line.csv/columns/line_discount
+      line_total:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        observed_profile: observed-data-profile.json#/tables/sales_order_line.csv/columns/line_total
+      delivered_date:
+        type: date
+        required: true
+        nullable: true
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        null_condition: only cancelled order; delivered order requires value
+        observed_profile: observed-data-profile.json#/tables/sales_order_line.csv/columns/delivered_date
+  return_order:
+    grain: return submission
+    primary_key:
+    - return_order_id
+    columns:
+      return_order_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/return_order_id
+      customer_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/customer_id
+      return_created_date:
+        type: date
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/return_created_date
+      return_channel:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - courier_pickup
+        - drop_off_point
+        - in_store
+        - post
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/return_channel
+      refund_method:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - original_payment
+        - store_credit
+        - gift_card
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/refund_method
+      refund_total:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/refund_total
+      return_status:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - refunded
+        - pending
+        - rejected
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/return_status
+      n_lines:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 1
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/n_lines
+      n_source_orders:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 1
+        observed_profile: observed-data-profile.json#/tables/return_order.csv/columns/n_source_orders
+  return_order_line:
+    grain: returned SKU line
+    primary_key:
+    - return_order_id
+    - return_line_no
+    columns:
+      return_order_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/return_order_id
+      return_line_no:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: key
+        minimum: 1
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/return_line_no
+      order_id:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/order_id
+      order_line_no:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 1
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/order_line_no
+      sku:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/sku
+      quantity_returned:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 1
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/quantity_returned
+      reason_code:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/reason_code
+      reason_text:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: true
+        trust: attacker-controlled; ingestion keyword layer only
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/reason_text
+      refund_amount:
+        type: number
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 0
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/refund_amount
+      return_received_flag:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        enum:
+        - 0
+        - 1
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/return_received_flag
+      disposition:
+        type: string
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        allow_empty: false
+        enum:
+        - resalable
+        - refurbish
+        - damaged_out
+        - not_received
+        - quarantine
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/disposition
+      days_to_return:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 1
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/days_to_return
+      return_window_days:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        minimum: 1
+        enum:
+        - 30
+        - 45
+        - 60
+        category_policy_ref: retail-simulation-policy.yaml
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/return_window_days
+      within_window_flag:
+        type: integer
+        required: true
+        nullable: false
+        source: LLD ?3.1; Data Dictionary entity reference
+        role: reference_or_input
+        enum:
+        - 0
+        - 1
+        observed_profile: observed-data-profile.json#/tables/return_order_line.csv/columns/within_window_flag
+foreign_keys:
+- from_table: sales_order
+  columns:
+  - customer_id
+  to_table: customer_master
+  target_columns:
+  - customer_id
+- from_table: return_order
+  columns:
+  - customer_id
+  to_table: customer_master
+  target_columns:
+  - customer_id
+- from_table: sales_order_line
+  columns:
+  - order_id
+  to_table: sales_order
+  target_columns:
+  - order_id
+- from_table: sales_order_line
+  columns:
+  - sku
+  to_table: sku_master
+  target_columns:
+  - sku
+- from_table: return_order_line
+  columns:
+  - return_order_id
+  to_table: return_order
+  target_columns:
+  - return_order_id
+- from_table: return_order_line
+  columns:
+  - order_id
+  - order_line_no
+  to_table: sales_order_line
+  target_columns:
+  - order_id
+  - order_line_no
+- from_table: return_order_line
+  columns:
+  - reason_code
+  to_table: reason_code
+  target_columns:
+  - reason_code
+reason_reference_rows:
+- reason_code: damaged
+  description: Arrived damaged
+  claim_class: item_complaint
+  intent_class: mechanical
+  fault_attribution: carrier
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: defective
+  description: Faulty or stopped working
+  claim_class: item_complaint
+  intent_class: mechanical
+  fault_attribution: retailer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: poor_quality
+  description: Quality below expectation
+  claim_class: item_complaint
+  intent_class: mechanical
+  fault_attribution: retailer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: not_as_described
+  description: Differs from listing
+  claim_class: item_complaint
+  intent_class: mechanical
+  fault_attribution: retailer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: wrong_size
+  description: Size did not fit
+  claim_class: fit
+  intent_class: mechanical
+  fault_attribution: customer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: didnt_fit
+  description: Cut or shape did not fit
+  claim_class: fit
+  intent_class: mechanical
+  fault_attribution: customer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: didnt_suit
+  description: Did not suit the customer
+  claim_class: preference
+  intent_class: discretionary
+  fault_attribution: customer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: changed_my_mind
+  description: No longer wanted
+  claim_class: preference
+  intent_class: discretionary
+  fault_attribution: customer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: not_as_expected
+  description: Not what the customer pictured
+  claim_class: preference
+  intent_class: discretionary
+  fault_attribution: customer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: found_better_price
+  description: Cheaper elsewhere
+  claim_class: preference
+  intent_class: discretionary
+  fault_attribution: customer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: ordered_by_mistake
+  description: Ordered in error
+  claim_class: preference
+  intent_class: discretionary
+  fault_attribution: customer
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: late_delivery
+  description: Arrived too late to be wanted
+  claim_class: transaction_claim
+  intent_class: discretionary
+  fault_attribution: carrier
+  requires_item_return: 1
+  is_high_risk: 0
+- reason_code: wrong_item_sent
+  description: A different item was sent
+  claim_class: transaction_claim
+  intent_class: mechanical
+  fault_attribution: retailer
+  requires_item_return: 1
+  is_high_risk: 1
+- reason_code: missing_parts
+  description: Parts or pieces absent
+  claim_class: transaction_claim
+  intent_class: mechanical
+  fault_attribution: retailer
+  requires_item_return: 1
+  is_high_risk: 1
+- reason_code: item_not_received
+  description: Parcel never arrived
+  claim_class: transaction_claim
+  intent_class: not_applicable
+  fault_attribution: disputed
+  requires_item_return: 0
+  is_high_risk: 1
+- reason_code: empty_package
+  description: Parcel arrived empty
+  claim_class: transaction_claim
+  intent_class: not_applicable
+  fault_attribution: disputed
+  requires_item_return: 0
+  is_high_risk: 1
+ground_truth:
+  use: evaluation only; never detection input
+  customers:
+    key:
+    - customer_id
+    fields:
+    - population
+    - ring_id
+    - household_id
+    nullable:
+    - ring_id
+    - household_id
+  skus:
+    key:
+    - sku
+    fields:
+    - category
+    - base_return_rate
+    - is_defective
+    - is_ring_target

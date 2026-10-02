@@ -1,0 +1,44 @@
+spec_version: 0.1.0
+status: BLOCKED ? Q-009/Q-010/Q-012
+id: MODEL-SELECT-001
+candidates: supervised and unsupervised comparison approved; exact candidate families/configurations pending
+comparison_plan_ref: model-comparison-plan.md
+selection_dataset: development seed worlds only; inner validation method TBD
+primary_metric: precision at top 5 percent of eligible customers
+secondary_metrics:
+- recall at the same review budget
+- false-positive counts and rates for legitimate heavy returners, defective-product buyers and benign shared households
+- precision and recall at top 1 percent and 10 percent sensitivity budgets
+minimum_acceptable_thresholds:
+  budget_fraction: 0.05
+  baseline: raw-return-rate ranking on identical eligible customers
+  precision: candidate precision strictly greater than baseline precision
+  legitimate_segment_fpr: candidate rate less than or equal to baseline rate in each listed segment
+  segments:
+  - legit_heavy_returner
+  - defective_cluster_buyer
+  - benign_household
+  approval: user Q17 on 2026-09-25
+  aggregation_and_uncertainty: TBD fixed protocol before comparison
+  no_passing_candidate: report no acceptable model; do not promote the least-bad candidate
+candidate_order: null
+tie_breaking: null
+decision_owner: Lead with DS1 and business reviewer
+execution_guard: refuse selection/promotion while any above field unresolved; do not
+  silently choose first candidate
+required_deterministic_procedure:
+- freeze enumerated candidate configs and hashes before comparison
+- evaluate identical approved development worlds/budgets with fixed ordering
+- reject contract/privacy/leakage/reproducibility failures
+- apply approved primary metric, thresholds, secondary order and tie breaker
+- record every candidate result/rejection and final chosen hash
+- freeze chosen code/config/generator before sealed evaluation
+rejection_criteria:
+- any ground-truth feature contamination
+- incompatible schema/transform artifacts
+- nonfinite or out-of-range scores
+- nondeterministic same-run ranking
+- business minimums when approved
+test_set_use: one final frozen evaluation; cannot choose candidate, thresholds or
+  cuts after observing sealed outcomes
+negative_result: report failure without retuning on sealed data

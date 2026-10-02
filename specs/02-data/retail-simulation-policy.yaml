@@ -1,0 +1,45 @@
+spec_version: 0.1.0
+status: business choices approved; detailed generation contract pending
+approval:
+  date: '2026-09-25'
+  decisions: user Q18 and Q19
+market: Indian online apparel retail simulation
+currency: INR
+catalog:
+  starting_source: ../../code/synthetic-data/sku-master/sku_master.csv
+  starting_sku_count: 300
+  categories:
+  - T-shirt
+  - Shirt
+  - Jeans
+  - Jacket
+  - Dress
+  price_bands:
+  - Budget
+  - Mid
+  - Premium
+  - Luxury
+  return_window_days_by_category:
+    T-shirt: 30
+    Shirt: 30
+    Jeans: 30
+    Jacket: 45
+    Dress: 60
+  policy_basis: synthetic assumptions; not verified Indian retailer policy
+transaction_history:
+  calendar_months: 12
+  end: explicit dataset snapshot date in generation manifest
+  exact_boundary_convention: specify before generation
+  newer_accounts: history begins no earlier than signup
+  sku_availability: no sale before launch; historical retirement semantics require definition
+  evidence_packet_history: independent of generated transaction history; legacy packet cap is 180 days
+validation:
+  category_windows: each SKU and return must respect the applicable category policy
+  currency: orders, prices and refunds use INR; no implicit currency conversion
+  maturity: unresolved return windows must not be treated as observed non-returns
+  snapshots: no event or feature value unavailable at the scoring cutoff
+remaining_engineering_work:
+- Exact dates and date boundaries
+- Team-to-canonical field mapping and historical availability semantics
+- Action-based labels, scenario proportions and split/seed protocol
+- Reproducible generator source/provenance and acceptance checks

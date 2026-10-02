@@ -1,0 +1,191 @@
+# NOTEBOOK CELL 2 (zero-based)
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.metrics import (
+    adjusted_rand_score,
+    normalized_mutual_info_score,
+    silhouette_score,
+)
+from sklearn.preprocessing import StandardScaler
+
+sns.set_theme(style="whitegrid", context="notebook")
+plt.rcParams["figure.figsize"] = (10, 4.5)
+plt.rcParams["axes.titlesize"] = 12
+
+ROOT = Path("..").resolve()
+if not (ROOT / "output" / "customer_master.csv").exists():
+    ROOT = Path.cwd()
+    if not (ROOT / "output" / "customer_master.csv").exists():
+        ROOT = Path(r"C:\Users\Abhinandan\Projects\customer_master_local")
+
+CSV = ROOT / "output" / "customer_master.csv"
+print("project root:", ROOT)
+print("csv:", CSV)
+
+# NOTEBOOK CELL 4 (zero-based)
+df = pd.read_csv(CSV)
+print(f"rows={len(df):,}  cols={len(df.columns)}")
+print("all columns:", list(df.columns))
+
+LABEL_COLS = ["customer_segment", "account_status"]
+ID_COLS = ["customer_id", "signup_date"]
+FEATURE_COLS = [
+    "tenure_days",
+    "actual_orders",
+    "avg_days_between_orders",
+    "festive_order_ratio",
+    "return_rate",
+    "shared_device_count",
+]
+
+missing = [c for c in LABEL_COLS + ID_COLS + FEATURE_COLS if c not in df.columns]
+if missing:
+    raise ValueError(f"missing columns: {missing}")
+
+cluster_df = df.copy()
+cluster_df["avg_days_between_orders"] = cluster_df["avg_days_between_orders"].fillna(
+    cluster_df["tenure_days"]
+)
+
+X_raw = cluster_df[FEATURE_COLS].copy()
+# Heavy tails on orders / gaps dominate Euclidean distance unless compressed.
+X_raw["actual_orders"] = np.log1p(X_raw["actual_orders"].astype(float))
+X_raw["avg_days_between_orders"] = np.log1p(X_raw["avg_days_between_orders"].astype(float))
+
+scaler = StandardScaler()
+X = scaler.fit_transform(X_raw)
+
+hidden_segment = cluster_df["customer_segment"].astype(str)
+hidden_status = cluster_df["account_status"].astype(str)
+
+print("dropped labels :", LABEL_COLS)
+print("dropped ids    :", ID_COLS)
+print("features used  :", FEATURE_COLS)
+print("X shape        :", X.shape)
+print("NaNs in X      :", int(np.isnan(X).sum()))
+print("hidden segment :", hidden_segment.value_counts().to_dict())
+print("hidden status  :", hidden_status.value_counts().to_dict())
+cluster_df[FEATURE_COLS].describe().round(2)
+
+# NOTEBOOK CELL 6 (zero-based)
+ks = list(range(2, 11))
+inertias, sils = [], []
+kmeans_models = {}
+rng_idx = np.random.default_rng(42).choice(len(X), size=min(4000, len(X)), replace=False)
+
+for k in ks:
+    km = KMeans(n_clusters=k, n_init=20, random_state=42)
+    labels_k = km.fit_predict(X)
+    kmeans_models[k] = (km, labels_k)
+    inertias.append(km.inertia_)
+    sils.append(silhouette_score(X[rng_idx], labels_k[rng_idx]))
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+axes[0].plot(ks, inertias, marker="o")
+axes[0].set_title("K-means elbow (inertia)")
+axes[0].set_xlabel("k")
+axes[0].set_ylabel("Inertia")
+axes[1].plot(ks, sils, marker="o")
+axes[1].set_title("Silhouette vs k (4k sample)")
+axes[1].set_xlabel("k")
+axes[1].set_ylabel("Silhouette")
+plt.tight_layout()
+plt.show()
+
+best_k = int(ks[int(np.argmax(sils))])
+print("best silhouette k:", best_k, "score:", round(max(sils), 3))
+print("k=6 silhouette  :", round(sils[ks.index(6)], 3), "(generation used 6 personas)")
+
+# NOTEBOOK CELL 8 (zero-based)
+def cluster_quality(pred, title):
+    print(title)
+    print("  sizes:", pd.Series(pred).value_counts().sort_index().to_dict())
+    print("  ARI vs customer_segment :", round(adjusted_rand_score(hidden_segment, pred), 3))
+    print("  NMI vs customer_segment :", round(normalized_mutual_info_score(hidden_segment, pred), 3))
+    print("  ARI vs account_status   :", round(adjusted_rand_score(hidden_status, pred), 3))
+    print("  NMI vs account_status   :", round(normalized_mutual_info_score(hidden_status, pred), 3))
+    print()
+    ct_seg = pd.crosstab(hidden_segment, pred, normalize="index").round(2)
+    ct_st = pd.crosstab(hidden_status, pred, normalize="index").round(2)
+    print("row-normalized: segment vs cluster (how each persona is split)")
+    display(ct_seg)
+    print("row-normalized: account_status vs cluster")
+    display(ct_st)
+    return ct_seg
+
+
+k_use = 6 if 6 in kmeans_models else best_k
+km_labels = kmeans_models[k_use][1]
+km_best_labels = kmeans_models[best_k][1]
+
+print("K-means at k=6 (persona count) and k=silhouette-best\n")
+cluster_quality(km_labels, f"K-means k={k_use}")
+cluster_quality(km_best_labels, f"K-means k={best_k} (best silhouette)")
+
+profile = cluster_df.assign(kmeans=km_labels).groupby("kmeans")[FEATURE_COLS].median()
+print("cluster medians (k=6, original units)")
+display(profile.round(2))
+
+# NOTEBOOK CELL 10 (zero-based)
+pca = PCA(n_components=2, random_state=42)
+xy = pca.fit_transform(X)
+print(
+    "PCA explained variance:",
+    np.round(pca.explained_variance_ratio_, 3),
+    "sum",
+    round(pca.explained_variance_ratio_.sum(), 3),
+)
+
+viz = pd.DataFrame(
+    {
+        "pc1": xy[:, 0],
+        "pc2": xy[:, 1],
+        "kmeans_k6": km_labels.astype(str),
+        "kmeans_best": km_best_labels.astype(str),
+        "segment": hidden_segment,
+        "status": hidden_status,
+    }
+)
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+plots = [
+    (axes[0, 0], "kmeans_k6", f"K-means (k={k_use})"),
+    (axes[0, 1], "kmeans_best", f"K-means (k={best_k}, silhouette best)"),
+    (axes[1, 0], "segment", "Hidden customer_segment"),
+    (axes[1, 1], "status", "Hidden account_status"),
+]
+for ax, col, title in plots:
+    sns.scatterplot(data=viz, x="pc1", y="pc2", hue=col, s=12, alpha=0.55, ax=ax, linewidth=0)
+    ax.set_title(title)
+    ax.legend(markerscale=1.4, fontsize=8, loc="best")
+plt.tight_layout()
+plt.show()
+
+# NOTEBOOK CELL 12 (zero-based)
+ari_seg = adjusted_rand_score(hidden_segment, km_labels)
+ari_st = adjusted_rand_score(hidden_status, km_labels)
+ari_seg_best = adjusted_rand_score(hidden_segment, km_best_labels)
+ari_st_best = adjusted_rand_score(hidden_status, km_best_labels)
+
+print("=== K-means realism checklist ===")
+print(f"k={k_use}  ARI(segment)={ari_seg:.3f}  ARI(status)={ari_st:.3f}")
+print(f"k={best_k}  ARI(segment)={ari_seg_best:.3f}  ARI(status)={ari_st_best:.3f}")
+print()
+
+if ari_seg >= 0.85:
+    print("segment recovery is very high → personas are still too boxy; add more overlap in generation.")
+elif ari_seg >= 0.25:
+    print("segment recovery is moderate → clusters see structure without memorizing labels. Good sign.")
+else:
+    print("segment recovery is weak → either features are too noisy or personas do not show up in these columns.")
+
+if ari_st < 0.15:
+    print("account_status is not a geometric cluster → expected, and realistic.")
+else:
+    print("account_status is aligning with clusters → status may be too tightly tied to a persona box.")

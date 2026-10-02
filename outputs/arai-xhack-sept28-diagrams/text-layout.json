@@ -1,0 +1,2402 @@
+[
+  {
+    "slide": 1,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 1,
+    "text": "DESIGN REVIEW",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 1,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 1,
+    "text": "01",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 1,
+    "text": "ARAI",
+    "x": 56,
+    "y": 125,
+    "w": 740,
+    "h": 115
+  },
+  {
+    "slide": 1,
+    "text": "Adaptive Return\nAbuse Intelligence",
+    "x": 60,
+    "y": 251,
+    "w": 690,
+    "h": 100
+  },
+  {
+    "slide": 1,
+    "text": "Investigate suspicious returns.\nUnderstand legitimate explanations.",
+    "x": 60,
+    "y": 393,
+    "w": 700,
+    "h": 100
+  },
+  {
+    "slide": 1,
+    "text": "Indian online apparel  •  Analyst decision support",
+    "x": 60,
+    "y": 567,
+    "w": 710,
+    "h": 40
+  },
+  {
+    "slide": 1,
+    "text": "01",
+    "x": 845,
+    "y": 158,
+    "w": 55,
+    "h": 36
+  },
+  {
+    "slide": 1,
+    "text": "Observe",
+    "x": 908,
+    "y": 158,
+    "w": 282,
+    "h": 42
+  },
+  {
+    "slide": 1,
+    "text": "Return behavior over time",
+    "x": 908,
+    "y": 207,
+    "w": 275,
+    "h": 62
+  },
+  {
+    "slide": 1,
+    "text": "02",
+    "x": 845,
+    "y": 300,
+    "w": 55,
+    "h": 36
+  },
+  {
+    "slide": 1,
+    "text": "Explain",
+    "x": 908,
+    "y": 300,
+    "w": 282,
+    "h": 42
+  },
+  {
+    "slide": 1,
+    "text": "Product and relationship context",
+    "x": 908,
+    "y": 349,
+    "w": 275,
+    "h": 62
+  },
+  {
+    "slide": 1,
+    "text": "03",
+    "x": 845,
+    "y": 442,
+    "w": 55,
+    "h": 36
+  },
+  {
+    "slide": 1,
+    "text": "Prioritize",
+    "x": 908,
+    "y": 442,
+    "w": 282,
+    "h": 42
+  },
+  {
+    "slide": 1,
+    "text": "Human investigation",
+    "x": 908,
+    "y": 491,
+    "w": 275,
+    "h": 62
+  },
+  {
+    "slide": 2,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 2,
+    "text": "PROBLEM STATEMENT",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 2,
+    "text": "High returns alone do not establish abuse.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 2,
+    "text": "The same headline return rate can hide very different explanations.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 2,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 2,
+    "text": "02",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 2,
+    "text": "Legitimate fit shopping",
+    "x": 78,
+    "y": 293,
+    "w": 328,
+    "h": 58
+  },
+  {
+    "slide": 2,
+    "text": "A customer may return often while choosing the right size or fit.",
+    "x": 78,
+    "y": 357,
+    "w": 328,
+    "h": 129
+  },
+  {
+    "slide": 2,
+    "text": "Product quality issues",
+    "x": 476,
+    "y": 293,
+    "w": 328,
+    "h": 58
+  },
+  {
+    "slide": 2,
+    "text": "A style or SKU may drive returns across many unrelated customers.",
+    "x": 476,
+    "y": 357,
+    "w": 328,
+    "h": 129
+  },
+  {
+    "slide": 2,
+    "text": "Intentional misuse",
+    "x": 874,
+    "y": 293,
+    "w": 328,
+    "h": 58
+  },
+  {
+    "slide": 2,
+    "text": "Submitted deception or temporary use can warrant investigation.",
+    "x": 874,
+    "y": 357,
+    "w": 328,
+    "h": 129
+  },
+  {
+    "slide": 2,
+    "text": "Design challenge",
+    "x": 78,
+    "y": 570,
+    "w": 260,
+    "h": 58
+  },
+  {
+    "slide": 2,
+    "text": "Prioritize useful investigations while preserving legitimate explanations.",
+    "x": 350,
+    "y": 570,
+    "w": 850,
+    "h": 60
+  },
+  {
+    "slide": 3,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 3,
+    "text": "PROPOSED SOLUTION",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 3,
+    "text": "A ranked queue with inspectable evidence.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 3,
+    "text": "Help an analyst understand why a customer or product deserves a closer look.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 3,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 3,
+    "text": "03",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 3,
+    "text": "Observe",
+    "x": 78,
+    "y": 293,
+    "w": 230,
+    "h": 58
+  },
+  {
+    "slide": 3,
+    "text": "Sales and return events",
+    "x": 78,
+    "y": 357,
+    "w": 230,
+    "h": 117
+  },
+  {
+    "slide": 3,
+    "text": "Contextualize",
+    "x": 376,
+    "y": 293,
+    "w": 230,
+    "h": 58
+  },
+  {
+    "slide": 3,
+    "text": "Expected behavior for the product mix",
+    "x": 376,
+    "y": 357,
+    "w": 230,
+    "h": 117
+  },
+  {
+    "slide": 3,
+    "text": "Prioritize",
+    "x": 674,
+    "y": 293,
+    "w": 230,
+    "h": 58
+  },
+  {
+    "slide": 3,
+    "text": "One customer ranking at a fixed review budget",
+    "x": 674,
+    "y": 357,
+    "w": 230,
+    "h": 117
+  },
+  {
+    "slide": 3,
+    "text": "Investigate",
+    "x": 972,
+    "y": 293,
+    "w": 230,
+    "h": 58
+  },
+  {
+    "slide": 3,
+    "text": "Case evidence and append-only notes",
+    "x": 972,
+    "y": 357,
+    "w": 230,
+    "h": 117
+  },
+  {
+    "slide": 3,
+    "text": "Human decision support",
+    "x": 78,
+    "y": 570,
+    "w": 260,
+    "h": 58
+  },
+  {
+    "slide": 3,
+    "text": "No automatic refund denial or account action. If models fail the gate, show the baseline.",
+    "x": 350,
+    "y": 570,
+    "w": 850,
+    "h": 60
+  },
+  {
+    "slide": 4,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 4,
+    "text": "KEY FEATURES",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 4,
+    "text": "Four connected investigation views.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 4,
+    "text": "A focused MVP that connects customer behavior with product context.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 4,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 4,
+    "text": "04",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 4,
+    "text": "01  Customer queue + cases",
+    "x": 78,
+    "y": 278,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 4,
+    "text": "Review ranked customers, supporting events and analyst notes.",
+    "x": 78,
+    "y": 342,
+    "w": 527,
+    "h": 80
+  },
+  {
+    "slide": 4,
+    "text": "02  Style + SKU exploration",
+    "x": 675,
+    "y": 278,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 4,
+    "text": "Identify product-driven returns before attributing customer intent.",
+    "x": 675,
+    "y": 342,
+    "w": 527,
+    "h": 80
+  },
+  {
+    "slide": 4,
+    "text": "03  Relationship evidence",
+    "x": 78,
+    "y": 476,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 4,
+    "text": "Inspect shared identifiers with safeguards for benign households.",
+    "x": 78,
+    "y": 540,
+    "w": 527,
+    "h": 80
+  },
+  {
+    "slide": 4,
+    "text": "04  Wardrobing indicator",
+    "x": 675,
+    "y": 476,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 4,
+    "text": "Keep the image-free timing signal separate from the overall model score.",
+    "x": 675,
+    "y": 540,
+    "w": 527,
+    "h": 80
+  },
+  {
+    "slide": 5,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 5,
+    "text": "ARCHITECTURE DIAGRAM",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 5,
+    "text": "Separate learning from application execution.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 5,
+    "text": "Two execution boundaries, one shared feature contract, and versioned artifacts.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 5,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 5,
+    "text": "05",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 5,
+    "text": "OFFLINE PYTHON PIPELINE",
+    "x": 74,
+    "y": 259,
+    "w": 600,
+    "h": 25
+  },
+  {
+    "slide": 5,
+    "text": "Synthetic generator",
+    "x": 90,
+    "y": 309,
+    "w": 191,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Events + private truth",
+    "x": 90,
+    "y": 346,
+    "w": 191,
+    "h": 26
+  },
+  {
+    "slide": 5,
+    "text": "Data + feature engine",
+    "x": 347,
+    "y": 309,
+    "w": 235,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Validate, explore, transform",
+    "x": 347,
+    "y": 346,
+    "w": 235,
+    "h": 26
+  },
+  {
+    "slide": 5,
+    "text": "Training + evaluation",
+    "x": 648,
+    "y": 309,
+    "w": 235,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Candidate comparison and gate",
+    "x": 648,
+    "y": 346,
+    "w": 235,
+    "h": 26
+  },
+  {
+    "slide": 5,
+    "text": "Frozen bundle",
+    "x": 949,
+    "y": 309,
+    "w": 241,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Model + feature references",
+    "x": 949,
+    "y": 346,
+    "w": 241,
+    "h": 26
+  },
+  {
+    "slide": 5,
+    "text": "LOCAL APPLICATION",
+    "x": 74,
+    "y": 450,
+    "w": 425,
+    "h": 25
+  },
+  {
+    "slide": 5,
+    "text": "React / Vite UI",
+    "x": 90,
+    "y": 509,
+    "w": 188,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Submit runs, inspect cases,\nrecord analyst notes",
+    "x": 90,
+    "y": 546,
+    "w": 188,
+    "h": 70
+  },
+  {
+    "slide": 5,
+    "text": "FastAPI service",
+    "x": 345,
+    "y": 509,
+    "w": 218,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Validate requests, expose\nrun status and results",
+    "x": 345,
+    "y": 546,
+    "w": 218,
+    "h": 70
+  },
+  {
+    "slide": 5,
+    "text": "Single worker",
+    "x": 630,
+    "y": 509,
+    "w": 227,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Load bundle, compute\nfeatures, score and publish",
+    "x": 630,
+    "y": 546,
+    "w": 227,
+    "h": 70
+  },
+  {
+    "slide": 5,
+    "text": "PostgreSQL",
+    "x": 949,
+    "y": 475,
+    "w": 241,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Run state, metadata, audit",
+    "x": 949,
+    "y": 512,
+    "w": 241,
+    "h": 24
+  },
+  {
+    "slide": 5,
+    "text": "Artifact storage",
+    "x": 949,
+    "y": 567,
+    "w": 241,
+    "h": 32
+  },
+  {
+    "slide": 5,
+    "text": "Parquet results + JSON",
+    "x": 949,
+    "y": 604,
+    "w": 241,
+    "h": 24
+  },
+  {
+    "slide": 5,
+    "text": "Load a versioned bundle; never fit at runtime",
+    "x": 76,
+    "y": 408,
+    "w": 630,
+    "h": 26
+  },
+  {
+    "slide": 6,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 6,
+    "text": "DATA FLOW DIAGRAM",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 6,
+    "text": "From raw events to reviewable evidence.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 6,
+    "text": "Operational tables move through shared validation and feature logic; private truth stays offline.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 6,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 6,
+    "text": "06",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 6,
+    "text": "A  /  OFFLINE LEARNING",
+    "x": 56,
+    "y": 256,
+    "w": 600,
+    "h": 26
+  },
+  {
+    "slide": 6,
+    "text": "01  Generate",
+    "x": 72,
+    "y": 307,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Seven operational\ntables per world",
+    "x": 72,
+    "y": 344,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "02  Validate",
+    "x": 271,
+    "y": 307,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Schema, keys,\ndates and maturity",
+    "x": 271,
+    "y": 344,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "03  Features",
+    "x": 470,
+    "y": 307,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Explore data; build\n18 numeric features",
+    "x": 470,
+    "y": 344,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "04  Train",
+    "x": 669,
+    "y": 307,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Ten training worlds;\nfive candidates",
+    "x": 669,
+    "y": 344,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "05  Evaluate",
+    "x": 868,
+    "y": 307,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Validation selection;\none held-out test",
+    "x": 868,
+    "y": 344,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "06  Package",
+    "x": 1067,
+    "y": 307,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Winner or baseline;\nfrozen references",
+    "x": 1067,
+    "y": 344,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "PRIVATE TRUTH",
+    "x": 71,
+    "y": 439,
+    "w": 176,
+    "h": 24
+  },
+  {
+    "slide": 6,
+    "text": "Separate labels support offline training and evaluation; never enter features or serving inputs.",
+    "x": 255,
+    "y": 439,
+    "w": 951,
+    "h": 25
+  },
+  {
+    "slide": 6,
+    "text": "B  /  APPLICATION SCORING",
+    "x": 56,
+    "y": 486,
+    "w": 600,
+    "h": 26
+  },
+  {
+    "slide": 6,
+    "text": "01  Register",
+    "x": 72,
+    "y": 534,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Seven CSVs +\nmanifest / hashes",
+    "x": 72,
+    "y": 571,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "02  Validate",
+    "x": 271,
+    "y": 534,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Reject invalid data;\ncreate durable run",
+    "x": 271,
+    "y": 571,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "03  Transform",
+    "x": 470,
+    "y": 534,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Same maturity and\nfeature definitions",
+    "x": 470,
+    "y": 571,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "04  Score",
+    "x": 669,
+    "y": 534,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Load frozen bundle;\nrank eligible users",
+    "x": 669,
+    "y": 571,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "05  Publish",
+    "x": 868,
+    "y": 534,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Atomic results;\nrecord run metadata",
+    "x": 868,
+    "y": 571,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 6,
+    "text": "06  Review",
+    "x": 1067,
+    "y": 534,
+    "w": 141,
+    "h": 32
+  },
+  {
+    "slide": 6,
+    "text": "Customer + style UI;\nappend analyst notes",
+    "x": 1067,
+    "y": 571,
+    "w": 141,
+    "h": 63
+  },
+  {
+    "slide": 7,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 7,
+    "text": "DATA DESIGN",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 7,
+    "text": "Synthetic data with explicit truth boundaries.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 7,
+    "text": "Controlled worlds support repeatable experiments and deliberate benign counterexamples.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 7,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 7,
+    "text": "07",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 7,
+    "text": "300 SKUs",
+    "x": 72,
+    "y": 270,
+    "w": 342,
+    "h": 32
+  },
+  {
+    "slide": 7,
+    "text": "37 apparel styles",
+    "x": 72,
+    "y": 307,
+    "w": 342,
+    "h": 49
+  },
+  {
+    "slide": 7,
+    "text": "10,000 profiles",
+    "x": 469,
+    "y": 270,
+    "w": 342,
+    "h": 32
+  },
+  {
+    "slide": 7,
+    "text": "Planned per generated world",
+    "x": 469,
+    "y": 307,
+    "w": 342,
+    "h": 49
+  },
+  {
+    "slide": 7,
+    "text": "12 months",
+    "x": 866,
+    "y": 270,
+    "w": 342,
+    "h": 32
+  },
+  {
+    "slide": 7,
+    "text": "Fixed as-of cutoff; INR",
+    "x": 866,
+    "y": 307,
+    "w": 342,
+    "h": 49
+  },
+  {
+    "slide": 7,
+    "text": "Operational data",
+    "x": 78,
+    "y": 405,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 7,
+    "text": "Seven linked tables: customer, SKU, reason, sales order/line and return order/line.",
+    "x": 78,
+    "y": 469,
+    "w": 527,
+    "h": 69
+  },
+  {
+    "slide": 7,
+    "text": "Private truth",
+    "x": 675,
+    "y": 405,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 7,
+    "text": "Intent and deceptive actions stay outside model features and serving payloads.",
+    "x": 675,
+    "y": 469,
+    "w": 527,
+    "h": 69
+  },
+  {
+    "slide": 7,
+    "text": "Counterexamples",
+    "x": 78,
+    "y": 583,
+    "w": 260,
+    "h": 58
+  },
+  {
+    "slide": 7,
+    "text": "Heavy legitimate returners, defect-driven buyers and benign shared households.",
+    "x": 350,
+    "y": 583,
+    "w": 850,
+    "h": 60
+  },
+  {
+    "slide": 8,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 8,
+    "text": "MODEL VALIDATION",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 8,
+    "text": "A candidate must beat a simple baseline fairly.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 8,
+    "text": "Separate synthetic worlds prevent the same world from appearing in training and evaluation.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 8,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 8,
+    "text": "08",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 8,
+    "text": "10",
+    "x": 74,
+    "y": 271,
+    "w": 62,
+    "h": 72
+  },
+  {
+    "slide": 8,
+    "text": "Train worlds",
+    "x": 148,
+    "y": 289,
+    "w": 162,
+    "h": 66
+  },
+  {
+    "slide": 8,
+    "text": "5",
+    "x": 372,
+    "y": 271,
+    "w": 62,
+    "h": 72
+  },
+  {
+    "slide": 8,
+    "text": "Validation worlds",
+    "x": 446,
+    "y": 289,
+    "w": 162,
+    "h": 66
+  },
+  {
+    "slide": 8,
+    "text": "5",
+    "x": 670,
+    "y": 271,
+    "w": 62,
+    "h": 72
+  },
+  {
+    "slide": 8,
+    "text": "Untouched test worlds",
+    "x": 744,
+    "y": 289,
+    "w": 162,
+    "h": 66
+  },
+  {
+    "slide": 8,
+    "text": "1",
+    "x": 968,
+    "y": 271,
+    "w": 62,
+    "h": 72
+  },
+  {
+    "slide": 8,
+    "text": "Demo world",
+    "x": 1042,
+    "y": 289,
+    "w": 162,
+    "h": 66
+  },
+  {
+    "slide": 8,
+    "text": "Gate 1: better prioritization",
+    "x": 78,
+    "y": 417,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 8,
+    "text": "At a 5% review budget, precision must exceed the raw return-rate baseline.",
+    "x": 78,
+    "y": 481,
+    "w": 527,
+    "h": 61
+  },
+  {
+    "slide": 8,
+    "text": "Gate 2: protect benign groups",
+    "x": 675,
+    "y": 417,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 8,
+    "text": "False-positive rate must be no worse in each of three benign segments.",
+    "x": 675,
+    "y": 481,
+    "w": 527,
+    "h": 61
+  },
+  {
+    "slide": 8,
+    "text": "PASS: promote the frozen selection   •   FAIL: disclose and serve the baseline",
+    "x": 78,
+    "y": 593,
+    "w": 1124,
+    "h": 40
+  },
+  {
+    "slide": 9,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 9,
+    "text": "UI / UX",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 9,
+    "text": "Make the ranking easy to question.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 9,
+    "text": "Revised clickable wireframe • synthetic demonstration values • not a running ML product",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 9,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 9,
+    "text": "09",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 9,
+    "text": "01",
+    "x": 856,
+    "y": 259,
+    "w": 42,
+    "h": 36
+  },
+  {
+    "slide": 9,
+    "text": "Explain the score",
+    "x": 909,
+    "y": 259,
+    "w": 311,
+    "h": 32
+  },
+  {
+    "slide": 9,
+    "text": "A percentile is not a probability.",
+    "x": 909,
+    "y": 295,
+    "w": 311,
+    "h": 58
+  },
+  {
+    "slide": 9,
+    "text": "02",
+    "x": 856,
+    "y": 357,
+    "w": 42,
+    "h": 36
+  },
+  {
+    "slide": 9,
+    "text": "Show product context",
+    "x": 909,
+    "y": 357,
+    "w": 311,
+    "h": 32
+  },
+  {
+    "slide": 9,
+    "text": "Compare observed and expected returns.",
+    "x": 909,
+    "y": 393,
+    "w": 311,
+    "h": 58
+  },
+  {
+    "slide": 9,
+    "text": "03",
+    "x": 856,
+    "y": 455,
+    "w": 42,
+    "h": 36
+  },
+  {
+    "slide": 9,
+    "text": "Separate signals",
+    "x": 909,
+    "y": 455,
+    "w": 311,
+    "h": 32
+  },
+  {
+    "slide": 9,
+    "text": "Wardrobing stays independently labeled.",
+    "x": 909,
+    "y": 491,
+    "w": 311,
+    "h": 58
+  },
+  {
+    "slide": 9,
+    "text": "04",
+    "x": 856,
+    "y": 553,
+    "w": 42,
+    "h": 36
+  },
+  {
+    "slide": 9,
+    "text": "Record the review",
+    "x": 909,
+    "y": 553,
+    "w": 311,
+    "h": 32
+  },
+  {
+    "slide": 9,
+    "text": "Append-only notes preserve history.",
+    "x": 909,
+    "y": 589,
+    "w": 311,
+    "h": 58
+  },
+  {
+    "slide": 10,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 10,
+    "text": "TECHNOLOGY STACK",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 10,
+    "text": "A small, familiar stack for the MVP.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 10,
+    "text": "Keep experimentation offline and the application runtime simple.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 10,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 10,
+    "text": "10",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 10,
+    "text": "Data + features",
+    "x": 74,
+    "y": 272,
+    "w": 223,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "Python · NumPy · pandas",
+    "x": 306,
+    "y": 272,
+    "w": 449,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "Generate, validate and transform",
+    "x": 770,
+    "y": 272,
+    "w": 436,
+    "h": 35
+  },
+  {
+    "slide": 10,
+    "text": "Models",
+    "x": 74,
+    "y": 336,
+    "w": 223,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "scikit-learn",
+    "x": 306,
+    "y": 336,
+    "w": 449,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "Logistic regression · HGB · Isolation Forest",
+    "x": 770,
+    "y": 336,
+    "w": 436,
+    "h": 35
+  },
+  {
+    "slide": 10,
+    "text": "API + execution",
+    "x": 74,
+    "y": 400,
+    "w": 223,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "FastAPI · one worker",
+    "x": 306,
+    "y": 400,
+    "w": 449,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "Typed contracts and durable run lifecycle",
+    "x": 770,
+    "y": 400,
+    "w": 436,
+    "h": 35
+  },
+  {
+    "slide": 10,
+    "text": "Analyst UI",
+    "x": 74,
+    "y": 464,
+    "w": 223,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "React · Vite",
+    "x": 306,
+    "y": 464,
+    "w": 449,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "Customer, product and evidence views",
+    "x": 770,
+    "y": 464,
+    "w": 436,
+    "h": 35
+  },
+  {
+    "slide": 10,
+    "text": "Persistence",
+    "x": 74,
+    "y": 528,
+    "w": 223,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "PostgreSQL · Parquet · JSON · skops",
+    "x": 306,
+    "y": 528,
+    "w": 449,
+    "h": 32
+  },
+  {
+    "slide": 10,
+    "text": "Metadata, immutable results and model bundle",
+    "x": 770,
+    "y": 528,
+    "w": 436,
+    "h": 35
+  },
+  {
+    "slide": 10,
+    "text": "AI development assistance: Codex / Claude for specifications and coding. No runtime LLM dependency.",
+    "x": 56,
+    "y": 605,
+    "w": 1168,
+    "h": 40
+  },
+  {
+    "slide": 11,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 11,
+    "text": "IMPLEMENTATION PLAN",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 11,
+    "text": "Deliver the end-to-end path before polishing.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 11,
+    "text": "Proposed schedule for a three-person team • owners to be assigned at the design review",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 11,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 11,
+    "text": "11",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 11,
+    "text": "28 SEP–2 OCT",
+    "x": 72,
+    "y": 287,
+    "w": 188,
+    "h": 37
+  },
+  {
+    "slide": 11,
+    "text": "Bootstrap",
+    "x": 72,
+    "y": 337,
+    "w": 188,
+    "h": 64
+  },
+  {
+    "slide": 11,
+    "text": "Environment, contracts, small world",
+    "x": 72,
+    "y": 416,
+    "w": 188,
+    "h": 88
+  },
+  {
+    "slide": 11,
+    "text": "5–9 OCT",
+    "x": 309,
+    "y": 287,
+    "w": 188,
+    "h": 37
+  },
+  {
+    "slide": 11,
+    "text": "Data readiness",
+    "x": 309,
+    "y": 337,
+    "w": 188,
+    "h": 64
+  },
+  {
+    "slide": 11,
+    "text": "Generator, validation and features",
+    "x": 309,
+    "y": 416,
+    "w": 188,
+    "h": 88
+  },
+  {
+    "slide": 11,
+    "text": "12–16 OCT",
+    "x": 546,
+    "y": 287,
+    "w": 188,
+    "h": 37
+  },
+  {
+    "slide": 11,
+    "text": "Vertical slice",
+    "x": 546,
+    "y": 337,
+    "w": 188,
+    "h": 64
+  },
+  {
+    "slide": 11,
+    "text": "Baseline → API → analyst UI",
+    "x": 546,
+    "y": 416,
+    "w": 188,
+    "h": 88
+  },
+  {
+    "slide": 11,
+    "text": "19–23 OCT",
+    "x": 783,
+    "y": 287,
+    "w": 188,
+    "h": 37
+  },
+  {
+    "slide": 11,
+    "text": "Model gate",
+    "x": 783,
+    "y": 337,
+    "w": 188,
+    "h": 64
+  },
+  {
+    "slide": 11,
+    "text": "Full experiment and held-out test",
+    "x": 783,
+    "y": 416,
+    "w": 188,
+    "h": 88
+  },
+  {
+    "slide": 11,
+    "text": "26–30 OCT",
+    "x": 1020,
+    "y": 287,
+    "w": 188,
+    "h": 37
+  },
+  {
+    "slide": 11,
+    "text": "Freeze + rehearse",
+    "x": 1020,
+    "y": 337,
+    "w": 188,
+    "h": 64
+  },
+  {
+    "slide": 11,
+    "text": "Acceptance checks and demo recovery",
+    "x": 1020,
+    "y": 416,
+    "w": 188,
+    "h": 88
+  },
+  {
+    "slide": 11,
+    "text": "Delivery checkpoints",
+    "x": 78,
+    "y": 570,
+    "w": 260,
+    "h": 58
+  },
+  {
+    "slide": 11,
+    "text": "9 Oct: data readiness  •  1–14 Nov: target demo window\nProtect the final week for testing and rehearsal.",
+    "x": 350,
+    "y": 570,
+    "w": 850,
+    "h": 60
+  },
+  {
+    "slide": 12,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 12,
+    "text": "FEASIBILITY & RISKS",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 12,
+    "text": "Make uncertainty visible and contain its impact.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 12,
+    "text": "The design includes a working demonstration path even when ML results are disappointing.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 12,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 12,
+    "text": "12",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 12,
+    "text": "Synthetic shortcuts",
+    "x": 77,
+    "y": 283,
+    "w": 267,
+    "h": 38
+  },
+  {
+    "slide": 12,
+    "text": "A model learns generator artifacts.",
+    "x": 77,
+    "y": 323,
+    "w": 333,
+    "h": 44
+  },
+  {
+    "slide": 12,
+    "text": "RESPONSE",
+    "x": 435,
+    "y": 283,
+    "w": 125,
+    "h": 24
+  },
+  {
+    "slide": 12,
+    "text": "Isolated truth, independent worlds, stress cases and explicit limits on real-world claims.",
+    "x": 573,
+    "y": 283,
+    "w": 626,
+    "h": 82
+  },
+  {
+    "slide": 12,
+    "text": "No candidate qualifies",
+    "x": 77,
+    "y": 409,
+    "w": 267,
+    "h": 38
+  },
+  {
+    "slide": 12,
+    "text": "A complex model does not beat the baseline.",
+    "x": 77,
+    "y": 449,
+    "w": 333,
+    "h": 44
+  },
+  {
+    "slide": 12,
+    "text": "RESPONSE",
+    "x": 435,
+    "y": 409,
+    "w": 125,
+    "h": 24
+  },
+  {
+    "slide": 12,
+    "text": "Serve the baseline with the same evidence views; disclose the failed gate.",
+    "x": 573,
+    "y": 409,
+    "w": 626,
+    "h": 82
+  },
+  {
+    "slide": 12,
+    "text": "Delivery or runtime failure",
+    "x": 77,
+    "y": 535,
+    "w": 267,
+    "h": 38
+  },
+  {
+    "slide": 12,
+    "text": "Integration and long runs threaten the demo.",
+    "x": 77,
+    "y": 575,
+    "w": 333,
+    "h": 44
+  },
+  {
+    "slide": 12,
+    "text": "RESPONSE",
+    "x": 435,
+    "y": 535,
+    "w": 125,
+    "h": 24
+  },
+  {
+    "slide": 12,
+    "text": "Baseline vertical slice, one worker, immutable artifacts and a reserved rehearsal week.",
+    "x": 573,
+    "y": 535,
+    "w": 626,
+    "h": 82
+  },
+  {
+    "slide": 13,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 13,
+    "text": "DESIGN REVIEW OUTCOME",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 13,
+    "text": "A clear baseline. A bounded build.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 13,
+    "text": "Ready to move from specification into implementation.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 13,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 13,
+    "text": "13",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 13,
+    "text": "16",
+    "x": 78,
+    "y": 286,
+    "w": 327,
+    "h": 72
+  },
+  {
+    "slide": 13,
+    "text": "Component specifications",
+    "x": 78,
+    "y": 370,
+    "w": 330,
+    "h": 44
+  },
+  {
+    "slide": 13,
+    "text": "90",
+    "x": 475,
+    "y": 286,
+    "w": 327,
+    "h": 72
+  },
+  {
+    "slide": 13,
+    "text": "Defined acceptance criteria",
+    "x": 475,
+    "y": 370,
+    "w": 330,
+    "h": 44
+  },
+  {
+    "slide": 13,
+    "text": "1",
+    "x": 872,
+    "y": 286,
+    "w": 327,
+    "h": 72
+  },
+  {
+    "slide": 13,
+    "text": "Portable clickable wireframe",
+    "x": 872,
+    "y": 370,
+    "w": 330,
+    "h": 44
+  },
+  {
+    "slide": 13,
+    "text": "TODAY: align on scope, architecture, owners and demo date.",
+    "x": 56,
+    "y": 473,
+    "w": 1168,
+    "h": 55
+  },
+  {
+    "slide": 13,
+    "text": "NEXT: bootstrap a small world and prove the baseline-to-UI path.",
+    "x": 56,
+    "y": 554,
+    "w": 1168,
+    "h": 66
+  },
+  {
+    "slide": 14,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 14,
+    "text": "BACKUP / FEATURE DESIGN",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 14,
+    "text": "Compare customers with their product context.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 14,
+    "text": "Eighteen numeric features support one overall investigation ranking.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 14,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 14,
+    "text": "14",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 14,
+    "text": "High returns + high peer returns",
+    "x": 78,
+    "y": 286,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 14,
+    "text": "Product fit or quality may explain the behavior. Inspect style and SKU evidence.",
+    "x": 78,
+    "y": 350,
+    "w": 527,
+    "h": 86
+  },
+  {
+    "slide": 14,
+    "text": "High returns + low peer returns",
+    "x": 675,
+    "y": 286,
+    "w": 527,
+    "h": 58
+  },
+  {
+    "slide": 14,
+    "text": "An unexplained excess is an investigation signal, not proof of intent.",
+    "x": 675,
+    "y": 350,
+    "w": 527,
+    "h": 86
+  },
+  {
+    "slide": 14,
+    "text": "Mature observations",
+    "x": 72,
+    "y": 488,
+    "w": 340,
+    "h": 32
+  },
+  {
+    "slide": 14,
+    "text": "Captured return window elapsed; at least 3 mature sale lines to rank.",
+    "x": 72,
+    "y": 525,
+    "w": 340,
+    "h": 93
+  },
+  {
+    "slide": 14,
+    "text": "Self-excluded expectation",
+    "x": 470,
+    "y": 488,
+    "w": 340,
+    "h": 32
+  },
+  {
+    "slide": 14,
+    "text": "Category → style → SKU smoothing; customer excluded; k = 20.",
+    "x": 470,
+    "y": 525,
+    "w": 340,
+    "h": 93
+  },
+  {
+    "slide": 14,
+    "text": "Relationship safeguards",
+    "x": 868,
+    "y": 488,
+    "w": 340,
+    "h": 32
+  },
+  {
+    "slide": 14,
+    "text": "At least 2 identifier types; exclude identifiers with fanout > 25.",
+    "x": 868,
+    "y": 525,
+    "w": 340,
+    "h": 93
+  },
+  {
+    "slide": 15,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 15,
+    "text": "BACKUP / MODEL DESIGN",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 15,
+    "text": "Five candidates. One frozen selection rule.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 15,
+    "text": "Simple supervised and unsupervised approaches share the same evaluation population.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 15,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 15,
+    "text": "15",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 15,
+    "text": "1 × Logistic regression",
+    "x": 78,
+    "y": 284,
+    "w": 328,
+    "h": 58
+  },
+  {
+    "slide": 15,
+    "text": "Scaled features\nC = 1 · lbfgs\nmax_iter = 1,000",
+    "x": 78,
+    "y": 348,
+    "w": 328,
+    "h": 136
+  },
+  {
+    "slide": 15,
+    "text": "2 × Histogram boosting",
+    "x": 476,
+    "y": 284,
+    "w": 328,
+    "h": 58
+  },
+  {
+    "slide": 15,
+    "text": "15 or 31 leaves\n200 iterations · learning rate 0.05\nmin leaf = 50 · L2 = 1",
+    "x": 476,
+    "y": 348,
+    "w": 328,
+    "h": 136
+  },
+  {
+    "slide": 15,
+    "text": "2 × Isolation Forest",
+    "x": 874,
+    "y": 284,
+    "w": 328,
+    "h": 58
+  },
+  {
+    "slide": 15,
+    "text": "300 trees\nmax_samples = 256 or 1,024\ncontamination = auto",
+    "x": 874,
+    "y": 348,
+    "w": 328,
+    "h": 136
+  },
+  {
+    "slide": 15,
+    "text": "Score interpretation",
+    "x": 78,
+    "y": 558,
+    "w": 260,
+    "h": 58
+  },
+  {
+    "slide": 15,
+    "text": "Percentiles use stored training references. They are not calibrated abuse probabilities.",
+    "x": 350,
+    "y": 558,
+    "w": 850,
+    "h": 60
+  },
+  {
+    "slide": 16,
+    "text": "ARAI  /  XHACK 2026",
+    "x": 56,
+    "y": 28,
+    "w": 700,
+    "h": 25
+  },
+  {
+    "slide": 16,
+    "text": "BACKUP / SERVING DESIGN",
+    "x": 918,
+    "y": 28,
+    "w": 306,
+    "h": 25
+  },
+  {
+    "slide": 16,
+    "text": "Every result belongs to a reproducible run.",
+    "x": 56,
+    "y": 82,
+    "w": 1168,
+    "h": 102
+  },
+  {
+    "slide": 16,
+    "text": "A portable local deployment is the first supported delivery target.",
+    "x": 56,
+    "y": 187,
+    "w": 1168,
+    "h": 54
+  },
+  {
+    "slide": 16,
+    "text": "DESIGN PRESENTATION  •  28 SEPTEMBER 2026",
+    "x": 56,
+    "y": 682,
+    "w": 990,
+    "h": 20
+  },
+  {
+    "slide": 16,
+    "text": "16",
+    "x": 1170,
+    "y": 679,
+    "w": 54,
+    "h": 25
+  },
+  {
+    "slide": 16,
+    "text": "Register",
+    "x": 78,
+    "y": 292,
+    "w": 230,
+    "h": 58
+  },
+  {
+    "slide": 16,
+    "text": "Seven CSVs + manifest; validate schema and hashes",
+    "x": 78,
+    "y": 356,
+    "w": 230,
+    "h": 136
+  },
+  {
+    "slide": 16,
+    "text": "Submit",
+    "x": 376,
+    "y": 292,
+    "w": 230,
+    "h": 58
+  },
+  {
+    "slide": 16,
+    "text": "Dataset and model identity; idempotent request",
+    "x": 376,
+    "y": 356,
+    "w": 230,
+    "h": 136
+  },
+  {
+    "slide": 16,
+    "text": "Execute",
+    "x": 674,
+    "y": 292,
+    "w": 230,
+    "h": 58
+  },
+  {
+    "slide": 16,
+    "text": "One worker; frozen features and bundle; atomic publication",
+    "x": 674,
+    "y": 356,
+    "w": 230,
+    "h": 136
+  },
+  {
+    "slide": 16,
+    "text": "Review",
+    "x": 972,
+    "y": 292,
+    "w": 230,
+    "h": 58
+  },
+  {
+    "slide": 16,
+    "text": "Immutable outputs with append-only analyst notes",
+    "x": 972,
+    "y": 356,
+    "w": 230,
+    "h": 136
+  },
+  {
+    "slide": 16,
+    "text": "Operational safeguards",
+    "x": 78,
+    "y": 570,
+    "w": 260,
+    "h": 58
+  },
+  {
+    "slide": 16,
+    "text": "Durable run states, retry and crash recovery, versioned artifacts, externalized configuration.",
+    "x": 350,
+    "y": 570,
+    "w": 850,
+    "h": 60
+  }
+]

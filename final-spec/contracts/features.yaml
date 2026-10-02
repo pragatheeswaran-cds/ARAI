@@ -1,0 +1,94 @@
+version: '1.0'
+entity:
+- world_id
+- customer_id
+ordered_features:
+- name: mature_sale_lines
+  definition: count mature delivered sale lines
+  scope: mature_sales
+  'null': '0'
+- name: log_order_count
+  definition: log1p unique orders with >=1 delivered line
+  scope: all_delivered
+  'null': '0'
+- name: raw_return_rate
+  definition: requested mature units / purchased mature units
+  scope: mature_sales
+  'null': null if denominator zero
+- name: expected_return_rate
+  definition: sum(q*p_cs) / mature units
+  scope: mature_sales
+  'null': null if denominator zero
+- name: residual_z
+  definition: (R-E)/sqrt(d*V), two-level self-excluded peers
+  scope: mature_sales
+  'null': null if V zero
+- name: claim_share
+  definition: transaction claim requested units / all requested units
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without requests
+- name: requested_refund_ratio
+  definition: requested net value / purchased net value on mature lines
+  scope: mature_sales
+  'null': null if net denominator zero
+- name: damage_reason_share
+  definition: customer complaint group units / requested units
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without requests
+- name: bracketing_share
+  definition: mature units in order/style with >=2 distinct purchased sizes / mature
+    units
+  scope: mature_sales
+  'null': null if no mature units
+- name: late_window_share
+  definition: request units with capped window ratio >=.75 / valid timing units
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without valid timing
+- name: median_window_ratio
+  definition: unweighted per-return-line median min(2,days/window)
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without valid timing
+- name: occasion_return_share
+  definition: occasion requested units / requested units
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without requests
+- name: discretionary_share
+  definition: discretionary group units / requested units
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without requests
+- name: trend_90d
+  definition: mature return rate delivered cutoff-89..cutoff minus cutoff-179..cutoff-90
+  scope: mature_sales
+  'null': null if either denominator zero
+- name: open_window_share
+  definition: unmatured delivered units / all delivered units
+  scope: all_delivered
+  'null': null without delivered units
+- name: max_identifier_fanout
+  definition: max distinct account fanout of own observed IDs, capped25
+  scope: all_visible_orders
+  'null': 0 without orders
+- name: supported_neighbor_count
+  definition: unique adjacent accounts with >=2 valid shared types
+  scope: all_visible_orders
+  'null': 0 empty valid graph
+- name: coordinated_claim_share
+  definition: fraction own transaction claim return lines with same SKU and <=7 calendar-day
+    distance to >=1 supported neighbor claim; count own line once
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without own claims
+preprocessing:
+  fit_population: eligible training only
+  impute: training median; all-null zero
+  missing_indicators: one per each of 18 features
+  scaler: StandardScaler logistic only
+not_inputs:
+- IDs
+- truth
+- persona
+- targets
+- status
+- loyalty
+- free_text
+- disposition
+formula_source: components/06-feature-engineering.md

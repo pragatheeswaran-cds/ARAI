@@ -1,0 +1,13 @@
+# Screens and states
+
+DRAFT. The five-screen scope is source-derived; detailed interaction states are A-006 proposals.
+
+| Screen | Inputs/components | Success/presentation | Empty/loading/error behaviour | Source / gaps |
+|---|---|---|---|---|
+| Case Queue | Completed run selector; ranked rows; pagination; risk tier, top signals, wardrobe band; filter design TBD | Select customer; keep run_id; identify run-relative rank and score | Loading indicator; [] says no flagged cases for selected run; missing/unready run is distinct error; stale run clears dependent selection | HLD ?7.2; GET /flagged; flagged rule Q-012, filters Q-019 |
+| Case Detail | Selected run/customer; score components/pass delta; cited evidence; neighbours; SKU verdicts; wardrobe signals; optional memo; counterfactual; review actor/action | Evidence-first review with approved outcome/approval flow; no fraud verdict | Unknown case 404; memo absent shows evidence-only; absent graph/metrics labelled unavailable; refusal stays visible; failed approval never shows success | HLD ?7.2; LLD ?6; opener and run binding Q-008; gate Q-007 |
+| SKU Intelligence | Run selector; SKU rates/verdict and connectivity/claim/latency evidence | Distinguish quality_issue from abuse_target and show insufficient-sales no-verdict; route merchandising concept without invented export operation | [] means no eligible SKU results; null rate is not zero; errors preserve selected run | LLD M12 and GET /skus; missing additional signals/export Q-008/Q-016 |
+| Upload & Score | Source generated/upload; seed or file selector; approved config_hash; submit; job stages/progress | 202 job acknowledgement followed by polling and completed-run navigation | Missing file/seed errors; unknown config; quarantine summary; failed job; reconnect/restart behaviour TBD | LLD ?6 jobs; upload/file registration and report retrieval Q-008; limits Q-014 |
+| Evaluation Scorecard | Approved evaluation artifact/run set; fixed budgets; baseline/full/ablation charts; segments, denominators and intervals | False positives first, development/sealed gap, method limitations, ceiling only when approved and computed | No approved scorecard means not evaluated; no placeholder figures masquerading as results; load failure distinct from none | Architecture ?6/?8.3; no scorecard API Q-008; selection/ceiling Q-009 |
+
+Unflagged heavy-returner lookup and raw-rate slider belong to Case Detail/demo flow, not a sixth screen. Their retrieval/behaviour is Q-008/Q-019/Q-022. Illustrative 58%, 42% and 31% source cases are demo narratives, not fixtures guaranteed by the supplied archive.

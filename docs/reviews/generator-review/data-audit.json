@@ -1,0 +1,196 @@
+{
+  "source_hashes": {
+    "code\\synthetic-data\\customer-master\\output\\customer_master.csv": "86890ee1dee1c8e536ec98991a26c2bd8447554d598190dc89ee01c10da8b8ff",
+    "code\\synthetic-data\\sku-master\\sku_master.csv": "0a558c72b1c4e108d4d114ec72f3480bc72597d05282979ded4087cbcdb53a3e",
+    "code\\synthetic-data\\customer-master\\config\\cluster_rules.yaml": "9a4a1d41a3d83da82dca25466d2768d6f38331a52d373aaff7c083b9b2b2bb08",
+    "code\\synthetic-data\\customer-master\\config\\festive_windows.yaml": "ebf90d1688929879b3315f46413f5193b48d27686423000a96c5f6bdbbedb3c8",
+    "code\\synthetic-data\\sku-master\\sku_master_synthetic_generation_spec_v2.md": "b49bfb590db84e8a80c22c6202a3d11c0de60ef3cc4f89461cad2a6dfc6eaf4d"
+  },
+  "customer": {
+    "rows": 10000,
+    "columns": [
+      "customer_id",
+      "signup_date",
+      "tenure_days",
+      "customer_segment",
+      "actual_orders",
+      "avg_days_between_orders",
+      "festive_order_ratio",
+      "return_rate",
+      "shared_device_count",
+      "account_status"
+    ],
+    "duplicate_ids": 0,
+    "null_counts": {
+      "customer_id": 0,
+      "signup_date": 0,
+      "tenure_days": 0,
+      "customer_segment": 0,
+      "actual_orders": 0,
+      "avg_days_between_orders": 1581,
+      "festive_order_ratio": 0,
+      "return_rate": 0,
+      "shared_device_count": 0,
+      "account_status": 0
+    },
+    "segments": {
+      "Occasional": 3832,
+      "Seasonal": 1847,
+      "Loyalist": 1573,
+      "New Growth": 1453,
+      "Dormant": 1088,
+      "Fraud Proxy": 207
+    },
+    "statuses": {
+      "ACTIVE": 9282,
+      "FLAGGED": 308,
+      "SUSPENDED": 237,
+      "CLOSED": 173
+    },
+    "signup_range": [
+      "2025-09-09",
+      "2026-09-06"
+    ],
+    "tenure_mismatches": 0,
+    "negative_orders": 0,
+    "invalid_return_ratio": 0,
+    "invalid_festive_ratio": 0,
+    "zero_order_rows": 1581,
+    "zero_order_inconsistencies": 0,
+    "one_order_nonnull_avg_gap": 1413,
+    "gap_tenure_div_orders_max_abs_difference": 0.05000000000000071,
+    "fraud_count": 207,
+    "fraud_active_count": 53,
+    "fraud_flagged_or_suspended_rate": 0.6473429951690821,
+    "nonfraud_flagged_or_suspended_rate": 0.041968753191054836,
+    "fraud_one_device": 36,
+    "nonfraud_three_plus_devices": 644,
+    "nonfraud_return_at_least_032": 424,
+    "fraud_return_at_most_032": 57,
+    "no_festive_day_since_signup_positive_target_count": 5810,
+    "last_festive_day_in_window": "2026-01-05",
+    "no_festive_target_examples": [
+      {
+        "customer_id": "C_00001",
+        "signup_date": "2026-05-04",
+        "actual_orders": 47,
+        "festive_order_ratio": 0.26
+      },
+      {
+        "customer_id": "C_00002",
+        "signup_date": "2026-02-13",
+        "actual_orders": 1,
+        "festive_order_ratio": 0.23
+      },
+      {
+        "customer_id": "C_00003",
+        "signup_date": "2026-05-04",
+        "actual_orders": 3,
+        "festive_order_ratio": 0.14
+      },
+      {
+        "customer_id": "C_00004",
+        "signup_date": "2026-05-04",
+        "actual_orders": 21,
+        "festive_order_ratio": 0.3
+      },
+      {
+        "customer_id": "C_00006",
+        "signup_date": "2026-08-01",
+        "actual_orders": 15,
+        "festive_order_ratio": 0.24
+      }
+    ]
+  },
+  "sku": {
+    "rows": 300,
+    "columns": [
+      "sku_id",
+      "style_id",
+      "brand",
+      "category",
+      "size",
+      "color",
+      "color_id",
+      "unit_price",
+      "price_band",
+      "return_window_days",
+      "is_occasion_wear",
+      "launch_date",
+      "active_flag"
+    ],
+    "styles": 37,
+    "duplicate_ids": 0,
+    "duplicate_variants": 0,
+    "null_cells": 0,
+    "style_invariant_violations": {
+      "brand": 0,
+      "category": 0,
+      "unit_price": 0,
+      "price_band": 0,
+      "return_window_days": 0,
+      "is_occasion_wear": 0,
+      "launch_date": 0,
+      "active_flag": 0
+    },
+    "style_spec_mismatches": [],
+    "ladder_failures": [],
+    "color_id_mismatches": 0,
+    "return_policy_mismatches": 0,
+    "charm_price_violations": 0,
+    "occasion_count": 45,
+    "occasion_style_set_matches": true,
+    "inactive_count": 41,
+    "nearest_whole_style_retirement_prefix_totals": [
+      41,
+      49
+    ],
+    "inactive_is_oldest_prefix": true,
+    "launch_range": [
+      "2024-01-20",
+      "2025-11-23"
+    ],
+    "launched_after_history_start_rows": 17,
+    "price_range": [
+      499,
+      6499
+    ],
+    "band_counts": {
+      "Mid": 155,
+      "Premium": 90,
+      "Luxury": 31,
+      "Budget": 24
+    }
+  },
+  "helper_source_presence": {
+    "sku_config_v2.py": [],
+    "sku_generator_v2.py": []
+  },
+  "archive_helper_presence": {
+    "final_1.zip": [],
+    "return-abuse-synthetic-data.zip": []
+  },
+  "diagnostic_reproduction": {
+    "population": 1000,
+    "fraud_n": 200,
+    "noise_n": 300,
+    "fraud_noise": 40,
+    "recall": 0.2,
+    "noise_fraud_share": 0.13333333333333333,
+    "population_fraud_share": 0.2,
+    "enrichment_ratio": 0.6666666666666666,
+    "actual_notebook_branch_output": "Fraud Proxy is enriched in noise \u2192 expected for a rare, multi-pattern class."
+  },
+  "validator_reproduction": {
+    "injected": "negative tenure in first in-memory row",
+    "printed_fail": true,
+    "raised_exception": null
+  },
+  "not_run": [
+    "full notebooks",
+    "source generator",
+    "new synthetic dataset",
+    "model training",
+    "parquet parity (pyarrow absent)"
+  ]
+}

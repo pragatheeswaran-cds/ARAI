@@ -1,0 +1,43 @@
+spec_version: 0.1.0
+approved_direction_update:
+  date: '2026-09-25'
+  plan_ref: model-comparison-plan.md
+  approach: compare supervised and unsupervised candidates
+  training_labels: permitted only for the supervised training path
+  unresolved: action/window target definition, candidate families, selection criteria
+  lifecycle: development-time fit; frozen selected artifact at inference
+  algorithm_policy: Isolation Forest is a reference, not mandated
+  legacy_fields: numeric forest parameters below are reference-only and require candidate-specific revision
+status: DRAFT ? NOT APPROVED
+id: MODEL-TRAIN-001
+source: Architecture ?4; HLD ?7.1; LLD M09
+problem_type: compare supervised abuse-risk ranking and unsupervised anomaly ranking
+target: overall customer abuse based on defined simulated actions; exact observation window pending
+evaluation_label_ref: ../02-data/data-contract.yaml
+candidate_algorithms: TBD bounded supervised and unsupervised candidates; Isolation Forest optional reference
+other_components:
+- config rules
+- NetworkX connected components and Louvain
+feature_contract: ../03-features/feature-spec.yaml
+preprocessing: rank-transform exact allow-list; unresolved tie/null rules Q-004/Q-012
+parameters:
+  n_estimators: 300
+  contamination: 0.03
+  random_state: 20250901
+  other_library_defaults: must enumerate and pin at freeze; no silent library-version
+    defaults
+fit_scope: training partition only; labels used only by supervised training; no fit on inference uploads
+hyperparameter_strategy: versioned config; development seeds only; no undocumented
+  search grid
+cross_validation: no row-wise CV; independent seed worlds; inner validation Q-009
+class_imbalance: candidate-specific training policy pending; no validation/test resampling; anomaly contamination is not known abuse prevalence
+outputs_ref: model-artifact-spec.yaml
+selection_ref: model-selection-spec.yaml
+blocking_questions:
+- Q-002
+- Q-004
+- Q-005
+- Q-006
+- Q-009
+- Q-010
+- Q-012

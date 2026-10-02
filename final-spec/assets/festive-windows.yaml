@@ -1,0 +1,28 @@
+# Festive / sale windows used for seasonal order spikes
+# Multipliers apply when generating sales_orders (Phase 2)
+
+windows:
+  - name: Pre_Festive_Sale
+    start: "10-01"
+    end: "10-15"
+    multiplier: 2.0
+    use_case: Early festive shopping and stocking up
+
+  - name: Main_Festive_Peak
+    start: "10-20"
+    end: "11-10"
+    multiplier: 5.0
+    use_case: Main Diwali/Dussehra-style high demand period
+
+  - name: Year_End_Sale
+    start: "12-20"
+    end: "01-05"
+    multiplier: 3.0
+    # end month can roll into next calendar year
+    crosses_year: true
+    use_case: New Year, clearance, winter, and year-end discount activity
+
+notes:
+  - Seasonal shoppers should have festive_order_ratio mostly inside these windows.
+  - Loyalists and Occasionals get a mild uplift only.
+  - Fraud Proxy may or may not align with festive windows.

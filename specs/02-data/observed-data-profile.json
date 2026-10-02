@@ -1,0 +1,666 @@
+{
+  "inspection_date": "2026-09-25",
+  "archive_sha256": "405998c5f0eacc9d2a4e8afe61a22883c1358a74c767d690733e92f23921e213",
+  "manifest": {
+    "seed": 20250901,
+    "run_date": "2026-08-31",
+    "rows": {
+      "sku_master.csv": 338,
+      "reason_code.csv": 16,
+      "sales_order.csv": 52232,
+      "sales_order_line.csv": 115299,
+      "return_order.csv": 24661,
+      "return_order_line.csv": 30694
+    },
+    "sha256": {
+      "sku_master.csv": "3cb0cdc737cf4793",
+      "reason_code.csv": "8b29ed523acaead3",
+      "sales_order.csv": "27d1d562de554f97",
+      "sales_order_line.csv": "5027106450976f13",
+      "return_order.csv": "727c9f33fc131cc7",
+      "return_order_line.csv": "865385149d3690f6"
+    }
+  },
+  "tables": {
+    "ground_truth/customers.csv": {
+      "rows": 10000,
+      "sha256": "c9204003471d773848c4a0568912ad8c88f176da1fcdd9f18eeaee39cda5d384",
+      "columns": {
+        "customer_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "population": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "benign_household",
+            "collusion_ring",
+            "defective_cluster_buyer",
+            "legit_heavy_returner",
+            "normal",
+            "refund_fraudster",
+            "serial_returner",
+            "wardrober"
+          ]
+        },
+        "ring_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 9790
+        },
+        "household_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 9820
+        }
+      }
+    },
+    "ground_truth/skus.csv": {
+      "rows": 338,
+      "sha256": "1c5f92103b3ab7d1bc604f63d5e38ed1ae4aa637a8954b682eca093598660352",
+      "columns": {
+        "sku": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "category": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "accessories",
+            "dresses_occasion",
+            "footwear",
+            "jeans_trousers",
+            "outerwear",
+            "tops_knitwear"
+          ]
+        },
+        "base_return_rate": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 0.1,
+          "max": 0.694
+        },
+        "is_defective": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        "is_ring_target": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 1.0
+        }
+      }
+    },
+    "sku_master.csv": {
+      "rows": 338,
+      "sha256": "3cb0cdc737cf479338f3032f48d6ba96012b426507bca879bc4ee09c09757263",
+      "columns": {
+        "sku": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "style_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "brand": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "Arden",
+            "Brookfell",
+            "Calloway",
+            "Denhurst",
+            "Everly",
+            "Fairholm",
+            "Grantly",
+            "Havermere",
+            "Ilsley",
+            "Jerrow"
+          ]
+        },
+        "category": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "accessories",
+            "dresses_occasion",
+            "footwear",
+            "jeans_trousers",
+            "outerwear",
+            "tops_knitwear"
+          ]
+        },
+        "size": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "36",
+            "37",
+            "38",
+            "39",
+            "40",
+            "41",
+            "42",
+            "43",
+            "L",
+            "M",
+            "OS",
+            "S",
+            "XL",
+            "XS"
+          ]
+        },
+        "colour": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "black",
+            "burgundy",
+            "grey",
+            "ivory",
+            "navy",
+            "olive",
+            "rust",
+            "sage",
+            "tan"
+          ]
+        },
+        "unit_price": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 11.62,
+          "max": 307.84
+        },
+        "price_band": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "mid",
+            "premium",
+            "value"
+          ]
+        },
+        "return_window_days": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 14.0,
+          "max": 90.0
+        },
+        "is_occasion_wear": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        "launch_date": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "active_flag": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 1.0
+        }
+      }
+    },
+    "return_order.csv": {
+      "rows": 24661,
+      "sha256": "727c9f33fc131cc7ab1d995cd6da238e359dc35e2be214133667c9f50c557179",
+      "columns": {
+        "return_order_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "customer_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "return_created_date": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "return_channel": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "courier_pickup",
+            "drop_off_point",
+            "in_store",
+            "post"
+          ]
+        },
+        "refund_method": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "gift_card",
+            "original_payment",
+            "store_credit"
+          ]
+        },
+        "refund_total": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 1037.6
+        },
+        "return_status": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "pending",
+            "refunded",
+            "rejected"
+          ]
+        },
+        "n_lines": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 5.0
+        },
+        "n_source_orders": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 3.0
+        }
+      }
+    },
+    "reason_code.csv": {
+      "rows": 16,
+      "sha256": "8b29ed523acaead3f7641e63f908f3628e26c5249d45f95a6ca559d93315c21c",
+      "columns": {
+        "reason_code": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "changed_my_mind",
+            "damaged",
+            "defective",
+            "didnt_fit",
+            "didnt_suit",
+            "empty_package",
+            "found_better_price",
+            "item_not_received",
+            "late_delivery",
+            "missing_parts",
+            "not_as_described",
+            "not_as_expected",
+            "ordered_by_mistake",
+            "poor_quality",
+            "wrong_item_sent",
+            "wrong_size"
+          ]
+        },
+        "description": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "A different item was sent",
+            "Arrived damaged",
+            "Arrived too late to be wanted",
+            "Cheaper elsewhere",
+            "Cut or shape did not fit",
+            "Did not suit the customer",
+            "Differs from listing",
+            "Faulty or stopped working",
+            "No longer wanted",
+            "Not what the customer pictured",
+            "Ordered in error",
+            "Parcel arrived empty",
+            "Parcel never arrived",
+            "Parts or pieces absent",
+            "Quality below expectation",
+            "Size did not fit"
+          ]
+        },
+        "claim_class": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "fit",
+            "item_complaint",
+            "preference",
+            "transaction_claim"
+          ]
+        },
+        "intent_class": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "discretionary",
+            "mechanical",
+            "not_applicable"
+          ]
+        },
+        "fault_attribution": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "carrier",
+            "customer",
+            "disputed",
+            "retailer"
+          ]
+        },
+        "requires_item_return": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        "is_high_risk": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 1.0
+        }
+      }
+    },
+    "sales_order_line.csv": {
+      "rows": 115299,
+      "sha256": "5027106450976f13d7bb53c0d8dfc38d90c68002840d51f8d3a3f3c9d5981e32",
+      "columns": {
+        "order_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "order_line_no": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 5.0
+        },
+        "sku": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "quantity": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 2.0
+        },
+        "unit_price": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 11.62,
+          "max": 307.84
+        },
+        "line_discount": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 184.7
+        },
+        "line_total": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 8.13,
+          "max": 615.68
+        },
+        "delivered_date": {
+          "inferred_storage_type": "str",
+          "empty_count": 1801
+        }
+      }
+    },
+    "sales_order.csv": {
+      "rows": 52232,
+      "sha256": "27d1d562de554f97bb787b6bbc5a962bc174a0ffb89ab2bb0aa4f01254c637ec",
+      "columns": {
+        "order_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "customer_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "order_date": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "channel": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "marketplace",
+            "mobile_app",
+            "store",
+            "web"
+          ]
+        },
+        "address_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "device_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "payment_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "order_status": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "cancelled",
+            "delivered"
+          ]
+        },
+        "currency": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "GBP"
+          ]
+        },
+        "order_subtotal": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 8.13,
+          "max": 1274.55
+        },
+        "order_shipping": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 3.95
+        },
+        "order_total": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 12.08,
+          "max": 1274.55
+        }
+      }
+    },
+    "return_order_line.csv": {
+      "rows": 30694,
+      "sha256": "865385149d3690f6f3f44d1eb14e513bd8eb46c7c3bba857c07fc3522117e852",
+      "columns": {
+        "return_order_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "return_line_no": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 5.0
+        },
+        "order_id": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "order_line_no": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 5.0
+        },
+        "sku": {
+          "inferred_storage_type": "str",
+          "empty_count": 0
+        },
+        "quantity_returned": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 2.0
+        },
+        "reason_code": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "changed_my_mind",
+            "damaged",
+            "defective",
+            "didnt_fit",
+            "didnt_suit",
+            "empty_package",
+            "found_better_price",
+            "item_not_received",
+            "late_delivery",
+            "missing_parts",
+            "not_as_described",
+            "not_as_expected",
+            "ordered_by_mistake",
+            "poor_quality",
+            "wrong_item_sent",
+            "wrong_size"
+          ]
+        },
+        "reason_text": {
+          "inferred_storage_type": "str",
+          "empty_count": 9715
+        },
+        "refund_amount": {
+          "inferred_storage_type": "float64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 615.68
+        },
+        "return_received_flag": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        "disposition": {
+          "inferred_storage_type": "str",
+          "empty_count": 0,
+          "observed_values": [
+            "damaged_out",
+            "not_received",
+            "quarantine",
+            "refurbish",
+            "resalable"
+          ]
+        },
+        "days_to_return": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 1.0,
+          "max": 104.0
+        },
+        "return_window_days": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 14.0,
+          "max": 90.0
+        },
+        "within_window_flag": {
+          "inferred_storage_type": "int64",
+          "empty_count": 0,
+          "min": 0.0,
+          "max": 1.0
+        }
+      }
+    }
+  },
+  "missing_required": [
+    "customer_master"
+  ],
+  "source_versions_differ": [
+    "schema.py",
+    "generate.py",
+    "validate.py"
+  ],
+  "populations": {
+    "normal": 8080,
+    "legit_heavy_returner": 650,
+    "defective_cluster_buyer": 350,
+    "serial_returner": 250,
+    "collusion_ring": 210,
+    "wardrober": 180,
+    "benign_household": 180,
+    "refund_fraudster": 100
+  },
+  "findings": {
+    "return_latency_header_mismatches": 5140,
+    "maximum_latency_difference_days": 5,
+    "delivered_lines_with_open_window_at_run_date": 2389,
+    "partial_returns": 466,
+    "consolidated_submissions": 237,
+    "injected_reason_text_rows": 25,
+    "return_status_counts": {
+      "refunded": 23167,
+      "pending": 997,
+      "rejected": 497
+    },
+    "cancelled_orders": 816,
+    "abuse_customers": 740,
+    "abuse_share": 0.074
+  },
+  "manifest_prefix_checks": {
+    "sku_master.csv": true,
+    "reason_code.csv": true,
+    "sales_order.csv": true,
+    "sales_order_line.csv": true,
+    "return_order.csv": true,
+    "return_order_line.csv": true
+  },
+  "inspection_checks": {
+    "duplicate_primary_key_rows": {
+      "sku_master": 0,
+      "reason_code": 0,
+      "sales_order": 0,
+      "sales_order_line": 0,
+      "return_order": 0,
+      "return_order_line": 0
+    },
+    "duplicate_returned_sales_lines": 0,
+    "missing_foreign_keys": {
+      "sale_header": 0,
+      "sale_sku": 0,
+      "return_header": 0,
+      "reason": 0
+    },
+    "return_line_fk_missing": 0,
+    "sku_disagreements": 0,
+    "customer_disagreements": 0,
+    "quantity_exceeds_order": 0,
+    "refund_exceeds_prorata_with_one_penny_observation_tolerance": 0,
+    "return_before_delivery": 0,
+    "returns_on_cancelled": 0,
+    "nonrefunded_nonzero_amount": 0,
+    "csv_parquet_comparison": {
+      "sku_master": "NOT VERIFIED: no installed pyarrow/fastparquet engine",
+      "reason_code": "NOT VERIFIED: no installed pyarrow/fastparquet engine",
+      "sales_order": "NOT VERIFIED: no installed pyarrow/fastparquet engine",
+      "sales_order_line": "NOT VERIFIED: no installed pyarrow/fastparquet engine",
+      "return_order": "NOT VERIFIED: no installed pyarrow/fastparquet engine",
+      "return_order_line": "NOT VERIFIED: no installed pyarrow/fastparquet engine"
+    }
+  }
+}

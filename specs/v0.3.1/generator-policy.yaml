@@ -1,0 +1,45 @@
+spec_version: 0.3.1-draft
+status: PROPOSED - package acceptance pending
+authority: amendment.md
+scope: Allocation and verification amendments only; remaining accepted v0.3 generation parameters are inherited.
+overlay:
+  denominator: all_world_accounts
+  allocation_eligible: target_order_count > 0
+  normalize: "w_i = m_i / mean_all_accounts(m); m_i=0 for ineligible accounts"
+  persona_multipliers:
+    Dormant: 0.0
+    Occasional: 1.0
+    Seasonal: 1.0
+    Loyalist: 1.0
+    New_Growth: 1.5
+    High_Intensity: 2.0
+  expected_world_marginals: {claim: 0.04, temporary_use: 0.03, both: 0.005}
+  categorical_coefficients:
+    claim_only: 0.035
+    temporary_use_only: 0.025
+    both: 0.005
+  neither_probability: "1 - 0.065 * w_i"
+  stress_2507_actionable_multiplier: 1.0
+  invalid_probability_policy: fail_configuration_without_clipping
+  exact_realized_quotas: false
+actions:
+  opportunity_probability_per_relevant_order: 0.20
+  private_unit_key: [order_id, order_line_no, unit_index]
+  allocation_order: [base_purchases_and_delivery, honest_requests_and_reservations, abusive_opportunities]
+  reserve_withdrawn_honest_units: true
+  conflict_policy: keyed_random_winner_without_forced_replacement
+  preserve_base_and_honest_events_when_abuse_disabled: true
+  campaign_purchase_policy: match_existing_compatible_purchases_or_record_uncompleted_opportunity
+  random_streams: purpose_and_entity_keyed_independent_streams
+  generator_request_availability: available_at_equals_requested_at
+target_truth:
+  status: PROPOSED P-03
+  fields: [planned_targeted_by, completed_targeted_by, targeted]
+  positive: at_least_one_completed_coordinated_claim_visible_by_cutoff
+  detector_thresholds_define_truth: false
+verification:
+  persona_auc_half_for_completed_labels_required: false
+  realized_member_usage_in_probability_interval_required: false
+  assigned_sharing_equals_observed_graph_required: false
+  preserve_failed_or_unmatched_opportunity_counts: true
+  regenerate_sealed_worlds_for_coverage: false

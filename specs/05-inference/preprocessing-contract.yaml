@@ -1,0 +1,26 @@
+spec_version: 0.1.0
+status: DRAFT ? NOT APPROVED
+id: INF-PRE-001
+input_schema: ../02-data/schema.yaml
+quality_rules: ../02-data/data-quality-spec.yaml
+feature_transforms: ../03-features/feature-spec.yaml
+consistency: ../03-features/training-serving-consistency.md
+steps:
+- validate required files/columns
+- parse dates/types/enums without treating loyalty value none as null
+- validate cross-file relationships and arithmetic
+- quarantine violations with redacted lineage
+- join once at sales-line grain
+- retain historical return window
+- hash three identifier fields before downstream use
+- derive approved numeric text flags and discard free text downstream
+- generate approved feature vector and population transforms
+fit_scope: current batch, independently per world; pass-2 semantics Q-006
+missing_values: only documented nulls permitted; forest imputation absent and blocked
+  Q-004
+outliers: retain valid extremes; model rank transform as specified; no arbitrary clipping
+forbidden:
+- ground_truth joins
+- silent customer-master synthesis
+- unapproved categorical encodings
+- UI feature computation

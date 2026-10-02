@@ -1,0 +1,23 @@
+spec_version: 0.1.0
+status: DRAFT ? A-003 REQUIRES REVIEW
+id: API-ERR-001
+canonical_wire_schema: openapi.yaml#/components/schemas/Error
+required:
+- error
+optional:
+- message
+- details
+http:
+  '202': job accepted, not scoring complete
+  '200': read or approved review-record success
+  '404': unknown referenced resource; A-003
+  '409': SELF_APPROVAL_REFUSED per LLD; other state conflict mappings proposed A-003
+  '422': request syntax/type/conditional field failure; A-003
+  '500': sanitized unexpected service failure; A-003
+job_failure: GET job remains 200 with status=failed and sanitized error string, per
+  LLD; not a fabricated successful run
+ingestion_errors: data-quality-spec.yaml codes in quarantine/report, not HTTP errors
+  for every invalid row
+redaction: no raw input values, free text, secrets, filesystem paths or stack traces
+deferred: upload-too-large/rate limits/provider outage HTTP mapping only after Q-008/Q-014;
+  provider failure normally degrades memo not API

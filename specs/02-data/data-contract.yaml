@@ -1,0 +1,43 @@
+spec_version: 0.1.0
+status: DRAFT ? NOT APPROVED
+review_date: '2026-09-25'
+id: DATA-002
+purpose: Synthetic Indian online-apparel inputs for supervised/unsupervised customer abuse-risk comparison and SKU context
+retail_policy_ref: retail-simulation-policy.yaml
+transaction_history_months: 12
+required_tables:
+- customer_master
+- sku_master
+- reason_code
+- sales_order
+- sales_order_line
+- return_order
+- return_order_line
+formats:
+- CSV
+- Parquet
+format_parity: same rows, keys and values; CSV null and enum parsing is explicit
+schema_ref: schema.yaml
+as_of: manifest.run_date; archived 2026-08-31
+target:
+  training: defined action-based abuse labels for supervised training only; exact target contract pending
+  evaluation: sealed action-based customer truth and separate SKU/legitimate-segment truth; volume-only personas cannot define abuse
+input_trust: untrusted; ingestion validates all seven files; private truth is forbidden in features and inference and is accessed only by authorized training/evaluation paths
+missing_file_behavior: contract failure before scoring; Q-001 blocks supplied archive
+grain_after_join: one row per eligible sales order line with zero or one return joined;
+  eligibility Q-002
+temporal_policy:
+  future_events: exclude events beyond run_date; reject inconsistent snapshot metadata
+  maturity: TBD Q-002
+  latency: TBD Q-003
+  historical_status: as-of snapshots required; current state cannot prove historical
+    state
+unknown_columns: TBD Q-015; ground-truth columns always forbidden
+currency_policy: INR for new simulation under approved Q18; historical GBP artifacts remain historical and require explicit migration, not relabelling
+outlier_policy: retain valid extremes; no clipping or winsorization except explicit
+  feature formulas
+duplicate_policy_ref: data-quality-spec.yaml
+blocking_questions:
+- Q-001
+- Q-002
+- Q-003
