@@ -1,7 +1,8 @@
 """HTTP API under /api/v1 (final-spec component 12). The bundled OpenAPI document is the contract.
 
-The API reads published results and writes three things only: datasets, run submissions and review notes. It
-has no route that trains, promotes, refunds, blocks, or edits or deletes a note.
+The API reads results from PostgreSQL only (decision AM-39) and writes three things only: datasets, run
+submissions and review notes. It has no route that trains, promotes, refunds, blocks, or edits or deletes a note.
+The files it still opens are not data: the active pointer and bundle it verifies, and the bundled contract.
 """
 from __future__ import annotations
 
@@ -129,39 +130,19 @@ class Service:
         self.store.record_active({k: pointer.get(k) for k in ("version", "model_id", "baseline_id", "selection_status", "reason")}, kinds)
         return {"pointer": pointer, "bundle": model or baseline, "error": None}
 
-    def sync_experiments(self) -> None:
-        root = Path(self.config.artifact_root) / "experiments"
-        if not root.is_dir():
-            return
-        for path in sorted(root.glob("*/published/experiment.json")):
-            report = views.experiment_report(self.config.artifact_root, path.relative_to(self.config.artifact_root).as_posix())
-            base = path.parents[1]
-            rel = lambda p: p.relative_to(self.config.artifact_root).as_posix() if p.is_file() else None  # noqa: E731
-            self.store.upsert_experiment({"id": report["summary"]["experiment_id"], "config_hash": report["summary"]["config_hash"],
-                                          "report_key": rel(path), "selection_key": rel(base / "selection.json"),
-                                          "test_key": rel(base / "reports" / "test.json")})
-
     def run_body(self, row: dict) -> dict:
         """A run as the contract shows it, with the warnings recorded when it was scored."""
-        row = self._current(row)
-        if row["status"] == "succeeded":
-            return run_body(row, views.run_summary(str(scoring.output_dir(self.config.artifact_root, row["id"])))["warnings"])
-        return run_body(row)
+        return run_body(row, (row["summary"] or {}).get("warnings", []) if row["status"] == "succeeded" else None)
 
-    def _current(self, row: dict) -> dict:
-        """A succeeded run whose published files have disappeared is recorded and shown as failed, never as succeeded."""
-        if row["status"] == "succeeded" and not scoring.is_complete(scoring.output_dir(self.config.artifact_root, row["id"])):
-            self.store.mark_output_missing(row["id"])
-            return self.store.get_run(row["id"])
-        return row
-
-    def succeeded_run(self, run_id: str) -> tuple:
-        run = self._current(self.store.get_run(run_id))
-        if run["error_code"] == "output_missing":
-            raise ApiError(409, "run_output_missing", "The results of this run are no longer available. Submit a retry.")
+    def succeeded_run(self, run_id: str) -> dict:
+        """The run, if its results can be read. Results exist exactly for succeeded runs: both are one transaction."""
+        run = self.store.get_run(run_id)
+        if run["error_code"] == "output_missing" or (run["status"] == "succeeded" and run["summary"] is None):
+            # a run scored before results moved into the database, whose files are gone or not imported yet
+            raise ApiError(409, "run_output_missing", "The results of this run are not available. Submit a retry.")
         if run["status"] != "succeeded":
             raise ApiError(409, "run_not_ready", f"Run {run_id} is {run['status']}; results exist only for succeeded runs.")
-        return run, scoring.output_dir(self.config.artifact_root, run_id)
+        return run
 
 
 def create_app(config: ServiceConfig | None = None, with_worker: bool = False, static_dir: Path | None = None) -> FastAPI:
@@ -179,10 +160,9 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     async def lifespan(app: FastAPI):
         service.store.migrate()
         service.sync_active()
-        service.sync_experiments()
         stop = None
         if with_worker:                                   # local profile: the one worker lives in this process
-            worker.reconcile(config, service.store)
+            worker.reconcile(config, service.store)       # also loads published experiments; the API itself reads no data file
             service.worker_thread, stop = worker.start_thread(config, service.store)
         yield
         if stop:
@@ -358,7 +338,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                        evidence: str | None = None,
                        disposition: Literal["all", "unreviewed", "needs_investigation", "likely_legitimate", "unresolved"] = "all",
                        comparison: Literal["all", "model_only", "baseline_only", "both"] = "all"):
-        run, directory = service.succeeded_run(run_id)
+        run = service.succeeded_run(run_id)
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
                            [{"rule_id": "request.evidence", "table": None, "row_key": evidence, "count": 1}])
@@ -366,24 +346,22 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                    "evidence": evidence, "disposition": disposition, "comparison": comparison}
         context = {"list": "customers", "run_id": run_id, **filters}
         after = views.decode_cursor(cursor, context, "int")
-        items, following = views.customer_queue(directory, filters, service.store.latest_dispositions(run["world_id"]), after, limit)
+        items, following = views.customer_queue(service.store, run, filters, after, limit)
         return {"items": items, "next_cursor": views.encode_cursor(context, following) if following is not None else None}
 
     def _case_customer(run_id: str, customer_id: str) -> tuple:
-        run, directory = service.succeeded_run(run_id)
-        if not views.has_customer(directory, customer_id):                  # a customer must belong to the run's world
-            raise NotFound("customer in this run")
-        return run, directory
+        run = service.succeeded_run(run_id)
+        return run, service.store.run_customer(run_id, customer_id)        # a customer must belong to the run: otherwise 404
 
     @api.get("/runs/{run_id}/customers/{customer_id}")
     def get_customer_case(run_id: str, customer_id: str):
-        run, directory = _case_customer(run_id, customer_id)
-        case = views.customer_case(directory, customer_id)
+        run, customer = _case_customer(run_id, customer_id)
+        case = views.customer_case(service.store, run_id, customer)
         reviews = service.store.list_reviews(run["world_id"], customer_id)
         latest = reviews[-1]["disposition"] if reviews else None
         return {"run_id": run_id, "dataset_id": run["dataset_id"], "world_id": run["world_id"], "model_id": run["model_id"],
                 "model_kind": run["model_kind"], "cutoff": _iso(run["cutoff"]),
-                "customer": views.customer_item(case["customer"], {customer_id: latest}),
+                "customer": views.customer_item(customer, latest),
                 "signals": case["signals"], "timeline": case["timeline"], "neighbors": case["neighbors"], "styles": case["styles"],
                 "wardrobing": case["wardrobing"], "reviews": [review_body(r) for r in reviews]}
 
@@ -413,19 +391,16 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     def list_styles(run_id: str, cursor: str | None = None, limit: int = limit_query,
                     state: Literal["all", "quality", "targeting", "mixed_or_uncertain", "no_elevated_signal", "insufficient_support",
                                    "no_return_evidence"] = "all"):
-        _, directory = service.succeeded_run(run_id)
+        service.succeeded_run(run_id)
         context = {"list": "styles", "run_id": run_id, "state": state}
         after = views.decode_cursor(cursor, context, "text")
-        items, following = views.style_queue(directory, state, after, limit)
+        items, following = views.style_queue(service.store, run_id, state, after, limit)
         return {"items": items, "next_cursor": views.encode_cursor(context, following) if following is not None else None}
 
     @api.get("/runs/{run_id}/styles/{style_id}")
     def get_style(run_id: str, style_id: str):
-        _, directory = service.succeeded_run(run_id)
-        detail = views.style_detail(directory, style_id)
-        if detail is None:
-            raise NotFound("style in this run")
-        return {"run_id": run_id, **detail}
+        service.succeeded_run(run_id)
+        return {"run_id": run_id, **views.style_detail(service.store, run_id, style_id)}
 
     # ------------------------------------------------------------------ experiments (offline reports, synthetic only)
     @api.get("/experiments")
@@ -433,19 +408,19 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         context = {"list": "experiments"}
         after = views.decode_cursor(cursor, context, "text")
         rows = service.store.list_experiments(after, limit + 1)
-        items = [views.experiment_report(config.artifact_root, r["report_key"])["summary"] for r in rows[:limit]]
+        items = [r["report"]["summary"] for r in rows[:limit]]
         return {"items": items, "next_cursor": views.encode_cursor(context, rows[limit - 1]["id"]) if len(rows) > limit else None}
 
     @api.get("/experiments/{experiment_id}")
     def get_experiment(experiment_id: str):
-        return views.experiment_report(config.artifact_root, service.store.get_experiment(experiment_id)["report_key"])
+        return service.store.get_experiment(experiment_id)["report"]
 
     @api.get("/experiments/{experiment_id}/truth")
     def get_evaluation_truth(experiment_id: str, cursor: str | None = None, limit: int = limit_query):
-        service.store.get_experiment(experiment_id)
+        experiment = service.store.get_experiment(experiment_id)
         context = {"list": "truth", "experiment_id": experiment_id}
         after = views.decode_cursor(cursor, context, "int")
-        items, following, world = views.truth_page(config.artifact_root, experiment_id, after, limit)
+        items, following, world = views.truth_page(service.store, experiment, after, limit)
         return {"synthetic_only": True, "world_id": world, "items": items,
                 "next_cursor": views.encode_cursor(context, following) if following is not None else None}
 

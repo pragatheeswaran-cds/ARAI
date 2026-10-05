@@ -71,7 +71,8 @@ if ($c) { Stop-Process -Id $c.OwningProcess -Force }
 
 ### Restart
 
-Stop, then start. Datasets, runs and review notes are kept in `data\postgres` and `data\artifacts`.
+Stop, then start. Runs, their results and review notes are kept in the database (`data\postgres`); registered
+snapshots and model bundles are kept as files in `data\artifacts`.
 
 If a scoring run was in progress when the server stopped, it shows as **interrupted** after the restart and
 publishes nothing. Use **Retry** on the Datasets & runs page.
@@ -81,7 +82,7 @@ publishes nothing. Use **Retry** on the Datasets & runs page.
 Stop everything first, then:
 
 ```powershell
-Remove-Item -Recurse -Force .\data\postgres, .\data\artifacts\runs, .\data\artifacts\datasets
+Remove-Item -Recurse -Force .\data\postgres, .\data\artifacts\datasets
 uv run arai local
 ```
 
@@ -235,9 +236,10 @@ or 2301-2305.
 | "port 8000 already in use" / address in use | a server is still running | stop it by port (section 2) |
 | "file is being used by another process" from `uv run` | the server holds the environment | add `--no-sync`, or stop the server first |
 | UI opens but says the API cannot be reached | server stopped | start it (section 2) |
-| A run shows **failed / output_missing** | its result files were deleted | press **Retry**; it creates a new run with the same dataset and model |
+| A run shows **failed / output_missing** | it was scored by an earlier version and its result files were deleted before they were loaded into the database | press **Retry**; it creates a new run with the same dataset and model |
 | A run shows **interrupted** | the server stopped while scoring | press **Retry** |
 | Banner: baseline only | no promoted model is active | `uv run --no-sync arai publish --demo-world W2401`, then restart |
+| Evaluation page is empty after `arai publish` | the report is loaded into the database when the worker starts | restart (local), or `docker compose restart worker` |
 | `web/dist is missing` at start | UI not built | `cd web; npm install; npm run build` |
 | Docker: `POSTGRES_PASSWORD is missing a value` | no `.env` | copy `.env.example` to `.env` and set it |
 | Walkthrough fails on "msedge" | Microsoft Edge not installed | install Edge, or change `channel="msedge"` in the script |

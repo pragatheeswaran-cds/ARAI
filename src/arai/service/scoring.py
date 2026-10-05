@@ -1,16 +1,12 @@
 """Batch scoring of one registered snapshot with one bound bundle (final-spec component 11).
 
 Stages: features and graph -> eligibility -> frozen preprocessing and scores -> ranks and the review set ->
-evidence -> files. Nothing is fitted, no label exists here, and results are written to a staging directory
-that only becomes a run's output once every file is complete.
+evidence. Nothing is fitted and no label exists here. The worker publishes the result to PostgreSQL in the
+transaction that marks the run succeeded (decision AM-39).
 """
 from __future__ import annotations
 
-import json
-import os
-import shutil
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -22,9 +18,6 @@ from arai.operational import cutoff_date
 SMALL_POPULATION = 500           # below this many eligible customers peer aggregates move noticeably (feature review)
 SUPPORT = ["mature_sale_lines", "mature_purchased_units", "mature_requested_units", "all_requested_units"]
 TAGS = ("repeat_claims", "linked_claims", "late_returns", "returns_above_expected", "supported_links")
-OUTPUT_FILES = ("run.json", "customers.parquet", "styles.parquet", "skus.parquet", "neighbors.parquet", "timeline.parquet",
-                "customer_styles.parquet")
-COMPLETE_MARKER = "COMPLETE"
 
 
 @dataclass
@@ -195,40 +188,3 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
     }
     return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=_neighbors(result),
                      timeline=_timeline(tables, result), customer_styles=customer_styles)
-
-
-# ------------------------------------------------------------------ publication
-def runs_root(artifact_root: Path) -> Path:
-    return Path(artifact_root) / "runs"
-
-
-def staging_dir(artifact_root: Path, run_id: str) -> Path:
-    return runs_root(artifact_root) / f".staging-{run_id}"
-
-
-def output_dir(artifact_root: Path, run_id: str) -> Path:
-    return runs_root(artifact_root) / run_id
-
-
-def is_complete(directory: Path) -> bool:
-    return (directory / COMPLETE_MARKER).is_file() and all((directory / name).is_file() for name in OUTPUT_FILES)
-
-
-def publish(output: RunOutput, artifact_root: Path, run_id: str) -> str:
-    """Write every file to a staging directory, mark it complete, then rename it into place.
-
-    A crash before the rename leaves only a staging directory, which startup reconciliation removes. Returns the
-    artifact key (relative to the artifact root) of the published directory.
-    """
-    staged, final = staging_dir(artifact_root, run_id), output_dir(artifact_root, run_id)
-    if final.exists():
-        raise FileExistsError(f"run {run_id} already has published output")
-    if staged.exists():
-        shutil.rmtree(staged)
-    staged.mkdir(parents=True)
-    (staged / "run.json").write_text(json.dumps(dict(output.summary, run_id=run_id), indent=2) + "\n", encoding="utf-8")
-    for name in ("customers", "styles", "skus", "neighbors", "timeline", "customer_styles"):
-        getattr(output, name).to_parquet(staged / f"{name}.parquet", index=False)
-    (staged / COMPLETE_MARKER).write_text(run_id + "\n", encoding="utf-8")
-    os.replace(staged, final)
-    return f"runs/{run_id}"

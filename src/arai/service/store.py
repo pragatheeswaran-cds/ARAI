@@ -1,7 +1,7 @@
-"""PostgreSQL metadata store (final-spec component 14).
+"""PostgreSQL store (final-spec component 14).
 
-Every state change is one transaction. Scoring output lives on the filesystem; this store only ever records a
-run as succeeded after its files are complete, so the database can never point at missing results.
+Every state change is one transaction. Run results live here too (decision AM-39): a run's rows are written in
+the transaction that marks it succeeded, so a succeeded run always has its results and no other run has any.
 """
 from __future__ import annotations
 
@@ -13,9 +13,11 @@ from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 MIGRATIONS = Path(__file__).with_name("migrations")
 STAGES = ("queued", "validate", "features", "eligibility", "scoring", "evidence", "publish", "done")
+RESULT_TABLES = ("run_customers", "run_styles", "run_skus", "run_neighbors", "run_timeline", "run_customer_styles")
 
 
 class Conflict(Exception):
@@ -188,16 +190,51 @@ class Store:
         with self.transaction() as db:
             db.execute("UPDATE runs SET stage = %s, progress = %s WHERE id = %s AND status = 'running'", (stage, progress, run_id))
 
-    def finish_run(self, run_id: str, worker_id: str, output_key: str, counts: dict) -> bool:
-        """Mark success. Called only after the output directory is complete and in place."""
+    def _copy(self, db, table: str, key: tuple, columns: list, rows) -> None:
+        """Bulk-load rows of one table; `key` is the leading (column, value) every row shares."""
+        with db.cursor() as cursor:
+            with cursor.copy(f"COPY {table} ({', '.join([key[0], *columns])}) FROM STDIN") as copy:
+                for row in rows:
+                    copy.write_row((key[1], *row))
+
+    def _write_results(self, db, run_id: str, tables: dict) -> None:
+        if set(tables) != set(RESULT_TABLES):
+            raise ValueError("a run publishes exactly its six result tables")
+        for table in RESULT_TABLES:
+            columns, rows = tables[table]
+            self._copy(db, table, ("run_id", run_id), columns, rows)
+
+    def finish_run(self, run_id: str, worker_id: str, summary: dict, counts: dict, tables: dict) -> bool:
+        """Publish the results and mark success in one transaction. False if this worker no longer owns the run."""
         with self.transaction() as db:
-            done = db.execute("""UPDATE runs SET status = 'succeeded', stage = 'done', progress = 1, completed_at = now(), output_key = %s,
-                                     eligible_count = %s, excluded_count = %s, selected_count = %s, model_only_count = %s,
-                                     baseline_only_count = %s
-                                 WHERE id = %s AND status = 'running' AND claimed_by = %s RETURNING id""",
-                              (output_key, counts["eligible_count"], counts["excluded_count"], counts["selected_count"],
-                               counts["model_only_count"], counts["baseline_only_count"], run_id, worker_id)).fetchone()
-        return done is not None
+            owned = db.execute("SELECT id FROM runs WHERE id = %s AND status = 'running' AND claimed_by = %s FOR UPDATE",
+                               (run_id, worker_id)).fetchone()
+            if owned is None:
+                return False
+            self._write_results(db, run_id, tables)
+            db.execute("""UPDATE runs SET status = 'succeeded', stage = 'done', progress = 1, completed_at = now(), summary = %s,
+                              eligible_count = %s, excluded_count = %s, selected_count = %s, model_only_count = %s,
+                              baseline_only_count = %s
+                          WHERE id = %s""",
+                       (Jsonb(summary), counts["eligible_count"], counts["excluded_count"], counts["selected_count"],
+                        counts["model_only_count"], counts["baseline_only_count"], run_id))
+        return True
+
+    def runs_without_results(self) -> list:
+        """Succeeded runs from before results moved into the database: their rows still have to be imported."""
+        with self.transaction() as db:
+            rows = db.execute("SELECT id FROM runs WHERE status = 'succeeded' AND summary IS NULL ORDER BY created_at, id").fetchall()
+        return [row["id"] for row in rows]
+
+    def import_results(self, run_id: str, summary: dict, tables: dict) -> bool:
+        """Load the results of an earlier succeeded run from its files, once. Status and counts stay as recorded."""
+        with self.transaction() as db:
+            claimed = db.execute("""UPDATE runs SET summary = %s WHERE id = %s AND status = 'succeeded' AND summary IS NULL
+                                    RETURNING id""", (Jsonb(summary), run_id)).fetchone()
+            if claimed is None:
+                return False
+            self._write_results(db, run_id, tables)
+        return True
 
     def fail_run(self, run_id: str, code: str, message: str, request_id: str) -> None:
         with self.transaction() as db:
@@ -216,16 +253,12 @@ class Store:
                                  WHERE status = 'running' AND claimed_by = %s RETURNING id""", (worker_id,)).fetchall()
         return [row["id"] for row in rows]
 
-    def run_statuses(self) -> dict:
-        """Every run this database knows, with its status."""
-        with self.transaction() as db:
-            return {row["id"]: row["status"] for row in db.execute("SELECT id, status FROM runs").fetchall()}
-
     def mark_output_missing(self, run_id: str) -> None:
+        """An earlier succeeded run whose result files were lost before they could be imported."""
         with self.transaction() as db:
             db.execute("""UPDATE runs SET status = 'failed', error_code = 'output_missing', error_request_id = id,
-                              error_message = 'The published results of this run are no longer on disk. Submit a retry.'
-                          WHERE id = %s AND status = 'succeeded'""", (run_id,))
+                              error_message = 'The results of this run were never loaded into the database. Submit a retry.'
+                          WHERE id = %s AND status = 'succeeded' AND summary IS NULL""", (run_id,))
 
     def queue_depth(self) -> int:
         with self.transaction() as db:
@@ -263,29 +296,132 @@ class Store:
             return db.execute(f"SELECT * FROM reviews WHERE world_id = %s AND customer_id = %s{extra} ORDER BY created_at, id{tail}",
                               values).fetchall()
 
-    def latest_dispositions(self, world_id: str) -> dict:
-        with self.transaction() as db:
-            rows = db.execute("""SELECT DISTINCT ON (customer_id) customer_id, disposition FROM reviews WHERE world_id = %s
-                                 ORDER BY customer_id, created_at DESC, id DESC""", (world_id,)).fetchall()
-        return {row["customer_id"]: row["disposition"] for row in rows}
+    # ------------------------------------------------------------------ run results (written once, read by the API)
+    def run_customers(self, run_id: str, world_id: str, filters: dict, after: int | None, limit: int) -> list:
+        """One page of the queue in queue order, each row with the customer's latest disposition in this world.
 
-    # ------------------------------------------------------------------ experiments
-    def upsert_experiment(self, row: dict) -> None:
+        Filters only choose what is shown. `search` is a case-insensitive substring of the identifier.
+        """
+        clauses, values = ["c.run_id = %s"], [world_id, run_id]
+        if filters["review_only"]:
+            clauses.append("c.selected_for_review")
+        if filters["eligibility"] != "all":
+            clauses.append("c.eligibility_status = %s")
+            values.append(filters["eligibility"])
+        if filters["search"]:
+            escaped = filters["search"].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append("c.customer_id ILIKE %s")
+            values.append(f"%{escaped}%")
+        if filters["evidence"]:
+            clauses.append("%s = ANY (c.evidence_tags)")
+            values.append(filters["evidence"])
+        comparison = {"model_only": "c.selected_for_review AND NOT c.baseline_selected",
+                      "baseline_only": "c.baseline_selected AND NOT c.selected_for_review",
+                      "both": "c.selected_for_review AND c.baseline_selected"}.get(filters["comparison"])
+        if comparison:
+            clauses.append(comparison)
+        if filters["disposition"] == "unreviewed":
+            clauses.append("latest.disposition IS NULL")
+        elif filters["disposition"] != "all":
+            clauses.append("latest.disposition = %s")
+            values.append(filters["disposition"])
+        if after is not None:
+            clauses.append("c.queue_position > %s")
+            values.append(after)
         with self.transaction() as db:
-            db.execute("""INSERT INTO experiments (id, config_hash, report_key, selection_key, test_key)
-                          VALUES (%(id)s, %(config_hash)s, %(report_key)s, %(selection_key)s, %(test_key)s)
+            return db.execute(f"""SELECT c.*, latest.disposition AS latest_disposition FROM run_customers c
+                                  LEFT JOIN LATERAL (SELECT r.disposition FROM reviews r
+                                                     WHERE r.world_id = %s AND r.customer_id = c.customer_id
+                                                     ORDER BY r.created_at DESC, r.id DESC LIMIT 1) latest ON true
+                                  WHERE {' AND '.join(clauses)} ORDER BY c.queue_position LIMIT %s""", (*values, limit)).fetchall()
+
+    def run_customer(self, run_id: str, customer_id: str) -> dict:
+        with self.transaction() as db:
+            row = db.execute("SELECT * FROM run_customers WHERE run_id = %s AND customer_id = %s", (run_id, customer_id)).fetchone()
+        if not row:
+            raise NotFound("customer in this run")
+        return row
+
+    def run_timeline(self, run_id: str, customer_id: str) -> list:
+        with self.transaction() as db:
+            return db.execute("SELECT * FROM run_timeline WHERE run_id = %s AND customer_id = %s ORDER BY seq",
+                              (run_id, customer_id)).fetchall()
+
+    def run_neighbors(self, run_id: str, customer_id: str) -> list:
+        with self.transaction() as db:
+            return db.execute('SELECT * FROM run_neighbors WHERE run_id = %s AND customer_id = %s ORDER BY neighbor_id COLLATE "C"',
+                              (run_id, customer_id)).fetchall()
+
+    def run_customer_styles(self, run_id: str, customer_id: str, limit: int) -> list:
+        """The styles a customer returned or claimed on, linked claims first, with each style's evidence."""
+        order = 'o.linked_claim_lines DESC, o.claim_lines DESC, o.requested_units DESC, o.style_id COLLATE "C"'
+        with self.transaction() as db:
+            return db.execute(f"""SELECT s.* FROM (SELECT * FROM run_customer_styles o WHERE o.run_id = %s AND o.customer_id = %s
+                                                   ORDER BY {order} LIMIT %s) o
+                                  JOIN run_styles s ON s.run_id = o.run_id AND s.style_id = o.style_id
+                                  ORDER BY {order}""", (run_id, customer_id, limit)).fetchall()
+
+    def run_styles(self, run_id: str, state: str, after: str | None, limit: int) -> list:
+        clauses, values = ["run_id = %s"], [run_id]
+        if state != "all":
+            clauses.append("state = %s")
+            values.append(state)
+        if after is not None:
+            clauses.append('style_id COLLATE "C" > %s')
+            values.append(after)
+        with self.transaction() as db:
+            return db.execute(f"""SELECT * FROM run_styles WHERE {' AND '.join(clauses)} ORDER BY style_id COLLATE "C" LIMIT %s""",
+                              (*values, limit)).fetchall()
+
+    def run_style(self, run_id: str, style_id: str) -> dict:
+        with self.transaction() as db:
+            row = db.execute("SELECT * FROM run_styles WHERE run_id = %s AND style_id = %s", (run_id, style_id)).fetchone()
+        if not row:
+            raise NotFound("style in this run")
+        return row
+
+    def run_style_skus(self, run_id: str, style_id: str) -> list:
+        with self.transaction() as db:
+            return db.execute('SELECT * FROM run_skus WHERE run_id = %s AND style_id = %s ORDER BY sku COLLATE "C"',
+                              (run_id, style_id)).fetchall()
+
+    def run_style_customers(self, run_id: str, style_id: str, limit: int) -> list:
+        """Customers with a request on a style, those with linked claims first."""
+        with self.transaction() as db:
+            rows = db.execute("""SELECT customer_id FROM run_customer_styles WHERE run_id = %s AND style_id = %s
+                                 ORDER BY linked_claim_lines DESC, claim_lines DESC, requested_units DESC, customer_id COLLATE "C"
+                                 LIMIT %s""", (run_id, style_id, limit)).fetchall()
+        return [row["customer_id"] for row in rows]
+
+    # ------------------------------------------------------------------ experiments (published offline, loaded by the worker)
+    def load_experiment(self, row: dict, report: dict, truth_world_id: str | None, truth_rows: list) -> None:
+        """Store a published experiment report and replace its truth export, together."""
+        with self.transaction() as db:
+            db.execute("""INSERT INTO experiments (id, config_hash, report_key, selection_key, test_key, report, truth_world_id)
+                          VALUES (%(id)s, %(config_hash)s, %(report_key)s, %(selection_key)s, %(test_key)s, %(report)s, %(truth_world_id)s)
                           ON CONFLICT (id) DO UPDATE SET config_hash = EXCLUDED.config_hash, report_key = EXCLUDED.report_key,
-                              selection_key = EXCLUDED.selection_key, test_key = EXCLUDED.test_key""", row)
+                              selection_key = EXCLUDED.selection_key, test_key = EXCLUDED.test_key, report = EXCLUDED.report,
+                              truth_world_id = EXCLUDED.truth_world_id""",
+                       dict(row, report=Jsonb(report), truth_world_id=truth_world_id))
+            db.execute("DELETE FROM experiment_truth WHERE experiment_id = %s", (row["id"],))
+            self._copy(db, "experiment_truth", ("experiment_id", row["id"]), ["position", "customer_id", "y_abuse", "action_types"],
+                       truth_rows)
 
     def list_experiments(self, after: str | None, limit: int) -> list:
         with self.transaction() as db:
             if after:
-                return db.execute("SELECT * FROM experiments WHERE id > %s ORDER BY id LIMIT %s", (after, limit)).fetchall()
-            return db.execute("SELECT * FROM experiments ORDER BY id LIMIT %s", (limit,)).fetchall()
+                return db.execute("SELECT * FROM experiments WHERE report IS NOT NULL AND id > %s ORDER BY id LIMIT %s",
+                                  (after, limit)).fetchall()
+            return db.execute("SELECT * FROM experiments WHERE report IS NOT NULL ORDER BY id LIMIT %s", (limit,)).fetchall()
 
     def get_experiment(self, experiment_id: str) -> dict:
         with self.transaction() as db:
-            row = db.execute("SELECT * FROM experiments WHERE id = %s", (experiment_id,)).fetchone()
+            row = db.execute("SELECT * FROM experiments WHERE id = %s AND report IS NOT NULL", (experiment_id,)).fetchone()
         if not row:
             raise NotFound("experiment")
         return row
+
+    def experiment_truth(self, experiment_id: str, after: int | None, limit: int) -> list:
+        with self.transaction() as db:
+            return db.execute("SELECT * FROM experiment_truth WHERE experiment_id = %s AND position >= %s ORDER BY position LIMIT %s",
+                              (experiment_id, after or 0, limit)).fetchall()

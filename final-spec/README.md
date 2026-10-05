@@ -1,6 +1,6 @@
 # ARAI - portable development specification
 
-Version **1.6** - Consolidated 2026-09-26, amended 2026-10-02 - **Implementation baseline**
+Version **1.7** - Consolidated 2026-09-26, amended 2026-10-05 - **Implementation baseline**
 
 Each component has its own specification and acceptance criteria. This folder is the authoritative development package; no previous version, original laptop path or sibling archive is required.
 
@@ -18,6 +18,8 @@ Amendment 1.5 (2026-10-02) follows a third review, made before any validation wo
 
 Amendment 1.6 (2026-10-02) records the outcome (selection on validation, the final test passed once) and the decisions from the reviews of the serving side and the front end: an exact allow-list for serialised types, safer startup reconciliation, and caveats shown first on the evaluation page.
 
+Amendment 1.7 (2026-10-05) records the project owner's decision after a review of the code: the API reads from PostgreSQL only. Run results, the published experiment report and the truth export are stored there; no result file is written. The API contract is unchanged.
+
 ## Start on any system
 
 1. Copy/extract the **whole final-spec folder**.
@@ -26,7 +28,7 @@ Amendment 1.6 (2026-10-02) records the outcome (selection on validation, the fin
 4. From this folder run: python tools/verify_package.py (Python3.10+, standard library only).
 5. Track actual implementation evidence in [acceptance-register.csv](acceptance-register.csv). All runtime ACs start NOT_RUN.
 
-Production architecture: Python/FastAPI + React/Vite + PostgreSQL, Parquet artifacts and offline model fitting. Standalone HTML is for portable wireframe review, not a replacement for React/Vite.
+Production architecture: Python/FastAPI + React/Vite + PostgreSQL (metadata and every served result), file artifacts for registered snapshots and model bundles, and offline model fitting. Standalone HTML is for portable wireframe review, not a replacement for React/Vite.
 
 ## Separate component specifications
 

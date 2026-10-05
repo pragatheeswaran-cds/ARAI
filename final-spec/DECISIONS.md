@@ -171,3 +171,11 @@ Validation, selection and the single final test were run under 1.5 and are recor
 | AM-38 | The evaluation page leads with its caveats (simulated data, precision without timing features, development target not met); case pages state what the record shows in plain words | Caveats placed at the bottom of a long page | 13 UI |
 
 Open for the project owner, unchanged by this amendment: the 0.75-0.85 development target was not met (AM-30); the result leans on the simulated return-timing law (AM-31); no VM deployment was made (OPS-AC-05 not run).
+
+## Amendment 1.7 (2026-10-05)
+
+The project owner reviewed the code on 2026-10-05 and decided that the API must not read Parquet files: it reads from PostgreSQL, and model results in particular are stored there. This is the owner's decision, not an implementation choice. No world was regenerated, no model was refitted and the API contract is unchanged.
+
+| ID | Decision | Supersedes | Final owner |
+|---|---|---|---|
+| AM-39 | Everything the API serves is read from PostgreSQL: run results (customers with scores, ranks, selection and measures; styles; SKUs; neighbors; timeline; customer-style links), the published experiment report and the demonstration truth export. A run's rows are written in the transaction that marks it succeeded and are never updated. The worker loads the published report and truth export at startup and imports once the result files of earlier runs. Registered snapshots and model bundles stay files: they are inputs and models, read by the worker, and the API serves nothing from them | PostgreSQL for metadata with Parquet/JSON result files read by the API (component 14 as of 1.6); the staging directory, completion marker and directory reconciliation of AM-36, which are no longer needed because no result directory is written | 11 inference, 14 storage |

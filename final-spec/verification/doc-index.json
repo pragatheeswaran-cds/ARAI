@@ -182,9 +182,11 @@
     [
       "Concurrent duplicate requests yield one resource.",
       "Two worker claims cannot both own same job.",
-      "Crash/restart never exposes succeeded with missing files.",
+      "A crash, or a failure while results are written, never exposes a succeeded run without its complete results, nor results of a run that did not succeed.",
       "RunA note appears in runB same world/customer with original attribution.",
-      "Backup restores to relocated root without laptop path dependencies."
+      "Backup restores to relocated root without laptop path dependencies.",
+      "Every API read of run results, the experiment report and the truth export is answered from PostgreSQL; no result file is written or opened.",
+      "Results of runs scored before version 1.7 are imported once from their files and answer identically; a run whose files are gone is failed, not empty."
     ]
   ],
   [

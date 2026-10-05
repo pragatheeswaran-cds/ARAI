@@ -14,13 +14,20 @@ from openapi_schema_validator import OAS30Validator
 from arai import bundles
 from arai.operational import TABLES, read_csv_world
 from arai.paths import SPEC_ROOT
-from arai.service import scoring, worker
+from arai.service import datasets, ingest, scoring, worker
 from arai.service.api import create_app
 from arai.service.config import ServiceConfig
-from arai.service.store import Store
+from arai.service.store import RESULT_TABLES, Store
 
 API = "/api/v1"
 CONTRACT = yaml.safe_load((SPEC_ROOT / "contracts" / "openapi.yaml").read_text(encoding="utf-8"))
+
+
+def result_rows(store: Store, run_id: str) -> dict:
+    """How many rows each result table holds for a run."""
+    with store.transaction() as db:
+        return {table: db.execute(f"SELECT count(*) AS n FROM {table} WHERE run_id = %s", (run_id,)).fetchone()["n"]
+                for table in RESULT_TABLES}
 
 
 def conforms(schema_name: str, body) -> None:
@@ -355,8 +362,7 @@ def test_a_run_keeps_its_bound_model_through_promotion(client, env, written):
     worker.process_one(env["config"], Store(env["config"].database_url))
     done = client.get(f"{API}/runs/{queued['run_id']}").json()
     assert done["status"] == "succeeded" and done["model_id"] == env["model_id"] and done["model_kind"] == "supervised"
-    summary = json.loads((scoring.output_dir(env["root"], queued["run_id"]) / "run.json").read_text())
-    assert summary["model_id"] == env["model_id"]
+    assert Store(env["config"].database_url).get_run(queued["run_id"])["summary"]["model_id"] == env["model_id"]
     later = client.post(f"{API}/runs", json={"dataset_id": dataset["dataset_id"], "idempotency_key": "after"}).json()
     assert later["model_id"] == env["baseline_id"]                                              # new submissions follow the pointer
 
@@ -404,9 +410,10 @@ def test_a_crash_publishes_nothing_and_restart_keeps_notes_and_bindings(client, 
     interrupted = client.get(f"{API}/runs/{crashed['run_id']}").json()
     conforms("Run", interrupted)
     assert interrupted["status"] == "interrupted" and interrupted["error"]["error_code"] == "interrupted"
-    assert not scoring.output_dir(env["root"], crashed["run_id"]).exists()
-    assert not scoring.staging_dir(env["root"], crashed["run_id"]).exists()
+    assert result_rows(store, crashed["run_id"]) == dict.fromkeys(RESULT_TABLES, 0)             # nothing was written for it
+    assert not (env["root"] / "runs").exists()                                                  # and no result file exists at all
     assert client.get(f"{API}/runs/{first['run_id']}").json()["status"] == "succeeded"          # earlier results untouched
+    assert result_rows(store, first["run_id"])["run_customers"] == first["eligible_count"] + first["excluded_count"]
     notes = client.get(f"{API}/runs/{first['run_id']}/customers/{customer}/reviews").json()["items"]
     assert [n["note"] for n in notes] == ["kept"]
 
@@ -415,26 +422,93 @@ def test_a_crash_publishes_nothing_and_restart_keeps_notes_and_bindings(client, 
     worker.process_one(env["config"], store)
     assert client.get(f"{API}/runs/{retry.json()['run_id']}").json()["status"] == "succeeded"
 
-    # a directory that belongs to no run in this database (another deployment sharing the root) is never deleted
-    foreign = scoring.output_dir(env["root"], "run-of-another-deployment")
-    shutil.copytree(scoring.output_dir(env["root"], first["run_id"]), foreign)
-    stray = scoring.staging_dir(env["root"], "run-of-another-deployment-2")
-    stray.mkdir()
+    # a directory under runs/ (an earlier version's output, or another deployment's) is never deleted by a restart
+    foreign = env["root"] / "runs" / "run-of-another-deployment"
+    foreign.mkdir(parents=True)
+    (foreign / "customers.parquet").write_bytes(b"not ours")
     report = worker.reconcile(env["config"], store)
-    assert foreign.is_dir() and stray.is_dir() and sorted(report["unknown"]) == [".staging-run-of-another-deployment-2", "run-of-another-deployment"]
-    assert report["removed"] == []
+    assert (foreign / "customers.parquet").is_file() and report["imported"] == [] and report["output_missing"] == []
 
-    # a succeeded run whose files vanish is shown as failed at once, never as succeeded with nothing behind it
-    shutil.rmtree(scoring.output_dir(env["root"], first["run_id"]))
-    assert client.get(f"{API}/runs/{first['run_id']}/customers").status_code == 409
-    gone = client.get(f"{API}/runs/{first['run_id']}").json()
+
+def test_results_and_success_are_one_transaction(client, env, written, monkeypatch):
+    """A failure while the rows are being written leaves a failed run with no row at all, never a partial result."""
+    dataset = register(client, written)
+    run = client.post(f"{API}/runs", json={"dataset_id": dataset["dataset_id"], "idempotency_key": "half"}).json()
+    store = Store(env["config"].database_url)
+    write = Store._copy
+
+    def fail_after_the_customers(self, db, table, key, columns, rows):
+        if table == "run_styles":
+            raise RuntimeError("connection lost while publishing")
+        write(self, db, table, key, columns, rows)
+    monkeypatch.setattr(Store, "_copy", fail_after_the_customers)
+    worker.process_one(env["config"], store)
+    failed = client.get(f"{API}/runs/{run['run_id']}").json()
+    assert failed["status"] == "failed" and failed["error"]["error_code"] == "scoring_failed" and failed["eligible_count"] is None
+    assert result_rows(store, run["run_id"]) == dict.fromkeys(RESULT_TABLES, 0)               # the customers written first are gone
+    assert client.get(f"{API}/runs/{run['run_id']}/customers").status_code == 409
+
+
+def test_the_api_answers_from_postgres_and_opens_no_result_file(client, env, written, monkeypatch):
+    """Decision AM-39: after a run is scored, every read is a database read. No Parquet or JSON result file exists or is read."""
+    run = scored_run(client, env, written)
+    assert not (env["root"] / "runs").exists()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("the API opened a Parquet file")
+    monkeypatch.setattr(pd, "read_parquet", forbidden)
+    shutil.rmtree(env["root"] / "datasets")                                 # nor does it need the registered snapshot's files
+    assert client.get(f"{API}/runs/{run['run_id']}").json()["warnings"] == []
+    everyone = all_pages(client, f"{API}/runs/{run['run_id']}/customers", {"review_only": "false"})
+    assert len(everyone) == run["eligible_count"] + run["excluded_count"]
+    claimant = all_pages(client, f"{API}/runs/{run['run_id']}/customers", {"review_only": "false", "evidence": "repeat_claims"})[0]
+    case = client.get(f"{API}/runs/{run['run_id']}/customers/{claimant['customer_id']}")
+    assert case.status_code == 200 and case.json()["timeline"] and case.json()["styles"]
+    conforms("Case", case.json())
+    assert client.get(f"{API}/runs/{run['run_id']}/customers", params={"search": claimant["customer_id"].lower()[-6:]}).json()["items"]
+    assert client.get(f"{API}/runs/{run['run_id']}/customers", params={"search": "%"}).json()["items"] == []   # a wildcard is literal
+    style = case.json()["styles"][0]["style_id"]
+    detail = client.get(f"{API}/runs/{run['run_id']}/styles/{style}")
+    assert detail.status_code == 200 and claimant["customer_id"] in detail.json()["customer_ids"]
+    # the results are ordinary rows: scores can be queried and joined in SQL
+    with Store(env["config"].database_url).transaction() as db:
+        top = db.execute("""SELECT customer_id, (measures->>'raw_return_rate')::float AS rate FROM run_customers
+                            WHERE run_id = %s AND selected_for_review ORDER BY rank LIMIT 1""", (run["run_id"],)).fetchone()
+    assert top["customer_id"] == everyone[0]["customer_id"] and 0 <= top["rate"] <= 1
+
+
+def test_results_of_earlier_runs_are_imported_once_from_their_files(client, env, written):
+    """Runs scored before results moved into the database keep working: the worker loads their files at startup."""
+    run = scored_run(client, env, written, key="old")
+    lost = scored_run(client, env, written, key="lost")
+    url = f"{API}/runs/{run['run_id']}/customers"
+    before = client.get(url, params={"limit": 30}).json()
+    case_before = client.get(f"{url}/{before['items'][0]['customer_id']}").json()
+    store = Store(env["config"].database_url)
+    # put both runs back into the state the earlier version left: files on disk, nothing in the result tables
+    output = scoring.score_snapshot(*datasets.load(env["root"], store.get_dataset(run["dataset_id"])),
+                                    bundles.load_bundle(run["model_id"], env["root"]))
+    directory = env["root"] / "runs" / run["run_id"]
+    directory.mkdir(parents=True)
+    (directory / "run.json").write_text(json.dumps(dict(output.summary, run_id=run["run_id"])), encoding="utf-8")
+    for name in ingest.LEGACY_TABLES:
+        getattr(output, name).to_parquet(directory / f"{name}.parquet", index=False)
+    (directory / ingest.LEGACY_MARKER).write_text(run["run_id"], encoding="utf-8")
+    with store.transaction() as db:
+        for table in RESULT_TABLES:
+            db.execute(f"DELETE FROM {table}")
+        db.execute("UPDATE runs SET summary = NULL")
+    assert client.get(url).status_code == 409 and client.get(url).json()["error_code"] == "run_output_missing"   # not imported yet
+
+    report = worker.reconcile(env["config"], store)
+    assert report["imported"] == [run["run_id"]] and report["output_missing"] == [lost["run_id"]]
+    assert client.get(url, params={"limit": 30}).json() == before                                # the same answers as before
+    assert client.get(f"{url}/{before['items'][0]['customer_id']}").json() == case_before
+    gone = client.get(f"{API}/runs/{lost['run_id']}").json()                                    # files gone: failed, never an empty success
     assert gone["status"] == "failed" and gone["error"]["error_code"] == "output_missing"
-    listed = {r["run_id"]: r["status"] for r in client.get(f"{API}/runs").json()["items"]}
-    assert listed[first["run_id"]] == "failed"
-    # and a restart finds the same thing for a run nobody has looked at
-    retried = retry.json()["run_id"]
-    shutil.rmtree(scoring.output_dir(env["root"], retried))
-    assert worker.reconcile(env["config"], store)["output_missing"] == [retried]
+    assert client.get(f"{API}/runs/{lost['run_id']}/customers").status_code == 409
+    again = worker.reconcile(env["config"], store)                                              # a second restart imports nothing twice
+    assert again["imported"] == [] and again["output_missing"] == [] and directory.is_dir()
 
 
 def test_a_failed_stage_fails_the_run_with_a_safe_error(client, env, written, monkeypatch):
@@ -449,7 +523,7 @@ def test_a_failed_stage_fails_the_run_with_a_safe_error(client, env, written, mo
     conforms("Run", failed)
     assert failed["status"] == "failed" and failed["error"]["error_code"] == "scoring_failed"
     assert "secret" not in json.dumps(failed) and "Users" not in json.dumps(failed)
-    assert not scoring.output_dir(env["root"], run["run_id"]).exists()
+    assert result_rows(Store(env["config"].database_url), run["run_id"]) == dict.fromkeys(RESULT_TABLES, 0)
 
 
 def test_two_workers_cannot_claim_the_same_run_and_duplicate_submissions_make_one_run(client, env, written):
@@ -552,7 +626,7 @@ def test_artifacts_move_to_another_root_without_stored_paths(client, env, writte
     shutil.copytree(env["root"], relocated)
     store = Store(env["config"].database_url)
     assert store.get_dataset(run["dataset_id"])["artifact_key"] == f"datasets/{run['dataset_id']}"      # no absolute path stored
-    assert store.get_run(run["run_id"])["output_key"] == f"runs/{run['run_id']}"
+    assert store.get_run(run["run_id"])["output_key"] is None                                           # results are rows, not files
     config = ServiceConfig(database_url=env["config"].database_url, artifact_root=relocated)
     with TestClient(create_app(config)) as moved:
         assert moved.get(f"{API}/health").json()["promoted_model_ready"]
@@ -565,7 +639,6 @@ def test_artifacts_move_to_another_root_without_stored_paths(client, env, writte
 
 # ------------------------------------------------------------------ gaps named by the serving review
 def test_upload_over_the_size_limit_is_refused_with_413(client, written, monkeypatch):
-    from arai.service import datasets
     monkeypatch.setattr(datasets, "MAX_UPLOAD_BYTES", 1000)
     manifest = (written["operational"] / "manifest.json").read_text(encoding="utf-8")
     response = client.post(f"{API}/datasets", data={"manifest": manifest}, files=upload_parts(written))
@@ -711,7 +784,10 @@ def test_the_published_experiment_matches_the_contract_and_the_offline_reports(e
     published.mkdir(parents=True)
     (published / "experiment.json").write_text(json.dumps(report))
     shutil.copyfile(REAL_EXPERIMENT / "published" / "truth.parquet", published / "truth.parquet")
+    store = Store(env["config"].database_url)
     with TestClient(create_app(env["config"])) as served:
+        assert served.get(f"{API}/experiments").json()["items"] == []       # published files are not served until they are loaded
+        assert ingest.sync_published(env["config"], store) == ["EXP-20261002-01"]      # the worker does this at startup
         listing = served.get(f"{API}/experiments").json()
         conforms("ExperimentSummaryPage", listing)
         assert "EXP-20261002-01" in [e["experiment_id"] for e in listing["items"]]
@@ -724,6 +800,7 @@ def test_the_published_experiment_matches_the_contract_and_the_offline_reports(e
         assert not {e["customer_id"] for e in truth["items"]} & {e["customer_id"] for e in second["items"]}
         assert served.get(f"{API}/experiments/EXP-TEST/truth").status_code == 404     # trained here but never published
         (published / "truth.parquet").unlink()                              # published without a truth export: an empty page
+        ingest.sync_published(env["config"], store)
         empty = served.get(f"{API}/experiments/EXP-20261002-01/truth").json()
         conforms("TruthPage", empty)
         assert empty["items"] == [] and empty["world_id"] is None and empty["next_cursor"] is None

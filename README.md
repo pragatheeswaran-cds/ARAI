@@ -8,8 +8,8 @@ It contains separate component requirements, acceptance criteria, bundled contra
 - [Decision provenance](final-spec/DECISIONS.md)
 - [Package verification](final-spec/verification/REPORT.md)
 
-The folder is at version 1.6 (amended 2026-10-02; see the amendment sections of the decision provenance).
-Copy the entire final-spec folder or the ARAI-final-spec-v1.6.zip archive to another system.
+The folder is at version 1.7 (amended 2026-10-05; see the amendment sections of the decision provenance).
+Copy the entire final-spec folder or the ARAI-final-spec-v1.7.zip archive to another system.
 After any edit to final-spec, run `uv run python scripts/spec_package.py` to rebuild its register and hashes.
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
@@ -73,13 +73,16 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
 - `src/arai/generator/` builds a synthetic world; `validation.py` checks an operational snapshot against the contract.
 - `src/arai/features.py` computes the 17 model features and the evidence; `modeling.py`, `evaluation.py`,
   `selection.py`, `experiment.py` train, evaluate and select; `ablation.py` measures the timing dependence.
-- `src/arai/bundles.py`, `publishing.py` and `src/arai/service/` are the serving side: immutable bundles, PostgreSQL
-  metadata, batch scoring, the worker and the API (`final-spec/contracts/openapi.yaml` is the contract).
+- `src/arai/bundles.py`, `publishing.py` and `src/arai/service/` are the serving side: immutable bundles, PostgreSQL,
+  batch scoring, the worker and the API (`final-spec/contracts/openapi.yaml` is the contract). Everything the API
+  serves is read from PostgreSQL: a run's results are written there in the transaction that marks it succeeded
+  (`run_customers`, `run_styles`, `run_skus`, `run_neighbors`, `run_timeline`, `run_customer_styles`), and the worker
+  loads the published experiment report and truth export at startup. Registered snapshots and model bundles stay files.
 - `web/` is the analyst UI.
 - `notebooks/` walk through generation, exploration and features. `records/` holds the dated development records,
   including the independent reviews and what was done about each. `reports/` holds summary tables and UI screenshots.
 - `data/` (ignored by git) receives generated worlds and artifacts: operational data under `data/artifacts/`,
-  private truth under `data/private/`.
+  private truth under `data/private/`. Scoring results are not there: they are rows in PostgreSQL.
 
 ### Results in one paragraph
 

@@ -72,3 +72,8 @@ Limits are unchanged: nothing is built or measured. The thresholds and distribut
 
 - The package verifier passes after the rebuild; the OpenAPI contract validates; 101 acceptance criteria.
 - Implementation evidence is recorded in the acceptance register for every criterion that was exercised; the criteria not exercised stay NOT_RUN or PARTIAL with the gap named. The specification package itself contains no code or results; they are in the code repository's records.
+
+## Amendment 1.7 checks (2026-10-05)
+
+- The package verifier passes after the rebuild; the OpenAPI contract is unchanged and validates; 103 acceptance criteria (STORE-AC-06 and STORE-AC-07 added).
+- The service tests run against PostgreSQL with no result file written: every response body still validates against the bundled OpenAPI schemas, and results imported from the files of an earlier run answer identically to results scored afresh.

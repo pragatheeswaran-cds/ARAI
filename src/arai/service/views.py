@@ -1,22 +1,18 @@
-"""Read models: published run files and experiment reports shaped as the API contract's schemas.
+"""Read models: run results and experiment reports shaped as the API contract's schemas.
 
-Everything here reads immutable files under the artifact root. Nothing is recomputed and no filter changes a
-score or a selection.
+Everything here is read from PostgreSQL (decision AM-39); no file is opened to answer a request. Results are
+written once when a run succeeds. Nothing is recomputed and no filter changes a score or a selection.
 """
 from __future__ import annotations
 
 import base64
-import functools
 import hashlib
 import json
 from datetime import datetime
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
 
 from arai import features as F
 from arai.service import scoring
+from arai.service.store import Store
 
 WARDROBING_LIMITATION = ("Timing pattern only. It cannot establish that an item was worn, and it is independent of the "
                          "model score.")
@@ -26,6 +22,7 @@ WARDROBING_LABELS = {
     "late_occasion_return": "A late return of occasion wear",
     "late_return_share": "At least half of item returns were late",
 }
+CASE_STYLES, STYLE_CUSTOMERS, SOURCE_REFS = 12, 50, 20
 
 
 class BadCursor(Exception):
@@ -74,71 +71,32 @@ def decode_cursor(cursor: str | None, context: dict, kind: str):
     return position
 
 
-# ------------------------------------------------------------------ published run files
-@functools.lru_cache(maxsize=4)
-def _customers(directory: str) -> pd.DataFrame:
-    return pd.read_parquet(Path(directory) / "customers.parquet").sort_values("queue_position").reset_index(drop=True)
-
-
-@functools.lru_cache(maxsize=4)
-def _table(directory: str, name: str) -> pd.DataFrame:
-    return pd.read_parquet(Path(directory) / f"{name}.parquet")
-
-
-@functools.lru_cache(maxsize=16)
-def run_summary(directory: str) -> dict:
-    return json.loads((Path(directory) / "run.json").read_text(encoding="utf-8"))
-
-
+# ------------------------------------------------------------------ run results
 def _number(value):
-    return None if value is None or pd.isna(value) else float(value)
+    return None if value is None else float(value)
 
 
 def _integer(value):
-    return None if value is None or pd.isna(value) else int(value)
+    return None if value is None else int(value)
 
 
-def customer_item(row, dispositions: dict) -> dict:
+def customer_item(row: dict, latest_disposition: str | None) -> dict:
     return {
         "customer_id": row["customer_id"], "eligibility_status": row["eligibility_status"],
         "raw_score": _number(row["raw_score"]), "risk_score": _number(row["risk_score"]), "rank": _integer(row["rank"]),
         "selected_for_review": bool(row["selected_for_review"]), "baseline_rank": _integer(row["baseline_rank"]),
         "baseline_selected": bool(row["baseline_selected"]),
         "support_counts": {name: int(row[name]) for name in scoring.SUPPORT},
-        "evidence_tags": [tag for tag in str(row["evidence_tags"] or "").split("|") if tag],
-        "wardrobing_status": row["wardrobing_status"], "latest_disposition": dispositions.get(row["customer_id"]),
+        "evidence_tags": list(row["evidence_tags"]),
+        "wardrobing_status": row["wardrobing_status"], "latest_disposition": latest_disposition,
     }
 
 
-def customer_queue(directory: Path, filters: dict, dispositions: dict, after: int | None, limit: int) -> tuple:
+def customer_queue(store: Store, run: dict, filters: dict, after: int | None, limit: int) -> tuple:
     """(items, next position). Order: rank, then unranked customers by identifier. Filters only choose what is shown."""
-    frame = _customers(str(directory))
-    mask = np.ones(len(frame), dtype=bool)
-    if filters["review_only"]:
-        mask &= frame["selected_for_review"].to_numpy()
-    if filters["eligibility"] != "all":
-        mask &= (frame["eligibility_status"] == filters["eligibility"]).to_numpy()
-    if filters["search"]:
-        mask &= frame["customer_id"].str.contains(filters["search"], case=False, regex=False).to_numpy()
-    if filters["evidence"]:
-        mask &= frame["evidence_tags"].fillna("").str.split("|").map(lambda tags: filters["evidence"] in tags).to_numpy()
-    selected, baseline = frame["selected_for_review"].to_numpy(), frame["baseline_selected"].to_numpy()
-    comparison = filters["comparison"]
-    if comparison == "model_only":
-        mask &= selected & ~baseline
-    elif comparison == "baseline_only":
-        mask &= baseline & ~selected
-    elif comparison == "both":
-        mask &= selected & baseline
-    if filters["disposition"] != "all":
-        latest = frame["customer_id"].map(dispositions)
-        mask &= latest.isna().to_numpy() if filters["disposition"] == "unreviewed" else (latest == filters["disposition"]).to_numpy()
-    if after is not None:
-        mask &= (frame["queue_position"] > after).to_numpy()
-    page = frame[mask].head(limit + 1)
-    items = [customer_item(row, dispositions) for _, row in page.head(limit).iterrows()]
-    following = int(page.iloc[limit - 1]["queue_position"]) if len(page) > limit else None
-    return items, following
+    rows = store.run_customers(run["id"], run["world_id"], filters, after, limit + 1)
+    items = [customer_item(row, row["latest_disposition"]) for row in rows[:limit]]
+    return items, (rows[limit - 1]["queue_position"] if len(rows) > limit else None)
 
 
 def _signal(code, label, value, denominator, unit, refs=()) -> dict:
@@ -146,7 +104,7 @@ def _signal(code, label, value, denominator, unit, refs=()) -> dict:
             "source_refs": list(refs)}
 
 
-def _style_item(row) -> dict:
+def _style_item(row: dict) -> dict:
     return {
         "style_id": row["style_id"], "category": row["category"], "state": row["state"],
         "mature_sale_lines": int(row["mature_sale_lines"]), "purchased_units": int(row["purchased_units"]),
@@ -158,21 +116,19 @@ def _style_item(row) -> dict:
     }
 
 
-def customer_case(directory: Path, customer_id: str) -> dict | None:
-    """Evidence for one customer of the run: measured values with their denominators and source keys, no verdict."""
-    frame = _customers(str(directory))
-    match = frame[frame["customer_id"] == customer_id]
-    if match.empty:
-        return None
-    row = match.iloc[0]
-    timeline = _table(str(directory), "timeline")
-    events = timeline[timeline["customer_id"] == customer_id]
-    claims = events.loc[events["event_type"] == "transaction_claim", "source_ref"].tolist()
-    returns = events.loc[events["event_type"] != "purchase", "source_ref"].tolist()
-    return_lines = int(len(returns))
+def customer_case(store: Store, run_id: str, customer: dict) -> dict:
+    """Evidence for one customer of the run: measured values with their denominators and source keys, no verdict.
+
+    `customer` is the customer's result row; its `measures` hold every value that has no column of its own.
+    """
+    customer_id = customer["customer_id"]
+    row = {**customer["measures"], **customer}
+    events = store.run_timeline(run_id, customer_id)
+    claims = [e["source_ref"] for e in events if e["event_type"] == "transaction_claim"]
+    returns = [e["source_ref"] for e in events if e["event_type"] != "purchase"]
     signals = [
         _signal("mature_requested_units", "Units requested for return on mature sale lines", row["mature_requested_units"],
-                row["mature_purchased_units"], "units of mature purchased units", returns[:20]),
+                row["mature_purchased_units"], "units of mature purchased units", returns[:SOURCE_REFS]),
         _signal("expected_requested_units", "Units a customer buying the same products would be expected to request",
                 row["expected_units"], row["mature_purchased_units"], "units of mature purchased units"),
         _signal("raw_return_rate", "Return rate on mature sale lines", row["raw_return_rate"], None, "share"),
@@ -180,7 +136,7 @@ def customer_case(directory: Path, customer_id: str) -> dict | None:
         _signal("residual_z", "Requested above expected, scaled by volume (heuristic, not a significance test)", row["residual_z"],
                 None, "score"),
         _signal("claim_lines", "Transaction-claim lines (not received, wrong item, missing parts, empty package)", row["claim_lines"],
-                return_lines, "of return lines", claims[:20]),
+                len(returns), "of return lines", claims[:SOURCE_REFS]),
         _signal("claim_share", "Share of requested units that are transaction claims", row["claim_share"], row["all_requested_units"],
                 "share of requested units"),
         _signal("coordinated_claim_share", "Own claim lines matched by a linked account on the same style within 7 days",
@@ -198,12 +154,6 @@ def customer_case(directory: Path, customer_id: str) -> dict | None:
                 row["max_identifier_fanout"], None, "accounts"),
         _signal("open_window_share", "Delivered units whose return window is still open", row["open_window_share"], None, "share"),
     ]
-    neighbors = _table(str(directory), "neighbors")
-    neighbors = neighbors[neighbors["customer_id"] == customer_id]
-    styles = _table(str(directory), "styles").set_index("style_id", drop=False)
-    own = _table(str(directory), "customer_styles")
-    own = own[own["customer_id"] == customer_id].sort_values(["linked_claim_lines", "claim_lines", "requested_units", "style_id"],
-                                                              ascending=[False, False, False, True]).head(12)
     wardrobing_signals = [
         _signal(name, WARDROBING_LABELS[name], row["late_return_share"] if name == "late_return_share" else
                 (row["late_occasion_return_lines"] if name == "late_occasion_return" else row["late_return_lines"]),
@@ -211,43 +161,27 @@ def customer_case(directory: Path, customer_id: str) -> dict | None:
                 "share of item-return lines" if name == "late_return_share" else "of item-return lines")
         for name in F.WARDROBING_POINTS if bool(row["fired_" + name])]
     return {
-        "customer": row, "signals": signals,
+        "signals": signals,
         "timeline": [{"source_ref": e["source_ref"], "event_type": e["event_type"], "observed_at": e["observed_at"],
-                      "description": e["description"], "amount_inr": _number(e["amount_inr"]),
-                      "style_id": e["style_id"] if pd.notna(e["style_id"]) else None, "sku": e["sku"] if pd.notna(e["sku"]) else None}
-                     for _, e in events.iterrows()],
-        "neighbors": [{"customer_id": n["neighbor_id"], "shared_types": [t for t in n["shared_types"].split("|") if t],
+                      "description": e["description"], "amount_inr": _number(e["amount_inr"]), "style_id": e["style_id"],
+                      "sku": e["sku"]} for e in events],
+        "neighbors": [{"customer_id": n["neighbor_id"], "shared_types": list(n["shared_types"]),
                        "shared_value_count": int(n["shared_value_count"]), "supported": bool(n["supported"]),
                        "max_value_fanout": int(n["max_value_fanout"]), "coordinated_claim_matches": int(n["coordinated_claim_matches"])}
-                      for _, n in neighbors.iterrows()],
-        "styles": [_style_item(styles.loc[s]) for s in own["style_id"] if s in styles.index],
+                      for n in store.run_neighbors(run_id, customer_id)],
+        "styles": [_style_item(style) for style in store.run_customer_styles(run_id, customer_id, CASE_STYLES)],
         "wardrobing": {"status": row["wardrobing_status"], "indicator_score": _integer(row["indicator_score"]),
                        "signals": wardrobing_signals, "limitation": WARDROBING_LIMITATION},
     }
 
 
-def style_queue(directory: Path, state: str, after: str | None, limit: int) -> tuple:
-    frame = _table(str(directory), "styles").sort_values("style_id")
-    if state != "all":
-        frame = frame[frame["state"] == state]
-    if after is not None:
-        frame = frame[frame["style_id"] > after]
-    page = frame.head(limit + 1)
-    items = [_style_item(row) for _, row in page.head(limit).iterrows()]
-    return items, (page.iloc[limit - 1]["style_id"] if len(page) > limit else None)
+def style_queue(store: Store, run_id: str, state: str, after: str | None, limit: int) -> tuple:
+    rows = store.run_styles(run_id, state, after, limit + 1)
+    return [_style_item(row) for row in rows[:limit]], (rows[limit - 1]["style_id"] if len(rows) > limit else None)
 
 
-def style_detail(directory: Path, style_id: str) -> dict | None:
-    styles = _table(str(directory), "styles")
-    match = styles[styles["style_id"] == style_id]
-    if match.empty:
-        return None
-    row = match.iloc[0]
-    skus = _table(str(directory), "skus")
-    skus = skus[skus["style_id"] == style_id].sort_values("sku")
-    linked = _table(str(directory), "customer_styles")
-    linked = linked[linked["style_id"] == style_id].sort_values(["linked_claim_lines", "claim_lines", "requested_units", "customer_id"],
-                                                                ascending=[False, False, False, True]).head(50)
+def style_detail(store: Store, run_id: str, style_id: str) -> dict:
+    row = store.run_style(run_id, style_id)
     signals = [
         _signal("requested_units", "Units requested for return on mature sale lines", row["requested_units"], row["purchased_units"],
                 "units of mature purchased units"),
@@ -263,29 +197,13 @@ def style_detail(directory: Path, style_id: str) -> dict | None:
             "skus": [{"sku": s["sku"], "style_id": s["style_id"], "size": str(s["size"]), "colour": str(s["colour"]),
                       "unit_price_inr": float(s["unit_price"]), "mature_sale_lines": int(s["mature_sale_lines"]),
                       "purchased_units": int(s["purchased_units"]), "requested_units": int(s["requested_units"]),
-                      "support_status": s["support_status"]} for _, s in skus.iterrows()],
-            "customer_ids": linked["customer_id"].tolist(), "signals": signals}
+                      "support_status": s["support_status"]} for s in store.run_style_skus(run_id, style_id)],
+            "customer_ids": store.run_style_customers(run_id, style_id, STYLE_CUSTOMERS), "signals": signals}
 
 
-def has_customer(directory: Path, customer_id: str) -> bool:
-    frame = _customers(str(directory))
-    return bool((frame["customer_id"] == customer_id).any())
-
-
-# ------------------------------------------------------------------ experiment reports (published offline)
-def experiment_report(artifact_root: Path, report_key: str) -> dict:
-    return json.loads((Path(artifact_root) / report_key).read_text(encoding="utf-8"))
-
-
-def truth_page(artifact_root: Path, experiment_id: str, after: int | None, limit: int) -> tuple:
-    """Synthetic truth for the demonstration world, exported offline for the evaluation page only."""
-    path = Path(artifact_root) / "experiments" / experiment_id / "published" / "truth.parquet"
-    if not path.is_file():
-        return [], None, None
-    frame = pd.read_parquet(path)
-    start = 0 if after is None else after
-    page = frame.iloc[start:start + limit]
-    items = [{"customer_id": r["customer_id"], "y_abuse": int(r["y_abuse"]),
-              "action_types": [t for t in str(r["action_types"]).split("|") if t]} for _, r in page.iterrows()]
-    world = str(frame["customer_id"].iloc[0]).rsplit("-", 1)[0] if len(frame) else None
-    return items, (start + limit if start + limit < len(frame) else None), world
+# ------------------------------------------------------------------ experiment truth (published offline, synthetic only)
+def truth_page(store: Store, experiment: dict, after: int | None, limit: int) -> tuple:
+    """(items, next position, world) of the demonstration world's synthetic truth, for the evaluation page only."""
+    rows = store.experiment_truth(experiment["id"], after, limit + 1)
+    items = [{"customer_id": r["customer_id"], "y_abuse": int(r["y_abuse"]), "action_types": list(r["action_types"])} for r in rows[:limit]]
+    return items, (rows[limit]["position"] if len(rows) > limit else None), experiment["truth_world_id"]

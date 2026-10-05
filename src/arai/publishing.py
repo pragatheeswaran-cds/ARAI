@@ -5,7 +5,8 @@ Runs after selection (and after the final test, if there was one). It writes
 - the active pointer;
 - `published/experiment.json`, the experiment report in the API's shape, and a labelled synthetic truth export
   for the evaluation page.
-The serving process reads these files under the artifact root and never opens the private truth root.
+The worker loads the report and the truth export into PostgreSQL at startup; the API reads them from there
+(decision AM-39). Serving never opens the private truth root.
 """
 from __future__ import annotations
 
@@ -200,7 +201,8 @@ def export_truth(experiment_dir: Path, demo_world: str, private_root: Path | Non
     private = Path(private_root or paths.PRIVATE_TRUTH_ROOT) / demo_world
     truth = pd.read_parquet(private / "customer_truth.parquet")
     kinds = truth[list(ACTION_TYPES)].apply(lambda row: "|".join(a for a in ACTION_TYPES if row[a]), axis=1)
-    out = pd.DataFrame({"customer_id": truth["customer_id"], "y_abuse": truth["y_abuse"].astype(int), "action_types": kinds})
+    out = pd.DataFrame({"world_id": demo_world, "customer_id": truth["customer_id"], "y_abuse": truth["y_abuse"].astype(int),
+                        "action_types": kinds})
     out = out.sort_values(["y_abuse", "customer_id"], ascending=[False, True]).reset_index(drop=True)
     target = Path(experiment_dir) / "published" / "truth.parquet"
     target.parent.mkdir(parents=True, exist_ok=True)
