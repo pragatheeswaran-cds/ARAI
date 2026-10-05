@@ -76,7 +76,7 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
 ### Where things are
 
 - `src/arai/generator/` builds a synthetic world; `validation.py` checks an operational snapshot against the contract.
-- `src/arai/features.py` computes the 17 model features and the evidence; `modeling.py`, `evaluation.py`,
+- `src/arai/features.py` computes the 43 model features and the evidence; `modeling.py`, `evaluation.py`,
   `selection.py`, `experiment.py` train, evaluate and select; `ablation.py` measures what the result depends on
   and which honest groups are sent for review; `contract.py` reads the numbers the specification fixes.
 - `src/arai/bundles.py`, `publishing.py` and `src/arai/service/` are the serving side: immutable bundles, PostgreSQL,
@@ -92,13 +92,20 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
 
 ### Results in one paragraph
 
-On five untouched simulated test worlds the selected model (boosted trees) is right about 71.5% of the customers
-it sends for review at a 5% review budget, against 23.9% for a return-rate rule and about 35% for a hand-written
-rulebook (validation). The gap is the result, not the level: the level follows how often simulated abusers act
-(52% to 85% across the stress worlds, with the rule at 14% to 44%). Two signals carry the model, claims and late
-returns; on training worlds it reaches 55% without the claim features, 56% without the timing features and 38%
-without both. Honest customers whose deliveries genuinely failed more than once are sent for review more often by
-the model than by the rule (15.8% against 6.7%), and the gate has no check for them. The development target of
-75-85% for the best model was not met (69% on training worlds) and stays open; a new experiment on branch `v3`
-adds a gate check for those honest repeat claimants. This is a result about one simulation, not about real
-returns. See `records/2026-10-02-final-test.md` and `records/2026-10-05-principal-ml-review.md`.
+Two experiments have been run; the second (EXP-20261005-02, branch `v3`) is the published one.
+
+On five untouched simulated test worlds its selected model (boosted trees, 43 features) is right about 73.7% of
+the customers it sends for review at a 5% review budget, against 24.0% for a return-rate rule and about 37% for a
+hand-written rulebook (validation). It passed a four-leg gate: it reviews honest heavy returners, defective-product
+buyers, household members and customers whose deliveries genuinely failed more than once no more often than the
+rule does. That last group is the one the first experiment's model reviewed more than twice as often as the rule
+(15.8% against 6.7%); here it is 4.5% against 5.3% on the test worlds.
+
+The gap is the result, not the level: the level follows how often simulated abusers act (56% to 87% across the
+stress worlds, with the rule at 14% to 44%). Two signal families carry the model, claims and return timing; on
+training worlds it reaches 63% without the claim features, 59% without the timing features and 38% without both.
+The model was trained to weigh honest repeat claimants more heavily, which uses simulation truth that real data
+would not have. The development target of 75-85% is met on the out-of-fold training scores it is defined on (79%
+best candidate, 77% selected) and not on validation or test (73.7%). This is a result about one simulation, not
+about real returns. See `records/2026-10-05-experiment-2.md`; the first experiment (71.5% against 23.9%, three-leg
+gate) is in `records/2026-10-02-final-test.md` and its review in `records/2026-10-05-principal-ml-review.md`.

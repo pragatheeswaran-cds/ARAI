@@ -40,7 +40,7 @@
     {
       "check": "no training, refund, block or delete control exists",
       "ok": true,
-      "detail": "validate and register score with the active bundle view results view results view results retry with the same dataset an"
+      "detail": "validate and register score with the active bundle score with the active bundle view results view results view results r"
     },
     {
       "check": "upload refuses a wrong file set before sending",
@@ -55,7 +55,7 @@
     {
       "check": "queue route carries the run",
       "ok": true,
-      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers"
+      "detail": "http://127.0.0.1:8011/runs/run-a92d2ec74975454e8114/customers"
     },
     {
       "check": "queue opens on the review set",
@@ -70,7 +70,7 @@
     {
       "check": "keyboard filter change updates the address",
       "ok": true,
-      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers?show=all"
+      "detail": "http://127.0.0.1:8011/runs/run-a92d2ec74975454e8114/customers?show=all"
     },
     {
       "check": "comparison filter lists rule-only selections",
@@ -80,7 +80,7 @@
     {
       "check": "search by identifier finds the customer",
       "ok": true,
-      "detail": "W2401-C06860"
+      "detail": "W3401-C04266"
     },
     {
       "check": "queue shows no truth",
@@ -90,7 +90,7 @@
     {
       "check": "case opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers/W2401-C06860"
+      "detail": "http://127.0.0.1:8011/runs/run-a92d2ec74975454e8114/customers/W3401-C04266"
     },
     {
       "check": "case shows observed and expected with denominators",
@@ -115,17 +115,17 @@
     {
       "check": "case tab timeline opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers/W2401-C06860?tab=timeline"
+      "detail": "http://127.0.0.1:8011/runs/run-a92d2ec74975454e8114/customers/W3401-C04266?tab=timeline"
     },
     {
       "check": "case tab relationships opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers/W2401-C06860?tab=relationships"
+      "detail": "http://127.0.0.1:8011/runs/run-a92d2ec74975454e8114/customers/W3401-C04266?tab=relationships"
     },
     {
       "check": "case tab notes opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers/W2401-C06860?tab=notes"
+      "detail": "http://127.0.0.1:8011/runs/run-a92d2ec74975454e8114/customers/W3401-C04266?tab=notes"
     },
     {
       "check": "note appended and shown with its origin run",
@@ -165,7 +165,7 @@
     {
       "check": "browser back returns to the style",
       "ok": true,
-      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/styles/BA-SHT-03"
+      "detail": "http://127.0.0.1:8011/runs/run-a92d2ec74975454e8114/styles/BB-TSH-02"
     },
     {
       "check": "evaluation shows selection separately from the final test",
@@ -188,12 +188,17 @@
       "detail": ""
     },
     {
-      "check": "evaluation leads with both dependences and the honest group the model reviews more often",
+      "check": "evaluation leads with both dependences and says how honest repeat claimants are treated",
       "ok": true,
       "detail": ""
     },
     {
       "check": "evaluation shows honest-group review rates and the stress worlds",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the scorecard shows every gate group of the experiment",
       "ok": true,
       "detail": ""
     },
@@ -233,6 +238,6 @@
       "detail": "[]"
     }
   ],
-  "passed": 46,
+  "passed": 47,
   "failed": 0
 }
