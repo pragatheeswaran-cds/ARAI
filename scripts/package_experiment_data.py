@@ -1,6 +1,7 @@
 """Package the synthetic data of one finished experiment for sharing: data, the configuration that produced it, and its truth.
 
     uv run python scripts/package_experiment_data.py --experiment EXP-20261005-02 --guide docs/experiment-2-data-guide.md
+    uv run python scripts/package_experiment_data.py --experiment EXP-20261005-04 --guide docs/experiment-4-data-guide.md
 
 It reads the experiment's own records to find its worlds and the commit of its contract, checks every file it
 packs against the hashes recorded when the world was written, and writes zip files under data/exports/<experiment>/
@@ -125,8 +126,8 @@ def verify_configuration(extracted: Path, manifests: dict) -> None:
             checked += 1
     if not checked:
         raise SystemExit("the configuration at this commit reproduces the configuration hash of none of the worlds; wrong commit?")
-    print(f"configuration verified: it reproduces the recorded configuration hash of {checked} of {len(manifests)} worlds "
-          "(the others were generated under another experiment contract with the same generator settings)")
+    others = "" if checked == len(manifests) else " (the others were generated under another experiment contract with the same generator settings)"
+    print(f"configuration verified: it reproduces the recorded configuration hash of {checked} of {len(manifests)} worlds{others}")
 
 
 def write_zip(path: Path, entries: list, stored: tuple = (".parquet", ".skops")) -> dict:

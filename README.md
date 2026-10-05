@@ -144,11 +144,14 @@ experiments 1 to 3 is kept untouched, with a copy of experiments 1 and 2 under `
 
 ### Sharing data and where the project stands
 
-- `docs/experiment-2-data-guide.md` explains the synthetic data of experiment 2: the worlds, the seven operational
-  tables, the truth tables, the configuration that produced them and where the simulation is kinder than reality.
-- `uv run python scripts/package_experiment_data.py --experiment EXP-20261005-02 --guide docs/experiment-2-data-guide.md`
-  writes the data, its truth, its configuration and the guide as zip archives under `data/exports/` (not in git),
-  after checking every file against the hashes recorded when the world was written.
+- `docs/experiment-2-data-guide.md` and `docs/experiment-4-data-guide.md` explain the synthetic data of experiments 2
+  and 4: the worlds, the seven operational tables, the truth tables, the configuration that produced them and
+  where the simulation is kinder than reality. The experiment 4 data also has four stress worlds with the less
+  generous behaviour.
+- `uv run python scripts/package_experiment_data.py --experiment EXP-20261005-04 --guide docs/experiment-4-data-guide.md`
+  (or `EXP-20261005-02` with its guide) writes the data, its truth, its configuration and the guide as zip
+  archives under `data/exports/<experiment>/` (not in git), after checking every file against the hashes recorded
+  when the world was written. Both packages have been built.
 - `records/2026-10-05-status-and-open-decisions.md` is the current state of the four experiments and the decisions
   still to be taken.
 - `docs/experiment-4-verification-guide.md` says what was done in experiment 4 and how to check it;

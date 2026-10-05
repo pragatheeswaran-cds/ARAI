@@ -13,6 +13,7 @@ specification 4.0, AM-51 to AM-54). The rest of this record describes the state 
 | Where | `data/EXP-20261005-04/` (artifacts, private, postgres). Nothing in `data/artifacts`, `data/private` or `data/postgres` was modified |
 | Served by this branch | Experiment 4: bundle `m-7f2dafb5f8101da88c6859e7`, demonstration world W5401. Experiment 2 stays published in the old folder and is demonstrated from commit `b157edf` |
 | Tests | 189 Python tests and 14 front-end tests pass; browser walkthrough 47 of 47 |
+| Package for the team | `data/exports/EXP-20261005-04/`: five archives (679 MB) with `DATA-GUIDE.md`, built by `scripts/package_experiment_data.py`; guide source `docs/experiment-4-data-guide.md` |
 
 What the answers settled and what they opened:
 
