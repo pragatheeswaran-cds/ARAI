@@ -1,7 +1,8 @@
 # Experiment 4: what was done and how to verify it
 
 Written on 2026-10-05 for the project owner, to check the work later without having to trust the summary.
-Everything here can be checked from the repository at commit `696ab2d` or later, on branch `v3`. Commands are for
+Everything here can be checked from the repository at commit `696ab2d` or later, on branch `v4` (cut from `v3`,
+which holds the same commits). Commands are for
 PowerShell from the repository root; `uv run --no-sync` avoids touching the environment.
 
 ## 1. What you asked for and what was done

@@ -15,7 +15,7 @@ ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
 Existing code/synthetic-data assets remain preserved; the final package bundles the required inputs.
 
-## Code (branch `v1`)
+## Code (branch `v4`)
 
 The Python side is managed with [uv](https://docs.astral.sh/uv/); every dependency lives in the project's `.venv`.
 The web side is a React/Vite app under `web/`.
