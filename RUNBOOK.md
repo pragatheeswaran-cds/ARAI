@@ -158,7 +158,7 @@ Expected:
 | You see | Meaning |
 |---|---|
 | no answer | the server is not running |
-| `scoring_ready: false` | no valid model bundle, or the worker has stopped: restart; if it persists run `uv run arai publish --demo-world W3401` |
+| `scoring_ready: false` | no valid model bundle, or the worker has stopped: restart; if it persists run `uv run arai publish --experiment EXP-20261005-02 --demo-world W3401` |
 | `promoted_model_ready: false`, `model_kind: baseline_fallback` | only the return-rate baseline is active; the UI shows a banner saying why |
 | `worker_seconds_since_seen` is `null` or keeps growing while `queue_depth` is above 0 | no scoring worker is running: restart (local), or `docker compose restart worker` |
 
@@ -220,8 +220,9 @@ The numbers are frozen records, not something to re-run:
 
 - `data\artifacts\experiments\EXP-20261005-02\selection.json`: selected model and `final_test_status`.
 - `data\artifacts\experiments\EXP-20261005-02\reports\`: `dry_run.json`, `validation.json`, `test.json`, and
-  the two that may be rerun at any time because they read only training and stress worlds: `ablation.json`
-  (`uv run --no-sync arai ablation`) and `stress.json` (`uv run --no-sync arai stress`). Publish again afterwards.
+  `ablation.json` and `stress.json`. They are closed records: the contract in this repository now describes
+  experiment 3 (EXP-20261005-03), and the offline steps refuse to run for an experiment of an earlier contract.
+  Experiment 3's own records are in `data\artifacts\experiments\EXP-20261005-03\`.
 - The same figures are on the **Evaluation** page and in `records\2026-10-02-final-test.md`.
 
 **Do not run `arai train`, `arai dry-run`, `arai select` or `arai test` again for this experiment.** The code
@@ -241,9 +242,9 @@ or 2301-2305.
 | A run shows **failed / output_missing** | it was scored by an earlier version and its result files were deleted before they were loaded into the database | press **Retry**; it creates a new run with the same dataset and model |
 | A run shows **interrupted** | the server stopped while scoring | press **Retry** |
 | A run carries a warning that scores or inputs are outside training | the snapshot differs from the training worlds | expected for unusual data; treat percentiles and the review list with caution |
-| A run warns that the scoring code differs from the published bundle | code changed after `arai publish` | `uv run --no-sync arai publish --demo-world W3401`, restart, score again |
+| A run warns that the scoring code differs from the published bundle | code changed after `arai publish` | `uv run --no-sync arai publish --experiment EXP-20261005-02 --demo-world W3401`, restart, score again |
 | `arai publish` says the feature code no longer reproduces the training features | `features.py` changed in a way that changes values | restore the code, or train a new experiment on fresh seeds |
-| Banner: baseline only | no promoted model is active | `uv run --no-sync arai publish --demo-world W3401`, then restart |
+| Banner: baseline only | no promoted model is active | `uv run --no-sync arai publish --experiment EXP-20261005-02 --demo-world W3401`, then restart |
 | Evaluation page is empty after `arai publish` | the report is loaded into the database when the worker starts | restart (local), or `docker compose restart worker` |
 | `web/dist is missing` at start | UI not built | `cd web; npm install; npm run build` |
 | Docker: `POSTGRES_PASSWORD is missing a value` | no `.env` | copy `.env.example` to `.env` and set it |

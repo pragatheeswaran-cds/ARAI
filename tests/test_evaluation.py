@@ -272,3 +272,18 @@ def test_the_final_test_runs_once_and_survives_a_crash_between_its_two_records(t
     with pytest.raises(RuntimeError, match="differs from the one frozen"):
         experiment.final_test("EXP-T", artifact_root=tmp_path)
     assert not (out / "reports" / "test.json").exists()
+
+
+def test_offline_steps_refuse_an_experiment_recorded_under_another_contract(tmp_path):
+    """They read the worlds, candidates and gate of the current contract, so they would overwrite an older record wrongly."""
+    from arai import ablation
+    out = tmp_path / "experiments" / "EXP-OLD"
+    (out / "reports").mkdir(parents=True)
+    (out / "config.json").write_text(json.dumps({"experiment_id": "EXP-OLD", "experiment_config_sha256": "0" * 64}))
+    (out / "reports" / "dry_run.json").write_text("{}")
+    for step in (experiment.train, experiment.dry_run, experiment.stress, experiment.validate, experiment.final_test):
+        with pytest.raises(RuntimeError, match="another experiment contract"):
+            step("EXP-OLD", artifact_root=tmp_path)
+    with pytest.raises(RuntimeError, match="another experiment contract"):
+        ablation.run("EXP-OLD", artifact_root=tmp_path)
+    assert (out / "reports" / "dry_run.json").read_text() == "{}" and not (out / "reports" / "ablation.json").exists()

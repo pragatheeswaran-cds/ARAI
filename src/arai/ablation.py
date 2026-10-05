@@ -13,7 +13,7 @@ import json
 
 import pandas as pd
 
-from arai import evaluation, modeling
+from arai import evaluation, experiment, modeling
 from arai.settings import load_settings
 
 # every feature that reads when in the return window items come back, and every feature that reads transaction claims
@@ -99,6 +99,7 @@ def run(experiment_id: str, candidate_id: str | None = None, artifact_root=None,
     settings = load_settings()
     out = modeling.experiment_dir(experiment_id, artifact_root)
     worlds = [f"W{s}" for s in settings.experiment["train_seeds"]]
+    experiment.require_current_contract(out, settings)
     candidate_id = candidate_id or default_candidate(out)
     registered = next(c for c in modeling.candidates(settings) if c.id == candidate_id)
     if not registered.supervised:

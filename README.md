@@ -45,19 +45,25 @@ Only `data/artifacts` is mounted into the containers. `data/private` (simulation
 ### Offline pipeline, in order
 
 ```
-uv run arai generate --seed 2001 2002 2003 3101 ... 3110 2501 ... 2507   # development worlds
+uv run arai generate --seed 4101 ... 4110 4501 ... 4507   # development worlds of the current contract (experiment 3)
 uv run arai train                          # freeze features, fit five candidates and two references
 uv run arai dry-run                        # gate dry run and calibration check, before any validation world
 uv run arai ablation                       # what the result depends on, and which honest groups are reviewed (training worlds)
 uv run arai stress                         # the frozen models on the stress worlds; diagnostic, selects nothing
-uv run arai generate --seed 3201 ... 3205  # validation worlds
+uv run arai generate --seed 4201 ... 4205  # validation worlds
 uv run arai select                         # apply the gate, freeze the selection
-uv run arai generate --seed 3301 ... 3305  # test worlds
+uv run arai generate --seed 4301 ... 4305  # test worlds
 uv run arai test                           # the final test: runs once
-uv run arai generate --seed 3401           # demonstration world
-uv run arai publish --demo-world W3401     # bundles, active pointer, published experiment report
-uv run arai register data/artifacts/worlds/W3401/operational   # or upload through the UI
+uv run arai generate --seed 4401           # demonstration world
+uv run arai publish --demo-world W4401     # bundles, active pointer, published experiment report
+uv run arai register data/artifacts/worlds/W4401/operational   # or upload through the UI
 ```
+
+Every command defaults to the experiment named in `final-spec/contracts/experiment.yaml` (now EXP-20261005-03). An
+experiment recorded under an earlier contract is a closed record: train, dry-run, ablation, stress, select and
+test refuse to run for it, and `arai generate` refuses to overwrite a world that an earlier simulator or contract
+produced. `arai publish --experiment EXP-20261005-02 --demo-world W3401` republishes the published experiment
+from its records.
 
 The order is enforced in code: training and the dry run refuse to run once validation worlds exist, selection
 needs a recorded dry run, and the test needs a frozen selection and runs once. `ablation` and `stress` read only
@@ -92,7 +98,8 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
 
 ### Results in one paragraph
 
-Two experiments have been run; the second (EXP-20261005-02, branch `v3`) is the published one.
+Three experiments have been run. The second (EXP-20261005-02) is the published one; the third reran the same method on a
+less generous simulator.
 
 On five untouched simulated test worlds its selected model (boosted trees, 43 features) is right about 73.7% of
 the customers it sends for review at a 5% review budget, against 24.0% for a return-rate rule and about 37% for a
@@ -109,3 +116,11 @@ would not have. The development target of 75-85% is met on the out-of-fold train
 best candidate, 77% selected) and not on validation or test (73.7%). This is a result about one simulation, not
 about real returns. See `records/2026-10-05-experiment-2.md`; the first experiment (71.5% against 23.9%, three-leg
 gate) is in `records/2026-10-02-final-test.md` and its review in `records/2026-10-05-principal-ml-review.md`.
+
+The third experiment (EXP-20261005-03) asked how much of this survives a less generous simulation, in which honest
+customers often return late and abusers act less often. With the same features, candidates and gate it passed its
+final test at 54.8% against 18.6% for the rule. The level fell by a quarter; the ratio to the rule stayed at about
+three. Temporary-use detection lost most of its recall (76% to 37%) and the wardrobing indicator stopped being
+usable (13.5% precision), because a late return no longer tells honest customers from abusers. It is recorded and
+not published: `records/2026-10-05-experiment-3.md`. All data of the first two experiments is kept untouched and
+copied under `data/backups/`.
