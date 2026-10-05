@@ -22,6 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from arai import bundles
@@ -168,7 +169,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if stop:
             stop.set()
 
-    app = FastAPI(title="ARAI development API", version="1.2.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title="ARAI development API", version="1.3.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(CORSMiddleware, allow_origins=list(config.ui_origins), allow_methods=["GET", "POST"],
                        allow_headers=["content-type"], allow_credentials=False)
@@ -181,8 +182,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     async def request_context(request: Request, call_next):
         request.state.request_id = uuid.uuid4().hex
         if credentials and request.method != "OPTIONS":
-            supplied = request.headers.get("authorization", "")
-            expected = "Basic " + base64.b64encode(f"{credentials[0]}:{credentials[1]}".encode()).decode()
+            supplied = request.headers.get("authorization", "").encode("latin-1", errors="replace")
+            expected = b"Basic " + base64.b64encode(f"{credentials[0]}:{credentials[1]}".encode())
             if not secrets.compare_digest(supplied, expected):
                 return error_response(401, "authentication_required", "Shared login required.", request.state.request_id,
                                       headers={"WWW-Authenticate": 'Basic realm="ARAI"'})
@@ -235,7 +236,10 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
             bundle = None                                 # the in-process worker has stopped: runs would queue forever
         return {"alive": True, "scoring_ready": bundle is not None,
                 "promoted_model_ready": bool(bundle is not None and pointer and pointer["model_id"]),
-                "model_kind": bundle.kind if bundle is not None else None}
+                "model_kind": bundle.kind if bundle is not None else None,
+                # the worker may be another process: a growing queue with no recent heartbeat means nothing is scoring
+                "queue_depth": service.store.queue_depth(),
+                "worker_seconds_since_seen": service.store.worker_seconds_since_seen()}
 
     @api.get("/openapi.json", include_in_schema=False)
     def contract():
@@ -279,7 +283,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                                [{"rule_id": "upload.path", "table": name, "row_key": None, "count": 1}])
             files[name] = await part.read()
         try:
-            row, created = datasets.register(service.store, config.artifact_root, manifest, files)
+            # validation and storage take seconds for a full world: off the event loop, so other requests keep being served
+            row, created = await run_in_threadpool(datasets.register, service.store, config.artifact_root, manifest, files)
         except datasets.TooLarge:
             raise ApiError(413, "too_large", "The upload exceeds the size or row limit.") from None
         except datasets.Rejected as rejected:

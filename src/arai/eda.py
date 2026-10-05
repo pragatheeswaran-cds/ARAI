@@ -12,9 +12,9 @@ from scipy import stats
 
 from arai import diagnostics
 from arai.diagnostics import CLAIM_CODES, FANOUT_CAP, QUALITY_CODES
+from arai.features import DISCRETIONARY_CODES
 
 FIT_CODES = ("wrong_size", "didnt_fit")
-DISCRETIONARY_CODES = ("didnt_suit", "changed_my_mind", "not_as_expected", "found_better_price", "ordered_by_mistake", "late_delivery")
 ORDER_BUCKETS = [0, 1, 3, 6, 11, 21, np.inf]
 ORDER_BUCKET_LABELS = ["0", "1-2", "3-5", "6-10", "11-20", "21+"]
 LINE_KEY = ["order_id", "order_line_no"]
@@ -240,42 +240,9 @@ def prevalence_by(world) -> dict:
 
 
 def benign_segments(world) -> pd.DataFrame:
-    """Evaluation segments of final-spec component 08, per eligible honest customer.
-
-    heavy returner: raw return rate at or above the 90th percentile of all eligible customers;
-    defective buyer: requested at least one genuinely defective unit on a mature line;
-    household: actually used an identifier that another member of the same household also used.
-    """
-    summary = diagnostics.customer_summary(world)
-    eligible = summary[summary["eligible"]]
-    threshold = eligible["raw_return_rate"].quantile(0.9, interpolation="linear") if len(eligible) else np.nan
-    heavy = set(eligible.loc[eligible["raw_return_rate"] >= threshold, "customer_id"])
-
-    lines = diagnostics.sale_lines(world)
-    allocation = world.truth["unit_allocation"]
-    defective = world.truth["unit_truth"]
-    defective = defective[defective["received_defective_unit"]][LINE_KEY + ["unit_index"]]
-    requested = allocation[allocation["reservation_kind"] == "honest_request"].merge(defective, on=LINE_KEY + ["unit_index"])
-    active = world.tables["return_order_line"]
-    active = active[active["line_status"] != "withdrawn"][LINE_KEY].drop_duplicates()
-    requested = requested.merge(active, on=LINE_KEY).merge(lines[LINE_KEY + ["customer_id", "mature"]], on=LINE_KEY)
-    defective_buyers = set(requested.loc[requested["mature"], "customer_id"])
-
-    truth = world.truth["customer_truth"]
-    members = truth[truth["household_id"].notna()][["customer_id", "household_id"]]
-    orders = world.tables["sales_order"].merge(members, on="customer_id")
-    sharing = set()
-    for kind in ("address_id", "device_id", "payment_id"):
-        users = orders.groupby(["household_id", kind])["customer_id"].nunique()
-        shared = users[users > 1].reset_index()[["household_id", kind]]
-        sharing |= set(orders.merge(shared, on=["household_id", kind])["customer_id"])
-
-    out = summary[["customer_id", "eligible", "y_abuse"]].copy()
-    benign = out["eligible"] & (out["y_abuse"] == 0)
-    out["legit_heavy_returner"] = benign & out["customer_id"].isin(heavy)
-    out["defective_product_buyer"] = benign & out["customer_id"].isin(defective_buyers)
-    out["benign_household"] = benign & out["customer_id"].isin(sharing)
-    return out
+    """The gate's benign segments per customer, by the one definition evaluation uses (final-spec component 08)."""
+    from arai import evaluation                      # imported here so exploration stays importable without the model stack
+    return evaluation.benign_segments(world, diagnostics.customer_summary(world)[["customer_id", "eligible", "raw_return_rate"]])
 
 
 def group_overlap(world) -> dict:

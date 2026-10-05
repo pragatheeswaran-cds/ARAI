@@ -1,6 +1,6 @@
 # ARAI - portable development specification
 
-Version **1.7** - Consolidated 2026-09-26, amended 2026-10-05 - **Implementation baseline**
+Version **1.8** - Consolidated 2026-09-26, amended 2026-10-05 - **Implementation baseline**
 
 Each component has its own specification and acceptance criteria. This folder is the authoritative development package; no previous version, original laptop path or sibling archive is required.
 
@@ -19,6 +19,8 @@ Amendment 1.5 (2026-10-02) follows a third review, made before any validation wo
 Amendment 1.6 (2026-10-02) records the outcome (selection on validation, the final test passed once) and the decisions from the reviews of the serving side and the front end: an exact allow-list for serialised types, safer startup reconciliation, and caveats shown first on the evaluation page.
 
 Amendment 1.7 (2026-10-05) records the project owner's decision after a review of the code: the API reads from PostgreSQL only. Run results, the published experiment report and the truth export are stored there; no result file is written. The API contract is unchanged.
+
+Amendment 1.8 (2026-10-05) follows a principal-ML review of the specification and the code: the report now states what the result depends on and which honest group the model reviews more often than the rule, the development target is closed as a property of the simulation, the API contract moves to 1.3.0 (stable metric codes, worker heartbeat), and provenance, publication and monitoring gaps are closed. A version label on a component or contract names the amendment in which that file last changed in substance.
 
 ## Start on any system
 

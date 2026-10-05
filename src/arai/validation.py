@@ -16,9 +16,9 @@ import pandas as pd
 import yaml
 
 from arai.catalog import load_catalog
+from arai.operational import TABLES
 from arai.paths import SPEC_ROOT
 
-TABLES = ("customer_master", "sku_master", "reason_code", "sales_order", "sales_order_line", "return_order", "return_order_line")
 OFFSET = "+05:30"
 EPSILON = 0.005     # money is written to the paisa; comparisons allow half a paisa
 MAX_UPLOAD_BYTES = 500_000_000     # final-spec component 11 resource limits

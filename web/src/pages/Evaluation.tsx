@@ -4,17 +4,40 @@ import { allPages, api, type Candidate, type Experiment, type Metric, type Truth
 import { useWorkspace } from "../App";
 import { Badge, Callout, LoadState, PageTitle, Panel, Row, Stat, label, number, percent, useLoad } from "../components/ui";
 
+// A metric is identified by code, ranking and slice (API contract 1.3.0). Its name and scope are display text:
+// this page shows them and never selects by them, so the report can be reworded without a column going blank.
+const RULE = "raw_return_rate";
 const SEGMENTS = [
-  ["review rate, honest heavy returners", "Heavy returners"],
-  ["review rate, honest defective-product buyers", "Defective-product buyers"],
-  ["review rate, honest household members", "Household members"],
+  ["review_rate.legit_heavy_returner", "Heavy returners"],
+  ["review_rate.defective_product_buyer", "Defective-product buyers"],
+  ["review_rate.benign_household", "Household members"],
 ] as const;
 const ACTIONS = [
-  ["recall, deceptive nonreceipt claim", "Deceptive non-receipt claims"],
-  ["recall, deceptive contents claim", "Deceptive contents claims"],
-  ["recall, temporary use return", "Temporary-use returns"],
-  ["recall, coordinated action", "Coordinated (ring) claims"],
+  ["recall.deceptive_nonreceipt_claim", "Deceptive non-receipt claims"],
+  ["recall.deceptive_contents_claim", "Deceptive contents claims"],
+  ["recall.temporary_use_return", "Temporary-use returns"],
+  ["recall.coordinated_action", "Coordinated (ring) claims"],
 ] as const;
+const BUDGETS = [
+  ["0.01", "1%"],
+  ["0.05", "5%"],
+  ["0.1", "10%"],
+] as const;
+const HONEST_GROUPS = [
+  ["repeat_genuine_claimant", "Two or more genuinely failed deliveries"],
+  ["one_genuine_failure", "Exactly one genuinely failed delivery"],
+  ["no_genuine_failure", "No genuine delivery failure"],
+  ["legit_heavy_returner", "Heavy returners (gate group)"],
+  ["defective_product_buyer", "Defective-product buyers (gate group)"],
+  ["benign_household", "Household members (gate group)"],
+] as const;
+const TEST_MEASURES: Record<string, string> = {
+  precision: "precision",
+  recall: "recall",
+  "review_rate.legit_heavy_returner": "heavy returners reviewed",
+  "review_rate.defective_product_buyer": "defective-product buyers reviewed",
+  "review_rate.benign_household": "household members reviewed",
+};
 const NAMES: Record<string, string> = {
   raw_return_rate: "Return-rate rule (baseline)",
   logreg_c1: "Logistic regression",
@@ -30,16 +53,20 @@ const ROLE_LABEL = { baseline: "Return-rate rule", reference: "Report-only refer
 
 type RowData = { id: string; name: string; role: keyof typeof ROLE_COLOR; metrics: Metric[]; status: string; reasons: string[] };
 
-const find = (metrics: Metric[], name: string) => metrics.find((m) => m.name === name) ?? null;
+const find = (metrics: Metric[], code: string) => metrics.find((m) => m.code === code) ?? null;
+const pick = (metrics: Metric[], slice: string, code: string, ranking?: string) =>
+  metrics.find((m) => m.slice === slice && m.code === code && (ranking === undefined || m.ranking === ranking)) ?? null;
 const fraction = (m: Metric | null) => (m && m.numerator !== null && m.denominator !== null ? `${number(m.numerator)} / ${number(m.denominator)}` : "");
+const slices = (metrics: Metric[], prefix: string) =>
+  Array.from(new Set(metrics.map((m) => m.slice ?? "").filter((slice) => slice.startsWith(prefix))));
 
 function rows(experiment: Experiment): RowData[] {
-  const reference = (prefix: string): Metric[] =>
-    experiment.reference_metrics.filter((m) => m.name.startsWith(prefix + ": ")).map((m) => ({ ...m, name: m.name.slice(prefix.length + 2) }));
+  const reference = (id: string): Metric[] =>
+    experiment.reference_metrics.filter((m) => m.ranking === id && (m.slice === "validation" || m.slice === "dry_run"));
   return [
-    { id: "raw_return_rate", name: NAMES.raw_return_rate, role: "baseline", metrics: experiment.baseline_metrics, status: "comparison", reasons: [] },
-    { id: "analyst_rulebook", name: NAMES.analyst_rulebook, role: "reference", metrics: reference("analyst rulebook"), status: "report only", reasons: [] },
-    { id: "volume_only_logreg", name: NAMES.volume_only_logreg, role: "reference", metrics: reference("volume-only model"), status: "report only", reasons: [] },
+    { id: RULE, name: NAMES[RULE], role: "baseline", metrics: experiment.baseline_metrics, status: "comparison", reasons: [] },
+    { id: "analyst_rulebook", name: NAMES.analyst_rulebook, role: "reference", metrics: reference("analyst_rulebook"), status: "report only", reasons: [] },
+    { id: "volume_only_logreg", name: NAMES.volume_only_logreg, role: "reference", metrics: reference("volume_only_logreg"), status: "report only", reasons: [] },
     ...experiment.candidates.map((c: Candidate) => ({
       id: c.candidate_id,
       name: NAMES[c.candidate_id] ?? c.candidate_id,
@@ -122,10 +149,10 @@ function Scorecard({ data }: { data: RowData[] }) {
                   {percent(recall?.value)}
                   <small>{fraction(recall)}</small>
                 </td>
-                {SEGMENTS.map(([name]) => {
-                  const m = find(row.metrics, name);
+                {SEGMENTS.map(([code]) => {
+                  const m = find(row.metrics, code);
                   return (
-                    <td key={name}>
+                    <td key={code}>
                       {percent(m?.value)}
                       <small>{fraction(m)}</small>
                     </td>
@@ -151,7 +178,7 @@ function MetricList({ metrics }: { metrics: Metric[] }) {
   return (
     <>
       {metrics.map((m, i) => {
-        const isCount = m.name.endsWith("(count)");
+        const isCount = m.code?.endsWith(".count") ?? false;
         return (
           <Row key={i} name={m.name} note={m.scope}>
             {m.value === null ? "n/a" : isCount ? number(m.value) : percent(m.value)}
@@ -160,6 +187,86 @@ function MetricList({ metrics }: { metrics: Metric[] }) {
         );
       })}
     </>
+  );
+}
+
+/** Honest groups: how much of each the model and the rule would send for review. The first row is not a gate group. */
+function HonestGroups({ experiment }: { experiment: Experiment }) {
+  const metrics = experiment.reference_metrics.filter((m) => m.slice === "honest_groups");
+  if (!metrics.length) return <p className="muted">Not measured for this experiment yet (run the ablation step and publish again).</p>;
+  const cell = (group: string, rule: boolean) =>
+    metrics.find((m) => m.code === `group_review_rate.${group}` && (m.ranking === RULE) === rule) ?? null;
+  return (
+    <div className="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Honest customers</th>
+            <th scope="col">Reviewed by the model</th>
+            <th scope="col">Reviewed by the rule</th>
+          </tr>
+        </thead>
+        <tbody>
+          {HONEST_GROUPS.map(([group, text]) => {
+            const model = cell(group, false);
+            const rule = cell(group, true);
+            if (!model || !rule) return null;
+            const worse = model.value !== null && rule.value !== null && model.value > rule.value;
+            return (
+              <tr key={group}>
+                <th scope="row">
+                  {text}
+                  {worse && <small>model reviews this group more often than the rule</small>}
+                </th>
+                <td>
+                  {percent(model.value)}
+                  <small>{fraction(model)}</small>
+                </td>
+                <td>
+                  {percent(rule.value)}
+                  <small>{fraction(rule)}</small>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Stress worlds: one simulation setting changed per world, scored with the frozen models. */
+function StressWorlds({ experiment, selectedId }: { experiment: Experiment; selectedId: string | null }) {
+  const worlds = slices(experiment.reference_metrics, "stress:");
+  if (!worlds.length) return <p className="muted">Not measured for this experiment yet (run the stress step and publish again).</p>;
+  return (
+    <div className="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">World and what was changed</th>
+            <th scope="col">Rule precision</th>
+            <th scope="col">Model precision</th>
+            <th scope="col">Gate against the rule</th>
+          </tr>
+        </thead>
+        <tbody>
+          {worlds.map((slice) => {
+            const rule = pick(experiment.reference_metrics, slice, "precision", RULE);
+            const model = selectedId ? pick(experiment.reference_metrics, slice, "precision", selectedId) : null;
+            const gate = selectedId ? pick(experiment.reference_metrics, slice, "gate_passed", selectedId) : null;
+            return (
+              <tr key={slice}>
+                <th scope="row">{rule?.scope ?? slice.slice("stress:".length)}</th>
+                <td>{percent(rule?.value)}</td>
+                <td>{model ? percent(model.value) : "n/a"}</td>
+                <td>{gate ? <Badge text={gate.value === 1 ? "passed" : "not passed"} tone={gate.value === 1 ? "green" : "amber"} /> : "n/a"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -272,14 +379,24 @@ export function Evaluation() {
   const selected = data.find((row) => row.id === summary?.selected_candidate_id) ?? null;
   const baseline = data[0];
   const scope = experiment?.baseline_metrics[0]?.scope ?? "";
-  const byScope = (metrics: Metric[], text: string) => metrics.filter((m) => m.scope.includes(text));
-  const budgets = ["1% review budget", "5% review budget", "10% review budget"];
-  const testMetrics = experiment ? byScope(experiment.sensitivity_metrics, "final test worlds") : [];
-  const worlds = experiment ? Array.from(new Set(experiment.per_world_metrics.map((m) => m.scope.split(",")[0]))) : [];
-  const ablation = experiment ? experiment.reference_metrics.filter((m) => m.scope.startsWith("timing-feature ablation")) : [];
-  const noTiming = ablation.find((m) => m.name.endsWith("without any timing feature")) ?? null;
-  const ablationRule = ablation.find((m) => m.name.startsWith("return-rate rule")) ?? null;
-  const target = experiment?.reference_metrics.find((m) => m.name === "difficulty target check: best supervised precision") ?? null;
+  const references = experiment?.reference_metrics ?? [];
+  const testMetrics = experiment ? experiment.sensitivity_metrics.filter((m) => m.slice === "test" && m.code !== null && m.code in TEST_MEASURES) : [];
+  const worlds = experiment ? slices(experiment.per_world_metrics, "world:") : [];
+  // what the result depends on (training worlds, out of fold)
+  const all = pick(references, "ablation", "ablation.all");
+  const noTiming = pick(references, "ablation", "ablation.without_timing");
+  const noClaims = pick(references, "ablation", "ablation.without_claims");
+  const neither = pick(references, "ablation", "ablation.without_claims_and_timing");
+  const ablationRule = pick(references, "ablation", "ablation.rule");
+  const floor = neither ?? noTiming;
+  const target = pick(references, "calibration", "calibration.best_supervised_precision");
+  const repeatModel = references.find((m) => m.slice === "honest_groups" && m.code === "group_review_rate.repeat_genuine_claimant" && m.ranking !== RULE) ?? null;
+  const repeatRule = pick(references, "honest_groups", "group_review_rate.repeat_genuine_claimant", RULE);
+  const stress = selected
+    ? slices(references, "stress:")
+        .map((slice) => pick(references, slice, "precision", selected.id)?.value)
+        .filter((value): value is number => typeof value === "number")
+    : [];
   return (
     <>
       <PageTitle title="Evaluation">
@@ -301,15 +418,39 @@ export function Evaluation() {
               note={summary.selected_model_id ? `Bundle ${summary.selected_model_id.slice(0, 16)}...` : "The return-rate baseline is active"}
             />
             <Stat
-              name="Without timing features"
-              value={percent(noTiming?.value)}
-              note="Same model family, training worlds. The figure to quote as robust; details in the difficulty panel below."
+              name={neither ? "Without claim and timing features" : "Without timing features"}
+              value={percent(floor?.value)}
+              note="Same model family, training worlds: what is left without the signals this simulation makes sharp. Details below."
             />
           </div>
           <Callout>
-            <strong>Read this first.</strong> Simulated data only. The model's precision leans on when in the return window items come back, which
-            this simulation makes sharper than real behaviour would be: without any timing feature it is {percent(noTiming?.value)} against{" "}
-            {percent(ablationRule?.value)} for the rule on training worlds.{" "}
+            <strong>Read this first.</strong> Simulated data only.{" "}
+            {noClaims && neither ? (
+              <>
+                Two signals carry the model, and how sharply they separate abusers is a setting of this simulation: how much of what a customer
+                asks back is a transaction claim, and item returns made late in the return window. On training worlds the model reaches{" "}
+                {percent(all?.value)} with every feature, {percent(noClaims.value)} without the claim features, {percent(noTiming?.value)} without
+                the timing features and {percent(neither.value)} without both, against {percent(ablationRule?.value)} for the rule.{" "}
+              </>
+            ) : (
+              <>
+                The model's precision leans on when in the return window items come back, which this simulation makes sharper than real behaviour
+                would be: without any timing feature it is {percent(noTiming?.value)} against {percent(ablationRule?.value)} for the rule on
+                training worlds.{" "}
+              </>
+            )}
+            {repeatModel && repeatRule && (
+              <>
+                Honest customers whose deliveries genuinely failed more than once are sent for review more often by the model (
+                {percent(repeatModel.value)}) than by the rule ({percent(repeatRule.value)}); the gate has no check for them.{" "}
+              </>
+            )}
+            {stress.length > 0 && (
+              <>
+                Across the stress worlds the model's precision runs from {percent(Math.min(...stress), 0)} to {percent(Math.max(...stress), 0)}{" "}
+                as simulation settings change: quote the gap to the rule, not the level.{" "}
+              </>
+            )}
             {target && target.value !== null && target.lower_95 !== null && (
               <>
                 The development target of {percent(target.lower_95, 0)} to {percent(target.upper_95, 0)} for the best model was{" "}
@@ -342,11 +483,11 @@ export function Evaluation() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ACTIONS.map(([name, text]) => (
-                      <tr key={name}>
+                    {ACTIONS.map(([code, text]) => (
+                      <tr key={code}>
                         <th scope="row">{text}</th>
-                        <td>{percent(find(baseline.metrics, name)?.value)}</td>
-                        <td>{selected ? percent(find(selected.metrics, name)?.value) : "n/a"}</td>
+                        <td>{percent(find(baseline.metrics, code)?.value)}</td>
+                        <td>{selected ? percent(find(selected.metrics, code)?.value) : "n/a"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -363,16 +504,15 @@ export function Evaluation() {
                     </tr>
                   </thead>
                   <tbody>
-                    {budgets.map((budget) => {
-                      const pick = (id: string, kind: string) =>
-                        experiment.sensitivity_metrics.find((m) => m.scope === budget && m.name === `${id}: ${kind}`)?.value;
+                    {BUDGETS.map(([budget, text]) => {
+                      const value = (id: string, code: string) => pick(experiment.sensitivity_metrics, `budget:${budget}`, code, id)?.value;
                       return (
                         <tr key={budget}>
-                          <th scope="row">Top {budget.split(" ")[0]}</th>
+                          <th scope="row">Top {text}</th>
                           <td>
-                            {percent(pick("raw_return_rate", "precision"))} / {percent(pick("raw_return_rate", "recall"))}
+                            {percent(value(RULE, "precision"))} / {percent(value(RULE, "recall"))}
                           </td>
-                          <td>{selected ? `${percent(pick(selected.id, "precision"))} / ${percent(pick(selected.id, "recall"))}` : "n/a"}</td>
+                          <td>{selected ? `${percent(value(selected.id, "precision"))} / ${percent(value(selected.id, "recall"))}` : "n/a"}</td>
                         </tr>
                       );
                     })}
@@ -391,16 +531,13 @@ export function Evaluation() {
                     </tr>
                   </thead>
                   <tbody>
-                    {worlds.map((world) => {
-                      const pick = (id: string) => experiment.per_world_metrics.find((m) => m.scope.startsWith(world + ",") && m.name === `${id}: precision`);
-                      return (
-                        <tr key={world}>
-                          <th scope="row">{world.replace("world ", "")}</th>
-                          <td>{percent(pick("raw_return_rate")?.value)}</td>
-                          <td>{selected ? percent(pick(selected.id)?.value) : "n/a"}</td>
-                        </tr>
-                      );
-                    })}
+                    {worlds.map((world) => (
+                      <tr key={world}>
+                        <th scope="row">{world.slice("world:".length)}</th>
+                        <td>{percent(pick(experiment.per_world_metrics, world, "precision", RULE)?.value)}</td>
+                        <td>{selected ? percent(pick(experiment.per_world_metrics, world, "precision", selected.id)?.value) : "n/a"}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -408,17 +545,19 @@ export function Evaluation() {
               {testMetrics.length === 0 ? (
                 <p className="muted">The final test has not been run. A model is promoted only after it passes.</p>
               ) : (
-                <MetricList metrics={testMetrics.filter((m) => /: (precision|recall|review rate, .*)$/.test(m.name)).map((m) => ({ ...m, name: m.name.replace(/^[a-z0-9_]+: /, (id) => (NAMES[id.slice(0, -2)] ?? id.slice(0, -2)) + ": ") }))} />
+                <MetricList
+                  metrics={testMetrics.map((m) => ({ ...m, name: `${NAMES[m.ranking ?? ""] ?? m.ranking ?? ""}: ${TEST_MEASURES[m.code ?? ""]}` }))}
+                />
               )}
             </Panel>
           </div>
           <Panel title="Where the model is wrong, and how it differs from the rule">
             <div className="grid even">
               <div>
-                <MetricList metrics={experiment.error_account.filter((m) => m.scope.includes("validation"))} />
+                <MetricList metrics={experiment.error_account.filter((m) => m.slice === "validation")} />
               </div>
               <div>
-                {byScope(experiment.error_account, "final test").length > 0 && <MetricList metrics={byScope(experiment.error_account, "final test")} />}
+                {experiment.error_account.some((m) => m.slice === "test") && <MetricList metrics={experiment.error_account.filter((m) => m.slice === "test")} />}
                 <Callout>
                   Groups overlap and are not added up. Most false positives are honest customers with repeated genuine delivery failures. Most
                   missed abusers acted only once.
@@ -427,16 +566,37 @@ export function Evaluation() {
             </div>
           </Panel>
           <div className="grid">
+            <Panel title="Honest customers sent for review">
+              <p className="muted">
+                Share of each honest group that would be sent for review at the 5% budget, on training worlds. Groups overlap.
+              </p>
+              <HonestGroups experiment={experiment} />
+              <Callout>
+                The model reviews far fewer honest customers than the rule overall, but more of those whose parcels genuinely went missing or
+                arrived wrong more than once: their record looks like repeated deceptive claims. The gate checks the last three groups and has
+                no check for the first. Treat a claim-driven selection as a reason to look at the deliveries, not as a finding.
+              </Callout>
+            </Panel>
+            <Panel title="Stress worlds: one setting changed per world">
+              <p className="muted">The frozen models on worlds that took no part in training. Diagnostic only; nothing is selected from them.</p>
+              <StressWorlds experiment={experiment} selectedId={selected?.id ?? null} />
+              <Callout>
+                The level moves with how often simulated abusers act; the ordering of rule and model does not. The gap is the result, not the
+                percentage.
+              </Callout>
+            </Panel>
+          </div>
+          <div className="grid">
             <Panel title="Difficulty and what the result depends on">
               <p className="muted">
                 The difficulty of the simulation is a design setting with stated targets. These checks were made on training worlds before any
                 validation world existed.
               </p>
               <MetricList
-                metrics={experiment.reference_metrics
-                  .filter((m) => m.scope.startsWith("difficulty calibration") || m.scope.startsWith("timing-feature ablation"))
+                metrics={references
+                  .filter((m) => m.slice === "calibration" || m.slice === "ablation")
                   .map((m) =>
-                    m.scope.startsWith("difficulty") && m.value !== null && m.lower_95 !== null && m.upper_95 !== null
+                    m.slice === "calibration" && m.value !== null && m.lower_95 !== null && m.upper_95 !== null
                       ? {
                           ...m,
                           name: `${m.name}: target ${percent(m.lower_95, 0)} to ${percent(m.upper_95, 0)}, ${
@@ -450,9 +610,10 @@ export function Evaluation() {
               />
               <Row name="Calibration levers changed">{experiment.difficulty_calibration.calibrated ? experiment.difficulty_calibration.levers.join(", ") : "None"}</Row>
               <Callout>
-                The model's precision leans on when in the return window items come back. In this simulation honest customers rarely return in the
-                last quarter of the window; real customers do so more often, so on real data that signal would be weaker. The figure without any
-                timing feature is the one to quote as robust. Record: {experiment.difficulty_calibration.record_ref ?? "n/a"}.
+                The model leans on two things this simulation makes sharp: abusers claim far more often than deliveries really fail, and honest
+                customers rarely return in the last quarter of the window. Real customers blur both, so on real data both signals would be
+                weaker. The figure without either family is the floor to keep in mind. Record:{" "}
+                {experiment.difficulty_calibration.record_ref ?? "n/a"}.
               </Callout>
             </Panel>
             <Panel title="Style signals and wardrobing indicator (report only)">

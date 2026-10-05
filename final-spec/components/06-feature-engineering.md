@@ -39,4 +39,4 @@ Fit median imputation and one missingness indicator per feature on training only
 | FEAT-AC-07 | Changing private labels with operational inputs fixed, or removing private truth altogether, changes no features or predictions. |
 | FEAT-AC-08 | coordinated_claim_share matches the style-grain linked-claim rule on a hand-built fixture and counts each own line once. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

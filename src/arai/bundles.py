@@ -105,6 +105,18 @@ def code_sha256() -> str:
     return h.hexdigest()
 
 
+def code_differs(bundle: "Bundle") -> bool:
+    """True when the running scoring code is not the code the bundle was built with (unknown counts as no difference).
+
+    Publication proves that the building code reproduces the training features; this tells a run that the code
+    has changed since, so that proof no longer covers it.
+    """
+    try:
+        return bundle.manifest.get("code_sha256") != code_sha256()
+    except OSError:                                              # installed without its source tree: nothing to compare
+        return False
+
+
 def _logical_reference_hash(scores: np.ndarray) -> str:
     """Hash of the reference values themselves, independent of how Parquet happens to compress them."""
     return hashlib.sha256(np.sort(np.asarray(scores, dtype="<f8")).tobytes()).hexdigest()
@@ -140,16 +152,32 @@ def _write_bundle(manifest: dict, reference_scores: np.ndarray, model_file: Path
     return model_id
 
 
-def _provenance(experiment_dir: Path) -> dict:
+def _provenance(experiment_dir: Path, verified: dict | None = None) -> dict:
+    """Where a bundle comes from.
+
+    `code_sha256` is the code that built the bundle. `training_code_sha256` is the code that fitted the model, as
+    training recorded it; an experiment trained before that was recorded carries the hash its gate dry run
+    recorded on the same commit. `feature_check` is the proof, made at publication, that the building code still
+    reproduces the frozen training features (publishing.verify_feature_code).
+    """
     config = json.loads((experiment_dir / "config.json").read_text(encoding="utf-8"))
     lock = paths.REPO_ROOT / "uv.lock"
+    training_code, source = config.get("scoring_code_sha256"), "training record"
+    dry_run = experiment_dir / "reports" / "dry_run.json"
+    if training_code is None and dry_run.is_file():
+        training_code = json.loads(dry_run.read_text(encoding="utf-8")).get("provenance", {}).get("scoring_code_sha256")
+        source = "gate dry-run record"
     return {"experiment_id": config["experiment_id"], "training_worlds": config["training_worlds"],
             "training_features_sha256": config["features_sha256"], "experiment_config_sha256": config["experiment_config_sha256"],
-            "code_sha256": code_sha256(), "dependency_lock_sha256": _sha256(lock) if lock.exists() else None,
+            "code_sha256": code_sha256(), "training_code_sha256": training_code,
+            "training_code_source": source if training_code else None,
+            "training_cutoff": config.get("cutoff") or (verified or {}).get("cutoff"), "feature_check": verified,
+            "dependency_lock_sha256": _sha256(lock) if lock.exists() else None,
             "libraries": {"scikit-learn": sklearn.__version__, "skops": skops.__version__, "numpy": np.__version__}}
 
 
-def build_model_bundle(experiment_dir: Path, candidate_id: str, artifact_root: Path | None = None) -> str:
+def build_model_bundle(experiment_dir: Path, candidate_id: str, artifact_root: Path | None = None,
+                       verified: dict | None = None, feature_quantiles: dict | None = None) -> str:
     """Bundle one fitted candidate exactly as training left it. The estimator is copied, never refitted."""
     experiment_dir = Path(experiment_dir)
     source = experiment_dir / "candidates" / candidate_id
@@ -163,19 +191,22 @@ def build_model_bundle(experiment_dir: Path, candidate_id: str, artifact_root: P
     manifest = {"kind": kind, "candidate_id": candidate_id, "family": record["family"], "adapter": ADAPTERS[kind],
                 "feature_order": record["features"], "feature_reference": baseline["reference"], "params": record["params"],
                 "preprocessing": record["preprocessing"], "reference_kind": record["reference_kind"],
-                "score_label": "Training reference percentile", **_provenance(experiment_dir)}
+                "score_label": "Training reference percentile", "feature_quantiles": feature_quantiles,
+                **_provenance(experiment_dir, verified)}
     reference = pd.read_parquet(source / "reference_scores.parquet")["score"].to_numpy()
     return _write_bundle(manifest, reference, source / "model.skops", artifact_root)
 
 
-def build_baseline_bundle(experiment_dir: Path, artifact_root: Path | None = None) -> str:
+def build_baseline_bundle(experiment_dir: Path, artifact_root: Path | None = None, verified: dict | None = None,
+                          feature_quantiles: dict | None = None) -> str:
     """The fallback: training statistics only. It depends on no candidate and exists before any comparison."""
     experiment_dir = Path(experiment_dir)
     baseline = json.loads((experiment_dir / "baseline" / "baseline.json").read_text(encoding="utf-8"))
     manifest = {"kind": BASELINE_KIND, "candidate_id": None, "family": None, "adapter": ADAPTERS[BASELINE_KIND],
                 "feature_order": ["raw_return_rate"], "feature_reference": baseline["reference"], "params": {},
                 "preprocessing": [], "reference_kind": "eligible training raw_return_rate", "score_label": BASELINE_LABEL,
-                **_provenance(experiment_dir)}
+                "feature_quantiles": {k: v for k, v in (feature_quantiles or {}).items() if k == "raw_return_rate"} or None,
+                **_provenance(experiment_dir, verified)}
     reference = pd.read_parquet(experiment_dir / "baseline" / "reference_scores.parquet")["score"].to_numpy()
     return _write_bundle(manifest, reference, None, artifact_root)
 

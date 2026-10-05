@@ -5,13 +5,10 @@ Nothing computed here may be persisted as an operational feature.
 """
 from __future__ import annotations
 
-import hashlib
-import math
-
 import numpy as np
 import pandas as pd
 
-from arai import features
+from arai import features, ranking
 from arai.features import (CLAIM_CODES, ELIGIBLE_MIN_LINES, FANOUT_CAP, LINK_DAYS, QUALITY_CODES,  # noqa: F401  re-exported
                            QUALITY_DAMAGE_SHARE, TARGETING_LINKED_CLAIMERS, TARGETING_LINKED_SHARE)
 
@@ -53,19 +50,16 @@ def customer_summary(world) -> pd.DataFrame:
     return out.merge(truth, on="customer_id").merge(profile, on="customer_id")
 
 
-def _tie_break(world_id: str, customer_id: str) -> str:
-    return hashlib.sha256(f"review-tie-v02|{world_id}|{customer_id}".encode("utf-8")).hexdigest()
-
-
-def top_fraction(world, summary: pd.DataFrame, score: str, fraction: float = 0.05) -> pd.DataFrame:
-    """The review selection: top ceil(fraction*N) eligible customers by score, ties by the public hash rule."""
+def top_fraction(world, summary: pd.DataFrame, score: str, fraction: float = ranking.PRIMARY_FRACTION) -> pd.DataFrame:
+    """The review selection, by the one rule evaluation and serving use (ranking.py)."""
     eligible = summary[summary["eligible"]].copy()
-    eligible["tie"] = [_tie_break(world.world_id, c) for c in eligible["customer_id"]]
-    k = min(len(eligible), math.ceil(fraction * len(eligible)))
-    return eligible.sort_values([score, "tie"], ascending=[False, True], kind="stable").head(k)
+    if not len(eligible):
+        return eligible
+    ranks = ranking.rank_world(world.world_id, eligible["customer_id"], eligible[score])
+    return eligible.assign(_rank=ranks).sort_values("_rank").head(ranking.budget(len(eligible), fraction)).drop(columns="_rank")
 
 
-def precision_at(world, summary: pd.DataFrame, score: str, fraction: float = 0.05) -> dict:
+def precision_at(world, summary: pd.DataFrame, score: str, fraction: float = ranking.PRIMARY_FRACTION) -> dict:
     selected = top_fraction(world, summary, score, fraction)
     positives = int(summary.loc[summary["eligible"], "y_abuse"].sum())
     hits = int(selected["y_abuse"].sum())

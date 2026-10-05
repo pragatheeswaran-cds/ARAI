@@ -6,7 +6,9 @@ import { fallbackReason } from "./App";
 import { CustomerTable } from "./components/CustomerTable";
 import { ist, percent } from "./components/ui";
 
-const health = (over: Partial<Health>): Health => ({ alive: true, scoring_ready: true, promoted_model_ready: false, model_kind: "baseline_fallback", ...over });
+const health = (over: Partial<Health>): Health => ({
+  alive: true, scoring_ready: true, promoted_model_ready: false, model_kind: "baseline_fallback", queue_depth: 0, worker_seconds_since_seen: 1, ...over,
+});
 const summary = (over: Partial<ExperimentSummary>): ExperimentSummary => ({
   experiment_id: "EXP", config_hash: "h", selection_status: "selected", selected_model_id: null, selected_candidate_id: "hgb_leaf15",
   final_test_status: "not_run", ...over,

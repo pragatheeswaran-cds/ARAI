@@ -14,12 +14,13 @@ from __future__ import annotations
 import json
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
-OUT = Path(__file__).resolve().parents[2] / "reports" / "ui" / "2026-10-02"
+OUT = Path(__file__).resolve().parents[2] / "reports" / "ui" / date.today().isoformat()
 OUT.mkdir(parents=True, exist_ok=True)
 TRUTH_WORDS = ("y_abuse", "abused returns in the simulation", "really abusers", "deceptive", "temporary use return", "persona")
 results, console_errors, failed_requests = [], [], []
@@ -170,6 +171,11 @@ with sync_playwright() as pw:
         "Isolation forest, 256 samples")))
     check("evaluation shows the error account and the calibration disclosure", "share of false positives" in text and "difficulty target check" in text)
     check("evaluation discloses the timing dependence", "without any timing feature" in text)
+    check("evaluation leads with both dependences and the honest group the model reviews more often",
+          "without the claim features" in text and "the gate has no check for them" in text and "quote the gap to the rule" in text)
+    check("evaluation shows honest-group review rates and the stress worlds",
+          "Two or more genuinely failed deliveries" in text and "model reviews this group more often than the rule" in text
+          and "W2505: per-account action rate x0.5" in text and "W2506: per-account action rate x2" in text)
     check("truth is hidden until asked for", "Reveal simulated truth" in text and "abused returns in the simulation" not in text)
     shot(page, "10-evaluation")
     page.get_by_role("button", name="Reveal simulated truth").click()

@@ -49,4 +49,4 @@ Development/demo scenarios: five sale states; genuine and deceptive claim codes;
 | GEN-AC-09 | Campaign orders obey signup/launch/cutoff chronology and are marked only in private order_truth; coordinated claims occur only on world hot-list styles; uncompleted attempts keep a reason. |
 | GEN-AC-10 | Per-account action rates and per-address genuine-failure multipliers reproduce from keyed streams; realized means versus .20 and the configured claim rates are reported; the temporary-use occasion weighting matches a fixture; claim timing, basket shape, header line order and same-day orders do not separate honest from abusive requests. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

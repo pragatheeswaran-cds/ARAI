@@ -1,6 +1,6 @@
 # FastAPI and API contract
 
-Version 1.6 (amended 2026-10-02) | Implementation baseline | Component API
+Version 1.8 (amended 2026-10-05) | Implementation baseline | Component API
 
 ## Requirements and boundary
 
@@ -12,7 +12,7 @@ world_id/content immutable. Idempotency scope endpoint+dataset for inference; en
 
 Stable cursor tied to run+normalized filters+sort; invalid/context-changed/misshapen422. TruthPage names the world it reveals (world_id). Customer order rank then unranked ID; styles by style_id. Default limit50,max100; empty items=[]/next_cursor=null. The customer queue comparison filter (all, model_only, baseline_only, both) partitions eligible customers by model versus return-rate-rule selection. Filters change display only, not run score/selection.
 
-Run carries warnings recorded at scoring (fewer than 500 eligible customers, or a category fallback was used). ExperimentSummary carries selected_candidate_id (the registered candidate) beside selected_model_id (the promoted bundle, null unless promoted). A nullable enumeration lists null among its values. Review fields reviewer_name/disposition/note/idempotency_key; dispositions needs_investigation,likely_legitimate,unresolved. Append-only, server timestamp, immutable origin run/model. Free-text attribution is not authenticated identity.
+Run carries warnings recorded at scoring (fewer than 500 eligible customers, a category fallback, scores or inputs outside the training range, or scoring code changed since publication). Contract 1.3.0: every Metric carries code, ranking and slice, which identify it; name and scope are display text and may be reworded. Health carries queue_depth and worker_seconds_since_seen (null if no worker ever reported), which are informative and not part of scoring_ready. ExperimentSummary carries selected_candidate_id (the registered candidate) beside selected_model_id (the promoted bundle, null unless promoted). A nullable enumeration lists null among its values. Review fields reviewer_name/disposition/note/idempotency_key; dispositions needs_investigation,likely_legitimate,unresolved. Append-only, server timestamp, immutable origin run/model. Free-text attribution is not authenticated identity.
 
 Local explicit CORS UI origins; VM same-origin reverse proxy shared login covers both UI and API. No app signup/profile/password endpoints. Experiment truth reveal separated from inference and synthetic-labelled.
 
@@ -33,5 +33,6 @@ Local explicit CORS UI origins; VM same-origin reverse proxy shared login covers
 | API-AC-05 | Unknown404, unfinished409, conflict409 and validation422 are distinguished. |
 | API-AC-06 | Unlisted CORS origin denied; VM API unauthenticated denied. |
 | API-AC-07 | comparison filter values partition eligible customers consistently with the run counts and stable cursors; ineligible customers appear only under all. |
+| API-AC-08 | Every published metric has a code; Health reports the queue depth and the worker heartbeat; a login header that is not ASCII is refused with 401. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

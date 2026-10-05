@@ -58,6 +58,8 @@ class Store:
         """Apply versioned migration files in order, each in its own transaction. Returns the versions applied."""
         applied = []
         with self.transaction() as db:
+            # the API and the worker start together and both migrate: CREATE TABLE IF NOT EXISTS is not safe to race
+            db.execute("SELECT pg_advisory_xact_lock(hashtext('arai:migrate'))")
             db.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())")
         for path in sorted(MIGRATIONS.glob("*.sql")):
             with self.transaction() as db:
@@ -261,8 +263,21 @@ class Store:
                           WHERE id = %s AND status = 'succeeded' AND summary IS NULL""", (run_id,))
 
     def queue_depth(self) -> int:
+        """Runs waiting for the worker or being scored."""
         with self.transaction() as db:
             return db.execute("SELECT count(*) AS n FROM runs WHERE status IN ('queued', 'running')").fetchone()["n"]
+
+    def heartbeat(self, worker_id: str) -> None:
+        """The worker says it is alive: at startup, on every pass of its loop and at every stage of a run."""
+        with self.transaction() as db:
+            db.execute("""INSERT INTO workers (worker_id) VALUES (%s)
+                          ON CONFLICT (worker_id) DO UPDATE SET seen_at = now()""", (worker_id,))
+
+    def worker_seconds_since_seen(self) -> float | None:
+        """Seconds since any worker last reported; None if no worker ever has."""
+        with self.transaction() as db:
+            row = db.execute("SELECT extract(epoch FROM now() - max(seen_at)) AS age FROM workers").fetchone()
+        return None if row["age"] is None else max(0.0, float(row["age"]))
 
     # ------------------------------------------------------------------ reviews (append only)
     def append_review(self, review: dict, idempotency_key: str, body_hash: str) -> tuple:

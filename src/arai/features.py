@@ -18,17 +18,18 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from arai import contract
 from arai.paths import SPEC_ROOT
 
-CLAIM_CODES = ("wrong_item_sent", "missing_parts", "item_not_received", "empty_package")
-COMPLAINT_CODES = ("damaged", "defective", "poor_quality", "not_as_described")       # item_complaint_customer
-QUALITY_CODES = ("defective", "poor_quality", "not_as_described")                    # item_complaint_sku_quality
-DISCRETIONARY_CODES = ("didnt_suit", "changed_my_mind", "not_as_expected", "found_better_price",
-                       "ordered_by_mistake", "late_delivery")
+# reason-code groups and the eligibility minimum come from the contracts, never from a second copy here
+CLAIM_CODES = contract.reason_group("transaction_claim")
+COMPLAINT_CODES = contract.reason_group("item_complaint_customer")
+QUALITY_CODES = contract.reason_group("item_complaint_sku_quality")
+DISCRETIONARY_CODES = contract.reason_group("discretionary")
 IDENTIFIERS = ("address_id", "device_id", "payment_id")
 LINE_KEY = ["order_id", "order_line_no"]
 
-ELIGIBLE_MIN_LINES = 3          # experiment.yaml eligibility.min_mature_sale_lines
+ELIGIBLE_MIN_LINES = contract.eligibility_min_lines()
 SHRINKAGE = 20                  # prior strength of the two-level expectation
 OVERDISPERSION_CAP = 4
 FANOUT_CAP = 25

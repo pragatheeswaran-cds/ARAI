@@ -87,7 +87,7 @@
     "TRAIN",
     [
       "Seed sets disjoint; linked customers never cross worlds; scorecard rejects demo/fixture IDs.",
-      "Held-out data fit no learned transform or fallback; assembly audits world IDs.",
+      "Held-out data fit no learned transform; training fails if a training world uses the all-worlds category fallback; assembly audits world IDs and joins labels only with the truth written with the world.",
       "Each OOF row scored by a pipeline excluding its world; serving contains one final estimator.",
       "Five candidate records include expanded params/hashes/durations/warnings/rejections.",
       "Unsupervised fit cannot read customer labels."
@@ -105,7 +105,8 @@
       "Style/wardrobing misses, no-return state, coverage and null metrics are present.",
       "Private evaluation joins happen after score freeze; no truth on inference routes.",
       "Rulebook and volume-only references use the identical population/k/ties and training-only thresholds, are flagged report-only and cannot be selected.",
-      "Error account gives false-positive and false-negative splits with denominators plus model-versus-baseline selection differences; the calibration disclosure is present."
+      "Error account gives false-positive and false-negative splits with denominators plus model-versus-baseline selection differences; the calibration disclosure is present.",
+      "The report carries the feature-family ablation (all, without claims, without timing, without both), the review rate of each honest group under model and rule including repeat genuine claimants, and the stress table; each is produced by a pipeline command and reproduces."
     ]
   ],
   [
@@ -130,7 +131,8 @@
       "Unknown type/hash/schema/library mismatch fails before use.",
       "Run preserves bound model through promotion/restart.",
       "Baseline works without any candidate estimator; inference fits are blocked.",
-      "Hashes have no circular metadata; prior bundles remain immutable."
+      "Hashes have no circular metadata; prior bundles remain immutable.",
+      "Publication fails, leaving the active pointer and the published report unchanged, when the feature code no longer reproduces the frozen training features or the report cannot be built; a published bundle carries the training-time code hash, the cutoff and the feature check."
     ]
   ],
   [
@@ -143,7 +145,8 @@
       "Crash cannot publish partial success; restart preserves notes/bindings.",
       "Population counts and eligible/ineligible nullable fields reconcile.",
       "No-winner path yields complete labelled baseline evidence; corrupt active model fails.",
-      "baseline_rank/baseline_selected use the same k and ties as the model, equal rank/selection under fallback, and the run counts match the comparison filters."
+      "baseline_rank/baseline_selected use the same k and ties as the model, equal rank/selection under fallback, and the run counts match the comparison filters.",
+      "A run records its drift report; shifted scores or inputs and a changed scoring code each raise a warning, and a snapshot like training raises none."
     ]
   ],
   [
@@ -157,7 +160,8 @@
       "Every UI action has an endpoint, with no training/refund/block/delete-note operation.",
       "Unknown404, unfinished409, conflict409 and validation422 are distinguished.",
       "Unlisted CORS origin denied; VM API unauthenticated denied.",
-      "comparison filter values partition eligible customers consistently with the run counts and stable cursors; ineligible customers appear only under all."
+      "comparison filter values partition eligible customers consistently with the run counts and stable cursors; ineligible customers appear only under all.",
+      "Every published metric has a code; Health reports the queue depth and the worker heartbeat; a login header that is not ASCII is refused with 401."
     ]
   ],
   [
@@ -172,7 +176,8 @@
       "Keyboard user filters, opens cases, navigates tabs, appends note and returns.",
       "Implemented notes persist cross-run; prototype labels memory-only behavior.",
       "Truth reveal isolated to evaluation; examples never presented as measured results.",
-      "Rank comparison appears on overview/queue/case with neutral wording and is hidden under fallback; evaluation shows references, error account and calibration disclosure."
+      "Rank comparison appears on overview/queue/case with neutral wording and is hidden under fallback; evaluation shows references, error account and calibration disclosure.",
+      "Evaluation finds every figure by code, ranking and slice with reworded names; it leads with the claim and timing dependence, the repeat-claimant review rates and the stress range; the datasets page shows the worker state and the queue."
     ]
   ],
   [
@@ -199,7 +204,8 @@
       "Fresh supported second environment bootstraps from locks/migrations and reproduces small-world canonical data/score ranks.",
       "Serving cannot read truth; upload cannot escape root.",
       "VM HTTPS/shared-login401/IP block/closed public DB smoke checks pass.",
-      "Local rehearsal works without cloud credentials and restores at relocated root."
+      "Local rehearsal works without cloud credentials and restores at relocated root.",
+      "Health reports queue depth and worker heartbeat; a run reports drift against training; concurrent migration at startup is safe."
     ]
   ],
   [

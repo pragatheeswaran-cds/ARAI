@@ -11,8 +11,10 @@ import math
 import numpy as np
 import pandas as pd
 
+from arai import contract
+
 TIE_NAMESPACE = "review-tie-v02"
-PRIMARY_FRACTION = 0.05
+PRIMARY_FRACTION = contract.primary_fraction()
 
 
 def tie_key(world_id: str, customer_id: str) -> str:

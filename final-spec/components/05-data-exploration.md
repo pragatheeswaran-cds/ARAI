@@ -1,6 +1,6 @@
 # Exploratory data analysis and diagnostics
 
-Version 1.1 (amended 2026-10-02) | Implementation baseline | Component EDA
+Version 1.8 (amended 2026-10-05) | Implementation baseline | Component EDA
 
 ## Requirements and boundary
 
@@ -14,7 +14,7 @@ Optional profile clustering measures structure, not detection success. Enrichmen
 
 Record conclusions, limits and dated config changes before validation. Do not change households/gate/truth to make a model win.
 
-Difficulty calibration is a disclosed development step, not a hidden one. Targets at the 5% budget on pooled out-of-fold training-world scores: raw-return-rate baseline precision .20-.30; best supervised candidate .75-.85; above .90 difficulty must be raised. Permitted levers only: the action-rate Beta parameters, the address multiplier dispersion and the genuine claim rates. Never the gate, truth definitions, eligibility, benign segments or household generation. Calibrate on fixture/training/stress worlds before any validation manifest exists and record each dated change with before/after values. Targets are not acceptance gates: if they cannot be reached with the permitted levers, report the achieved values. Every evaluation report states that difficulty was calibrated and with which levers.
+Difficulty calibration is a disclosed development step, not a hidden one. Targets at the 5% budget on pooled out-of-fold training-world scores: raw-return-rate baseline precision .20-.30; best supervised candidate .75-.85; above .90 difficulty must be raised. Permitted levers only: the action-rate Beta parameters, the address multiplier dispersion and the genuine claim rates. Never the gate, truth definitions, eligibility, benign segments or household generation. Calibrate on fixture/training/stress worlds before any validation manifest exists and record each dated change with before/after values. Targets are not acceptance gates: if they cannot be reached with the permitted levers, report the achieved values. Every evaluation report states that difficulty was calibrated and with which levers. The gate dry-run record carries the levers changed (only permitted levers are accepted) and the reference of the dated calibration record; the report reads both from it.
 
 ## Inputs, outputs and dependencies
 
@@ -33,4 +33,4 @@ Difficulty calibration is a disclosed development step, not a hidden one. Target
 | EDA-AC-05 | Configuration changes are justified on development data before validation manifests. |
 | EDA-AC-06 | Dated calibration record precedes validation manifests, changes only permitted levers and reports achieved baseline and best-candidate precision against the targets. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

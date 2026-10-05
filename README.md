@@ -8,8 +8,8 @@ It contains separate component requirements, acceptance criteria, bundled contra
 - [Decision provenance](final-spec/DECISIONS.md)
 - [Package verification](final-spec/verification/REPORT.md)
 
-The folder is at version 1.7 (amended 2026-10-05; see the amendment sections of the decision provenance).
-Copy the entire final-spec folder or the ARAI-final-spec-v1.7.zip archive to another system.
+The folder is at version 1.8 (amended 2026-10-05; see the amendment sections of the decision provenance).
+Copy the entire final-spec folder or the ARAI-final-spec-v1.8.zip archive to another system.
 After any edit to final-spec, run `uv run python scripts/spec_package.py` to rebuild its register and hashes.
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
@@ -48,6 +48,8 @@ Only `data/artifacts` is mounted into the containers. `data/private` (simulation
 uv run arai generate --seed 2001 2002 2003 2101 ... 2110 2501 ... 2507   # development worlds
 uv run arai train                          # freeze features, fit five candidates and two references
 uv run arai dry-run                        # gate dry run and calibration check, before any validation world
+uv run arai ablation                       # what the result depends on, and which honest groups are reviewed (training worlds)
+uv run arai stress                         # the frozen models on the stress worlds; diagnostic, selects nothing
 uv run arai generate --seed 2201 ... 2205  # validation worlds
 uv run arai select                         # apply the gate, freeze the selection
 uv run arai generate --seed 2301 ... 2305  # test worlds
@@ -58,12 +60,15 @@ uv run arai register data/artifacts/worlds/W2401/operational   # or upload throu
 ```
 
 The order is enforced in code: training and the dry run refuse to run once validation worlds exist, selection
-needs a recorded dry run, and the test needs a frozen selection and runs once.
+needs a recorded dry run, and the test needs a frozen selection and runs once. `ablation` and `stress` read only
+training and stress worlds, so they can be run or rerun at any point; `publish` puts their figures in the report.
+`publish` first proves that the current feature code still reproduces the features the model was trained on, and
+points serving at the new bundle only after the report is written.
 
 ### Tests
 
 ```
-uv run pytest                              # 150+ tests; storage and API tests start their own PostgreSQL
+uv run pytest                              # 170+ tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
 cd web && npm test                         # front-end unit tests
 uv run python tests/e2e/walkthrough.py     # browser walkthrough against a running `arai local`
 ```
@@ -72,7 +77,8 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
 
 - `src/arai/generator/` builds a synthetic world; `validation.py` checks an operational snapshot against the contract.
 - `src/arai/features.py` computes the 17 model features and the evidence; `modeling.py`, `evaluation.py`,
-  `selection.py`, `experiment.py` train, evaluate and select; `ablation.py` measures the timing dependence.
+  `selection.py`, `experiment.py` train, evaluate and select; `ablation.py` measures what the result depends on
+  and which honest groups are sent for review; `contract.py` reads the numbers the specification fixes.
 - `src/arai/bundles.py`, `publishing.py` and `src/arai/service/` are the serving side: immutable bundles, PostgreSQL,
   batch scoring, the worker and the API (`final-spec/contracts/openapi.yaml` is the contract). Everything the API
   serves is read from PostgreSQL: a run's results are written there in the transaction that marks it succeeded
@@ -88,6 +94,10 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
 
 On five untouched simulated test worlds the selected model (boosted trees) is right about 71.5% of the customers
 it sends for review at a 5% review budget, against 23.9% for a return-rate rule and about 35% for a hand-written
-rulebook (validation). Without any timing feature the same model family reaches 56% on training worlds; the
-development target of 75-85% was not met. This is a result about one simulation, not about real returns. See
-`records/2026-10-02-final-test.md` and `records/2026-10-02-gate-dry-run.md`.
+rulebook (validation). The gap is the result, not the level: the level follows how often simulated abusers act
+(52% to 85% across the stress worlds, with the rule at 14% to 44%). Two signals carry the model, claims and late
+returns; on training worlds it reaches 55% without the claim features, 56% without the timing features and 38%
+without both. Honest customers whose deliveries genuinely failed more than once are sent for review more often by
+the model than by the rule (15.8% against 6.7%), and the gate has no check for them. This is a result about one
+simulation, not about real returns. See `records/2026-10-02-final-test.md` and
+`records/2026-10-05-principal-ml-review.md`.

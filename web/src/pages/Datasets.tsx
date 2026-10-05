@@ -7,6 +7,14 @@ import { Badge, Callout, ErrorBox, LoadState, PageTitle, Panel, Row, ist, label,
 const TABLES = ["customer_master", "sku_master", "reason_code", "sales_order", "sales_order_line", "return_order", "return_order_line"];
 const REQUIRED = ["manifest.json", ...TABLES.map((name) => name + ".csv")];
 const POLL_MS = 2000;
+const WORKER_QUIET_SECONDS = 60;
+
+/** The worker may be a separate process; it reports in every couple of seconds and at each stage of a run. */
+export function workerState(secondsSinceSeen: number | null): string {
+  if (secondsSinceSeen === null) return "No worker has reported: submitted runs will wait";
+  if (secondsSinceSeen > WORKER_QUIET_SECONDS) return `Not seen for ${number(Math.round(secondsSinceSeen))} seconds: runs may be waiting`;
+  return "Running";
+}
 
 function Upload({ onRegistered }: { onRegistered: () => void }) {
   const input = useRef<HTMLInputElement>(null);
@@ -168,6 +176,10 @@ export function Datasets() {
           <Row name="Scoring bundle" note="A run binds this bundle when it is submitted">
             {!health ? "unknown" : !ready ? "None valid: scoring blocked" : health.model_kind === "baseline_fallback" ? "Return-rate baseline" : `Promoted ${label(health.model_kind ?? "")} model`}
           </Row>
+          <Row name="Scoring worker" note="Runs wait in the queue until a worker takes them">
+            {!health ? "unknown" : workerState(health.worker_seconds_since_seen)}
+          </Row>
+          <Row name="Runs waiting or being scored">{health ? number(health.queue_depth) : "unknown"}</Row>
           <Callout>
             A run keeps the dataset and the bundle it was submitted with, whatever is promoted later. A failed or interrupted run publishes nothing;
             retry creates a new run with the same bindings.

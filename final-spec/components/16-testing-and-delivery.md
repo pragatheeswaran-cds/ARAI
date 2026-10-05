@@ -32,4 +32,4 @@ Release hashes/spec/config/locks/code, manifests, validation/EDA, features, cali
 | TEST-AC-04 | Target-machine rehearsal has measured runtime and working baseline fallback. |
 | TEST-AC-05 | Release includes failures/limitations/hashes and enough reference material for another developer. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

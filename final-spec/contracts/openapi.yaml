@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.2.0
+  version: 1.3.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -1525,7 +1525,24 @@ components:
       - lower_95
       - upper_95
       - scope
+      - code
+      - ranking
+      - slice
       properties:
+        code:
+          type: string
+          nullable: true
+          description: Stable identifier of what is measured (for example precision, review_rate.benign_household). Clients
+            select metrics by code, ranking and slice; name and scope are display text and may be reworded.
+        ranking:
+          type: string
+          nullable: true
+          description: The ranking the metric belongs to (raw_return_rate, a candidate or a reference), when it belongs to one.
+        slice:
+          type: string
+          nullable: true
+          description: Where it was measured (validation, test, dry_run, world:<id>, budget:<fraction>, ablation, calibration,
+            honest_groups, stress:<id>).
         name: *id001
         value:
           type: number
@@ -1702,6 +1719,8 @@ components:
       - scoring_ready
       - promoted_model_ready
       - model_kind
+      - queue_depth
+      - worker_seconds_since_seen
       properties:
         alive: *id011
         scoring_ready: *id011
@@ -1714,6 +1733,15 @@ components:
           - baseline_fallback
           - null
           nullable: true
+        queue_depth:
+          type: integer
+          minimum: 0
+          description: Runs waiting for the worker or being scored.
+        worker_seconds_since_seen:
+          type: number
+          nullable: true
+          description: Seconds since a scoring worker last reported; null if none ever has. Informative, not part of
+            scoring_ready.
     DatasetPage:
       type: object
       additionalProperties: false

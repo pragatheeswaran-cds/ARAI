@@ -16,6 +16,8 @@ from arai import features as F
 from arai.operational import cutoff_date
 
 SMALL_POPULATION = 500           # below this many eligible customers peer aggregates move noticeably (feature review)
+DRIFT_MIN_ELIGIBLE = 200         # below this the shares are too noisy to compare with training
+DRIFT_P95_BAND = (0.025, 0.10)   # share scoring above the training 95th percentile that raises no warning (0.05 expected)
 SUPPORT = ["mature_sale_lines", "mature_purchased_units", "mature_requested_units", "all_requested_units"]
 TAGS = ("repeat_claims", "linked_claims", "late_returns", "returns_above_expected", "supported_links")
 
@@ -107,6 +109,34 @@ def _timeline(tables: dict, result: F.FeatureResult) -> pd.DataFrame:
     return timeline.sort_values(["customer_id", "sort_at", "source_ref"]).drop(columns="sort_at").reset_index(drop=True)
 
 
+def drift(bundle: bundles.Bundle, scored: pd.DataFrame, raw: np.ndarray) -> tuple:
+    """(report, warnings): how this snapshot's scores and inputs sit against training (final-spec component 15).
+
+    Scores: the share of eligible customers at or above the training 50th, 90th, 95th and 99th percentile; a
+    snapshot like the training worlds gives .50, .10, .05 and .01. Inputs: the features whose median here lies
+    outside the 10th to 90th percentile of training customers. It describes; it never refits, corrects or
+    promotes, and a quiet report is no evidence of accuracy.
+    """
+    if len(scored) < DRIFT_MIN_ELIGIBLE:
+        return {"checked": False, "reason": f"fewer than {DRIFT_MIN_ELIGIBLE} eligible customers"}, []
+    percentile = bundles.reference_percentile(bundle, raw)
+    shares = {f"p{q}": float((percentile >= q).mean()) for q in (50, 90, 95, 99)}
+    outside = []
+    for name, quantiles in (bundle.manifest.get("feature_quantiles") or {}).items():
+        values = scored[name].to_numpy(dtype=float) if name in scored and quantiles else np.array([np.nan])
+        if not np.isnan(values).all() and not quantiles[0] <= float(np.nanmedian(values)) <= quantiles[2]:
+            outside.append(name)
+    notes = []
+    low, high = DRIFT_P95_BAND
+    if not low <= shares["p95"] <= high:
+        notes.append(f"{shares['p95']:.1%} of eligible customers score above the training 95th percentile (5% expected): "
+                     "this snapshot differs from the training worlds, so percentiles and the review list deserve caution.")
+    if outside:
+        notes.append("Inputs outside the range seen in training (median beyond the training 10th-90th percentile): "
+                     + ", ".join(sorted(outside)) + ".")
+    return {"checked": True, "score_share_at_or_above_training_percentile": shares, "features_outside_training_range": sorted(outside)}, notes
+
+
 def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stage=lambda stage, progress: None) -> RunOutput:
     """Score every customer of one snapshot. Raises on a non-finite score; an empty graph or no eligible customer is valid."""
     world_id = manifest["world_id"]
@@ -175,6 +205,11 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         warnings.append(f"Only {n} eligible customers: peer comparisons are unstable in a snapshot this small.")
     if result.fallback_uses:
         warnings.append(f"{result.fallback_uses} sale lines had no peers in their category and used the frozen training rate.")
+    drift_report, drift_notes = drift(bundle, scored, raw)
+    warnings += drift_notes
+    if bundles.code_differs(bundle):
+        warnings.append("The scoring code differs from the code this bundle was published with; republish the experiment "
+                        "to confirm that features still match training.")
     summary = {
         "world_id": world_id, "model_id": bundle.model_id, "model_kind": bundle.kind, "cutoff": manifest["cutoff"],
         "customer_count": int(len(customers)), "eligible_count": n, "excluded_count": int(len(customers) - n),
@@ -183,7 +218,7 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         "baseline_only_count": int((baseline_selected & ~selected).sum()),
         "both_count": int((selected & baseline_selected).sum()),
         "graph_edges": int(len(result.graph.edges)), "identifier_values_dropped": int(result.graph.dropped_values),
-        "category_fallback_uses": int(result.fallback_uses), "warnings": warnings,
+        "category_fallback_uses": int(result.fallback_uses), "warnings": warnings, "drift": drift_report,
         "score_label": bundle.manifest["score_label"], "feature_order": bundle.feature_order,
     }
     return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=_neighbors(result),

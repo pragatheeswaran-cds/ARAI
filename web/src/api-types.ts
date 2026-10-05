@@ -413,6 +413,12 @@ export interface components {
             signals: components["schemas"]["Signal"][];
         };
         Metric: {
+            /** @description Stable identifier of what is measured (for example precision, review_rate.benign_household). Clients select metrics by code, ranking and slice; name and scope are display text and may be reworded. */
+            code: string | null;
+            /** @description The ranking the metric belongs to (raw_return_rate, a candidate or a reference), when it belongs to one. */
+            ranking: string | null;
+            /** @description Where it was measured (validation, test, dry_run, world:<id>, budget:<fraction>, ablation, calibration, honest_groups, stress:<id>). */
+            slice: string | null;
             name: string;
             value: number | null;
             numerator: number | null;
@@ -471,6 +477,10 @@ export interface components {
             promoted_model_ready: boolean;
             /** @enum {string|null} */
             model_kind: "supervised" | "unsupervised" | "baseline_fallback" | null;
+            /** @description Runs waiting for the worker or being scored. */
+            queue_depth: number;
+            /** @description Seconds since a scoring worker last reported; null if none ever has. Informative, not part of scoring_ready. */
+            worker_seconds_since_seen: number | null;
         };
         DatasetPage: {
             items: components["schemas"]["Dataset"][];

@@ -1,6 +1,6 @@
 # Security, deployment and portability
 
-Version 1.0 | Implementation baseline | Component OPS
+Version 1.8 (amended 2026-10-05) | Implementation baseline | Component OPS
 
 ## Requirements and boundary
 
@@ -12,7 +12,7 @@ Config DATABASE_URL, ARTIFACT_ROOT, PRIVATE_TRUTH_ROOT (offline jobs only), APP_
 
 Local loopback,one worker,no authenticated reviewer claim. Cloud optional after local rehearsal: TLS reverse proxy,shared login/basic auth protecting UI/API,IP allowlist,private PostgreSQL. Rehearse judge IP access and local fallback. Synthetic opaque IDs need no added hash; real data requires separate privacy/keyed-hashing/auth design.
 
-Monitor liveness vs scoring readiness, queue depth,duration,error codes,artifact compatibility. Drift reports compare input/score distributions to training; never auto-refit/promote or imply accuracy. Measure target-machine P95/full-world runtime. No generation/training at server startup.
+Monitor liveness vs scoring readiness, queue depth,duration,error codes,artifact compatibility. Drift reports compare input/score distributions to training; never auto-refit/promote or imply accuracy. Implemented as a per-run report (component 11), the queue depth and the seconds since a worker last reported in Health (the worker is a separate process in the reference runtime), and a restart policy on every Compose service. Measure target-machine P95/full-world runtime. No generation/training at server startup.
 
 Implementation commands must cover validate/generate/features/train/evaluate/select/promote/serve with project-relative paths. Seed/config changes version experiment records. Reviewing package requires no external account/API key.
 
@@ -32,5 +32,6 @@ Implementation commands must cover validate/generate/features/train/evaluate/sel
 | OPS-AC-04 | Serving cannot read truth; upload cannot escape root. |
 | OPS-AC-05 | VM HTTPS/shared-login401/IP block/closed public DB smoke checks pass. |
 | OPS-AC-06 | Local rehearsal works without cloud credentials and restores at relocated root. |
+| OPS-AC-07 | Health reports queue depth and worker heartbeat; a run reports drift against training; concurrent migration at startup is safe. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

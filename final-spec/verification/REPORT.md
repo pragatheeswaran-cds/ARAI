@@ -77,3 +77,9 @@ Limits are unchanged: nothing is built or measured. The thresholds and distribut
 
 - The package verifier passes after the rebuild; the OpenAPI contract is unchanged and validates; 103 acceptance criteria (STORE-AC-06 and STORE-AC-07 added).
 - The service tests run against PostgreSQL with no result file written: every response body still validates against the bundled OpenAPI schemas, and results imported from the files of an earlier run answer identically to results scored afresh.
+
+## Amendment 1.8 checks (2026-10-05)
+
+- The package verifier passes after the rebuild; the OpenAPI contract (1.3.0) validates as OpenAPI 3.0; 109 acceptance criteria (EVAL-AC-09, ART-AC-06, INF-AC-07, API-AC-08, UI-AC-09 and OPS-AC-07 added).
+- The offline pipeline runs end to end on small worlds under temporary roots in the test suite; a database dump restores to another database and artifact root with identical answers.
+- The current feature code reproduces the frozen features of training world W2101 value for value; the ablation and stress commands reproduce the figures of the review exactly.

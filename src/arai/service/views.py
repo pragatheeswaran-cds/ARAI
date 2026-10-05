@@ -136,7 +136,7 @@ def customer_case(store: Store, run_id: str, customer: dict) -> dict:
         _signal("residual_z", "Requested above expected, scaled by volume (heuristic, not a significance test)", row["residual_z"],
                 None, "score"),
         _signal("claim_lines", "Transaction-claim lines (not received, wrong item, missing parts, empty package)", row["claim_lines"],
-                len(returns), "of return lines", claims[:SOURCE_REFS]),
+                row["timed_return_lines"], "of return lines", claims[:SOURCE_REFS]),          # withdrawn requests are not counted, as everywhere
         _signal("claim_share", "Share of requested units that are transaction claims", row["claim_share"], row["all_requested_units"],
                 "share of requested units"),
         _signal("coordinated_claim_share", "Own claim lines matched by a linked account on the same style within 7 days",

@@ -1,6 +1,6 @@
 """Command line for every step, with project-relative paths (final-spec component 15).
 
-Offline:  generate -> validate -> train -> dry-run -> select -> test -> publish
+Offline:  generate -> validate -> train -> dry-run -> ablation -> stress -> select -> test -> publish
 Serving:  db-migrate -> serve (API, optionally with the worker) / worker / register
 """
 from __future__ import annotations
@@ -51,7 +51,7 @@ def _train(args) -> int:
 
 def _dry_run(args) -> int:
     from arai import experiment
-    result = experiment.dry_run(args.experiment)
+    result = experiment.dry_run(args.experiment, levers_changed=args.lever or (), record_ref=args.record)
     print(_card(result["card"]))
     print(json.dumps(result["calibration"], indent=1))
     return 0
@@ -71,6 +71,27 @@ def _test(args) -> int:
     print(_card(result["card"]))
     print("final test:", result["final_test_status"])
     return 0 if result["final_test_status"] == "passed" else 2
+
+
+def _ablation(args) -> int:
+    from arai import ablation
+    result = ablation.run(args.experiment, args.candidate)
+    print(f"{result['candidate_id']}, {result['measured_on']}; return-rate rule {result['baseline_precision']:.3f}")
+    for row in result["variants"]:
+        print(f"  {row['variant']:<40} precision {row['precision']:.3f}")
+    for row in result["honest_groups"]["groups"]:
+        print(f"  {row['label']:<66} reviewed by model {row['model_rate']:.3f}, by rule {row['rule_rate']:.3f}")
+    return 0
+
+
+def _stress(args) -> int:
+    from arai import experiment
+    for world in experiment.stress(args.experiment)["worlds"]:
+        best = max((r for r in world["rankings"] if r["role"] == "candidate"), key=lambda r: r["precision"])
+        rule = next(r for r in world["rankings"] if r["role"] == "baseline")
+        print(f"{world['world_id']} {world['mechanism']:<36} rule {rule['precision']:.3f}  best candidate {best['ranking']} "
+              f"{best['precision']:.3f} ({best['status']})")
+    return 0
 
 
 def _publish(args) -> int:
@@ -181,6 +202,17 @@ def main(argv=None) -> int:
         command = commands.add_parser(name, help=text)
         command.add_argument("--experiment", default="EXP-20261002-01")
         command.set_defaults(run=handler)
+        if name == "dry-run":
+            command.add_argument("--lever", action="append", help="a difficulty lever that was changed (repeatable); disclosed in reports")
+            command.add_argument("--record", default=None, help="path of the dated calibration record, disclosed in reports")
+    ablation = commands.add_parser("ablation", help="what the result depends on: feature-family ablations and honest-group review "
+                                                    "rates, out of fold on training worlds")
+    ablation.add_argument("--experiment", default="EXP-20261002-01")
+    ablation.add_argument("--candidate", default=None, help="default: the selected candidate, else the best of the dry run")
+    ablation.set_defaults(run=_ablation)
+    stress = commands.add_parser("stress", help="the frozen estimators on the stress worlds; diagnostic, selects nothing")
+    stress.add_argument("--experiment", default="EXP-20261002-01")
+    stress.set_defaults(run=_stress)
     publish = commands.add_parser("publish", help="build bundles, set the active pointer and write the published experiment report")
     publish.add_argument("--experiment", default="EXP-20261002-01")
     publish.add_argument("--demo-world", default=None, help="export this world's synthetic truth for the evaluation page")

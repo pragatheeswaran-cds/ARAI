@@ -343,7 +343,8 @@ def test_baseline_fallback_ranks_equal_the_rule_and_is_labelled(client, env, wri
     bundles.activate(None, env["baseline_id"], "no_selected_model", "EXP-TEST", "No candidate passed the gate.", env["root"])
     health = client.get(f"{API}/health").json()
     conforms("Health", health)
-    assert health == {"alive": True, "scoring_ready": True, "promoted_model_ready": False, "model_kind": "baseline_fallback"}
+    assert health == {"alive": True, "scoring_ready": True, "promoted_model_ready": False, "model_kind": "baseline_fallback",
+                      "queue_depth": 0, "worker_seconds_since_seen": None}
     run = scored_run(client, env, written)
     assert run["model_kind"] == "baseline_fallback" and run["model_id"] == env["baseline_id"]
     assert run["model_only_count"] == 0 and run["baseline_only_count"] == 0
@@ -804,3 +805,97 @@ def test_the_published_experiment_matches_the_contract_and_the_offline_reports(e
         empty = served.get(f"{API}/experiments/EXP-20261002-01/truth").json()
         conforms("TruthPage", empty)
         assert empty["items"] == [] and empty["world_id"] is None and empty["next_cursor"] is None
+
+
+# ------------------------------------------------------------------ gaps named by the principal ML review (2026-10-05)
+def test_health_reports_the_queue_and_when_a_worker_was_last_seen(client, env, written):
+    """The worker may be another process: the API can only know it is alive from its heartbeat."""
+    dataset = register(client, written)
+    before = client.get(f"{API}/health").json()
+    conforms("Health", before)
+    assert before["queue_depth"] == 0 and before["worker_seconds_since_seen"] is None          # no worker has ever reported
+    client.post(f"{API}/runs", json={"dataset_id": dataset["dataset_id"], "idempotency_key": "queued"})
+    assert client.get(f"{API}/health").json()["queue_depth"] == 1                                # waiting, and nobody to take it
+    store = Store(env["config"].database_url)
+    worker.process_one(env["config"], store)
+    after = client.get(f"{API}/health").json()
+    conforms("Health", after)
+    assert after["queue_depth"] == 0 and 0 <= after["worker_seconds_since_seen"] < 30           # it reported while scoring
+    assert store.migrate() == []                                                                 # migrating again is a no-op
+
+
+def test_a_login_header_that_is_not_ascii_is_refused_not_crashed(env, monkeypatch):
+    monkeypatch.setenv("BASIC_AUTH_USER", "judge")
+    monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=())
+    with TestClient(create_app(config)) as vm:
+        denied = vm.get(f"{API}/health", headers={"Authorization": "Basic caf\u00e9".encode("latin-1")})
+        assert denied.status_code == 401
+        conforms("Error", denied.json())
+
+
+def test_a_run_says_when_its_scores_or_inputs_sit_outside_training(env):
+    """Final-spec component 15: the drift report describes; it never corrects, refits or promotes."""
+    import numpy as np
+    rng = np.random.default_rng(3)
+    reference = np.sort(rng.normal(0.0, 1.0, 4000))
+    like_training = pd.DataFrame({"raw_return_rate": rng.uniform(0.05, 0.35, 600)})
+    manifest = {"feature_quantiles": {"raw_return_rate": [0.05, 0.2, 0.35], "claim_share": None}}
+    bundle = bundles.Bundle("b-test", bundles.BASELINE_KIND, manifest, reference, None, env["root"])
+    report, notes = scoring.drift(bundle, like_training, rng.normal(0.0, 1.0, 600))
+    assert report["checked"] and notes == [] and report["features_outside_training_range"] == []
+    assert abs(report["score_share_at_or_above_training_percentile"]["p95"] - 0.05) < 0.03
+    shifted = pd.DataFrame({"raw_return_rate": rng.uniform(0.6, 0.9, 600)})
+    report, notes = scoring.drift(bundle, shifted, rng.normal(1.5, 1.0, 600))                    # scores and inputs both moved
+    assert report["features_outside_training_range"] == ["raw_return_rate"] and len(notes) == 2
+    assert report["score_share_at_or_above_training_percentile"]["p95"] > 0.3 and "5% expected" in notes[0]
+    report, notes = scoring.drift(bundle, shifted.head(50), rng.normal(1.5, 1.0, 50))            # too few customers to judge
+    assert report == {"checked": False, "reason": "fewer than 200 eligible customers"} and notes == []
+
+
+def test_a_scored_run_records_its_drift_report_and_a_changed_scoring_code(client, env, written, monkeypatch):
+    run = scored_run(client, env, written, key="quiet")
+    summary = Store(env["config"].database_url).get_run(run["run_id"])["summary"]
+    assert summary["drift"]["checked"] and run["warnings"] == []                                 # the training world looks like training
+    monkeypatch.setattr(bundles, "code_sha256", lambda: "0" * 64)                                # the code changed after publication
+    changed = scored_run(client, env, written, key="changed")
+    assert any("scoring code differs" in warning for warning in changed["warnings"])
+
+
+def test_a_database_dump_restores_to_another_database_and_artifact_root(client, env, written, postgres, tmp_path):
+    """STORE-AC-05: the backup is a database dump plus the snapshot and bundle files; restored elsewhere, every answer is the same."""
+    import os
+    import uuid
+    from pathlib import Path
+
+    import pgserver
+    import psycopg
+
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    customer = client.get(url, params={"limit": 1}).json()["items"][0]["customer_id"]
+    client.post(f"{url}/{customer}/reviews", json={"reviewer_name": "Asha", "disposition": "unresolved", "note": "kept", "idempotency_key": "n"})
+    before = {"queue": client.get(url, params={"limit": 40}).json(), "case": client.get(f"{url}/{customer}").json(),
+              "run": client.get(f"{API}/runs/{run['run_id']}").json(), "styles": client.get(f"{API}/runs/{run['run_id']}/styles").json()}
+
+    tool = lambda name: str(Path(pgserver.__file__).parent / "pginstall" / "bin" / (name + (".exe" if os.name == "nt" else "")))  # noqa: E731
+    dump = tmp_path / "backup.dump"
+    subprocess.run([tool("pg_dump"), "--format=custom", "--file", str(dump), "--dbname", env["config"].database_url],
+                   check=True, capture_output=True)
+    name = "restored_" + uuid.uuid4().hex[:12]
+    with psycopg.connect(postgres, autocommit=True) as connection:
+        connection.execute(f'CREATE DATABASE "{name}"')
+    restored_url = postgres.rsplit("/", 1)[0] + "/" + name
+    subprocess.run([tool("pg_restore"), "--no-owner", "--dbname", restored_url, str(dump)], check=True, capture_output=True)
+    relocated = tmp_path / "restored somewhere else" / "artifacts"
+    shutil.copytree(env["root"], relocated)
+
+    config = ServiceConfig(database_url=restored_url, artifact_root=relocated)
+    with TestClient(create_app(config)) as restored:
+        assert restored.get(f"{API}/health").json()["promoted_model_ready"]
+        after = {"queue": restored.get(url, params={"limit": 40}).json(), "case": restored.get(f"{url}/{customer}").json(),
+                 "run": restored.get(f"{API}/runs/{run['run_id']}").json(), "styles": restored.get(f"{API}/runs/{run['run_id']}/styles").json()}
+        assert after == before                                                   # results, notes and bindings all came back
+        again = restored.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "after-restore"})
+        assert again.status_code == 202 and worker.process_one(config, Store(restored_url)) == again.json()["run_id"]
+        assert restored.get(f"{API}/runs/{again.json()['run_id']}").json()["status"] == "succeeded"

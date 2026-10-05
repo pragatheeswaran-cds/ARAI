@@ -10,14 +10,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from arai import dataset, paths
-from arai.generator import load_world
+from arai import contract, dataset, paths
+from arai.dataset import load_world
 from arai.ranking import PRIMARY_FRACTION, budget, rank_world, tie_key  # noqa: F401  (tie_key is part of this module's interface)
 
 SEGMENTS = ("legit_heavy_returner", "defective_product_buyer", "benign_household")
 ACTION_TYPES = ("deceptive_nonreceipt_claim", "deceptive_contents_claim", "temporary_use_return")
-SENSITIVITY_FRACTIONS = (0.01, 0.10)
-BOOTSTRAP_REPETITIONS, BOOTSTRAP_SEED = 1000, 20260926
+SENSITIVITY_FRACTIONS = contract.sensitivity_fractions()
+BOOTSTRAP_REPETITIONS, BOOTSTRAP_SEED, BOOTSTRAP_PERCENTILES = contract.bootstrap()
 MIN_SEGMENT_SIZE = 200
 LINE_KEY = ["order_id", "order_line_no"]
 
@@ -87,8 +87,8 @@ def bootstrap(frame: pd.DataFrame, scores: dict, baseline: str, fraction: float 
     for name, values in counts.items():
         sample = values[draws].sum(axis=1)
         precision = sample[:, 0] / sample[:, 1]
-        low, high = np.percentile(precision, [2.5, 97.5])
-        d_low, d_high = np.percentile(precision - base_precision, [2.5, 97.5])
+        low, high = np.percentile(precision, BOOTSTRAP_PERCENTILES)
+        d_low, d_high = np.percentile(precision - base_precision, BOOTSTRAP_PERCENTILES)
         rows.append({"ranking": name, "precision": values[:, 0].sum() / values[:, 1].sum(), "lower_95": low, "upper_95": high,
                      "difference_from_baseline_lower_95": d_low, "difference_from_baseline_upper_95": d_high})
     return pd.DataFrame(rows).set_index("ranking")
@@ -220,18 +220,19 @@ def error_account(frame: pd.DataFrame, selected: pd.Series, baseline_selected: p
     return {"false_positives": fp, "false_negatives": fn, "model_versus_baseline": difference}
 
 
-def private_counts(world_ids: list, private_root: Path | None = None) -> pd.DataFrame:
+def private_counts(world_ids: list, artifact_root: Path | None = None, private_root: Path | None = None) -> pd.DataFrame:
     """Per customer: completed abusive actions and genuine fulfilment-failure units (private truth)."""
-    frames = []
-    for world_id in world_ids:
-        world = load_world(world_id, private_root=private_root)
-        actions = opportunity_actions(world.truth["action_truth"])        # a whole-parcel claim is one action
-        done = actions[actions["completed_action"]].groupby("customer_id").size().rename("completed_actions")
-        units = world.truth["unit_truth"]
-        units = units[units["genuine_fulfilment_cause"].notna()].merge(
-            world.tables["sales_order"][["order_id", "customer_id"]], on="order_id")
-        genuine = units.groupby("customer_id").size().rename("genuine_claim_units")
-        frame = world.tables["customer_master"][["customer_id"]].assign(world_id=world_id)
-        frame = frame.merge(done, on="customer_id", how="left").merge(genuine, on="customer_id", how="left").fillna(0)
-        frames.append(frame)
-    return pd.concat(frames, ignore_index=True)
+    return pd.concat([world_counts(load_world(world_id, artifact_root, private_root)).assign(world_id=world_id)
+                      for world_id in world_ids], ignore_index=True)
+
+
+def world_counts(world) -> pd.DataFrame:
+    """Per customer of one world: completed abusive actions and genuine fulfilment-failure units."""
+    actions = opportunity_actions(world.truth["action_truth"])            # a whole-parcel claim is one action
+    done = actions[actions["completed_action"]].groupby("customer_id").size().rename("completed_actions")
+    units = world.truth["unit_truth"]
+    units = units[units["genuine_fulfilment_cause"].notna()].merge(
+        world.tables["sales_order"][["order_id", "customer_id"]], on="order_id")
+    genuine = units.groupby("customer_id").size().rename("genuine_claim_units")
+    frame = world.tables["customer_master"][["customer_id"]]
+    return frame.merge(done, on="customer_id", how="left").merge(genuine, on="customer_id", how="left").fillna(0)

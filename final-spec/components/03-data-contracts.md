@@ -35,4 +35,4 @@ Private profiles/action rates/unit facts/order layer (base or campaign)/address 
 | DATA-AC-05 | Same world+content registration is stable; changed world content conflicts. |
 | DATA-AC-06 | Every customer/style label reconstructs privately; no truth columns occur operationally. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

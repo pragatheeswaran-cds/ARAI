@@ -1,0 +1,238 @@
+{
+  "base": "http://127.0.0.1:8011",
+  "browser": "msedge 154.0.4258.53",
+  "checks": [
+    {
+      "check": "root redirects to the overview",
+      "ok": true,
+      "detail": "http://127.0.0.1:8011/overview"
+    },
+    {
+      "check": "overview shows eligible, selected and excluded counts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "overview compares model and rule with neutral wording",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "header carries run, bundle and cutoff",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "synthetic data is labelled on every page",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no truth on the overview",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "datasets page lists the dataset, its hash and the run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no training, refund, block or delete control exists",
+      "ok": true,
+      "detail": "validate and register score with the active bundle view results view results view results retry with the same dataset an"
+    },
+    {
+      "check": "upload refuses a wrong file set before sending",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "upload names the missing files",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "queue route carries the run",
+      "ok": true,
+      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers"
+    },
+    {
+      "check": "queue opens on the review set",
+      "ok": true,
+      "detail": "50"
+    },
+    {
+      "check": "queue shows the return-rate rule rank beside the model rank",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "keyboard filter change updates the address",
+      "ok": true,
+      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers?show=all"
+    },
+    {
+      "check": "comparison filter lists rule-only selections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "search by identifier finds the customer",
+      "ok": true,
+      "detail": "W2401-C06860"
+    },
+    {
+      "check": "queue shows no truth",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case opens from the keyboard",
+      "ok": true,
+      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers/W2401-C06860"
+    },
+    {
+      "check": "case shows observed and expected with denominators",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case separates the wardrobing indicator",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case says evidence, not verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case shows no truth",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case tab timeline opens from the keyboard",
+      "ok": true,
+      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers/W2401-C06860?tab=timeline"
+    },
+    {
+      "check": "case tab relationships opens from the keyboard",
+      "ok": true,
+      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers/W2401-C06860?tab=relationships"
+    },
+    {
+      "check": "case tab notes opens from the keyboard",
+      "ok": true,
+      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/customers/W2401-C06860?tab=notes"
+    },
+    {
+      "check": "note appended and shown with its origin run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "note persists after reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "style queue lists every style with states",
+      "ok": true,
+      "detail": "37"
+    },
+    {
+      "check": "state filter narrows the style queue",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "check": "style detail has SKU drill-down and linked customers",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "style page never clears or condemns a customer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "style links through to a customer case",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "browser back returns to the style",
+      "ok": true,
+      "detail": "http://127.0.0.1:8011/runs/run-6ea8f405b4f140c793f7/styles/BA-SHT-03"
+    },
+    {
+      "check": "evaluation shows selection separately from the final test",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation lists rule, references and every candidate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation shows the error account and the calibration disclosure",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation discloses the timing dependence",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation leads with both dependences and the honest group the model reviews more often",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation shows honest-group review rates and the stress worlds",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "truth is hidden until asked for",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "truth reveal is labelled as simulation and compares both rankings",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "an unknown run shows a truthful error, not an empty list",
+      "ok": true,
+      "detail": "ARAI / CUSTOMER QUEUE\nCustomer queue\n\nFilters change what is shown. They never c"
+    },
+    {
+      "check": "unknown page offers the overview",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no horizontal page scroll on a phone-width screen",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "check": "no unexpected failed request",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "check": "no console error",
+      "ok": true,
+      "detail": "[]"
+    }
+  ],
+  "passed": 46,
+  "failed": 0
+}

@@ -28,4 +28,4 @@ Exclude pending-item inspection routing, images, LLM narratives, automatic refun
 | GOAL-AC-04 | Synthetic and prototype data are clearly labelled; mock values are not evaluated results. |
 | GOAL-AC-05 | Walkthrough explains, with one case each and no truth on case pages, four reasons the return-rate rule misranks: honest heavy returns, abuse inside an ordinary return rate, thin history and linked accounts. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

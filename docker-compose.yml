@@ -6,6 +6,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: arai
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -21,6 +22,7 @@ services:
 
   api:
     build: .
+    restart: unless-stopped
     environment: &service_env
       DATABASE_URL: postgresql://arai:${POSTGRES_PASSWORD}@db:5432/arai
       ARTIFACT_ROOT: /data/artifacts
@@ -36,6 +38,7 @@ services:
 
   worker:
     build: .
+    restart: unless-stopped
     command: ["uv", "run", "--no-sync", "arai", "worker"]
     environment: *service_env
     volumes:
@@ -48,6 +51,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.web
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8080:80"          # loopback only; put a TLS reverse proxy in front for the VM profile
     depends_on:

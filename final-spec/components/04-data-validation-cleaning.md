@@ -28,4 +28,4 @@ Optional missing evidence stays null. Learned feature imputation belongs to trai
 | VAL-AC-04 | Optional missing evidence does not remove customers. |
 | VAL-AC-05 | Original hashes and all allowed adapter transforms are recorded. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

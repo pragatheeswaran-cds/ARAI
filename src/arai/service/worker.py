@@ -53,6 +53,7 @@ def process_one(config: ServiceConfig, store: Store, hook=None) -> str | None:
 
     def stage(name: str, progress: float) -> None:
         store.update_stage(run_id, name, progress)
+        store.heartbeat(config.worker_id)
         if hook:
             hook(name)
 
@@ -84,6 +85,7 @@ def run_forever(config: ServiceConfig, store: Store, stop: threading.Event | Non
     failures = 0
     while not stop.is_set():
         try:
+            store.heartbeat(config.worker_id)
             idle = process_one(config, store) is None
             failures = 0
         except Exception:                                        # noqa: BLE001  e.g. the database is briefly unreachable

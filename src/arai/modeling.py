@@ -26,7 +26,7 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from arai import dataset, paths
-from arai.bundles import load_pipeline, percentile  # noqa: F401  (one implementation, owned by the serving side)
+from arai.bundles import code_sha256, load_pipeline, percentile  # noqa: F401  (one implementation, owned by the serving side)
 from arai.dataset import MODEL_FEATURES
 from arai.settings import load_settings
 
@@ -118,6 +118,18 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def feature_quantiles(frame: pd.DataFrame) -> dict:
+    """10th, 50th and 90th percentile of every model feature over eligible training rows (None where never observed).
+
+    They travel with the bundle so a scoring run can say when a snapshot's inputs sit outside what training saw.
+    """
+    out = {}
+    for name in MODEL_FEATURES:
+        values = frame[name].to_numpy(dtype=float)
+        out[name] = None if np.isnan(values).all() else [float(q) for q in np.nanquantile(values, [0.1, 0.5, 0.9])]
+    return out
+
+
 def training_frame(world_ids: list, artifact_root: Path | None = None, private_root: Path | None = None) -> pd.DataFrame:
     """Eligible rows of the training worlds with their label. Labels are joined after features were frozen."""
     frame = dataset.labelled(world_ids, artifact_root, private_root)
@@ -181,8 +193,10 @@ def train_experiment(experiment_id: str, train_worlds: list, artifact_root: Path
                     for w in train_worlds}
     records = [train_candidate(c, frame, folds, out / "candidates" / c.id) for c in candidates(settings)]
     reference = train_candidate(volume_only_reference(settings), frame, folds, out / "references" / "volume_only_logreg")
+    _, manifest = dataset.load_manifest(train_worlds[0], artifact_root)
     config = {"experiment_id": experiment_id, "training_worlds": sorted(train_worlds), "folds": folds,
               "feature_order": MODEL_FEATURES, "features_sha256": features_sha,
+              "scoring_code_sha256": code_sha256(), "cutoff": manifest["cutoff"], "feature_quantiles": feature_quantiles(frame),
               "experiment_config_sha256": hashlib.sha256(
                   (settings.spec_root / "contracts" / "experiment.yaml").read_bytes()).hexdigest(),
               "eligible_training_rows": int(len(frame)), "training_positives": int(frame["y_abuse"].sum())}

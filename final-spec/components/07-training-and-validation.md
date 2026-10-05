@@ -1,6 +1,6 @@
 # Training dataset, model fitting and validation
 
-Version 1.5 (amended 2026-10-02) | Implementation baseline | Component TRAIN
+Version 1.8 (amended 2026-10-05) | Implementation baseline | Component TRAIN
 
 ## Requirements and boundary
 
@@ -10,11 +10,11 @@ Candidates share eligible rows and ordered features. Labels join supervised asse
 
 Exact params in experiment.yaml: logistic C1/lbfgs/max_iter1000; two HGB learning_rate .05/max_iter200/min_samples_leaf50/l2=1/leaves15 or31/no early stop; two IF300 trees/max_samples256 or1024/contamination auto/max_features1/no bootstrap/one job. No unbounded search.
 
-Supervised reference uses 5 folds grouped by world (two held out per fold). Each fold fits complete preprocessing/fallbacks on eight worlds, scores two. Pool sorted OOF scores; final estimator fits all10 once. Fold models excluded from serving bundle. IF reference uses in-sample training scores. OOF display reference is approximate for final estimator, not calibrated or selection input.
+Supervised reference uses 5 folds grouped by world (two held out per fold). Each fold fits its complete preprocessing on eight worlds and scores two. The category fallback is fitted once on all ten training worlds, and training fails if any training world uses it, so no held-out row is ever scored with a statistic that saw its world (AM-43; this supersedes the fold-local fallback wording in experiment.yaml until that contract is next revised). Pool sorted OOF scores; final estimator fits all10 once. Fold models excluded from serving bundle. IF reference uses in-sample training scores. OOF display reference is approximate for final estimator, not calibrated or selection input.
 
 Report-only references are fitted beside the candidates and are never candidates: volume_only_logreg (the logreg_c1 settings with only mature_sale_lines and log_order_count as inputs) and analyst_rulebook (component 08). Both take coefficients or thresholds from training worlds only and use the same fold-local fitting for out-of-fold scores. Out-of-fold training scores also feed difficulty calibration (component 05) and the gate dry run (component 09).
 
-Training and the gate dry run refuse to run once a validation or test world exists. Freeze expanded parameters/dependency versions. Convergence/nonfinite output rejects candidate. Training, selection/promotion offline only; no inference refitting. Selected artifact remains original training fit, never refit on validation.
+Training and the gate dry run refuse to run once a validation or test world exists. Training records the hash of the scoring code that fitted the models, the training cutoff and the 10th, 50th and 90th percentile of every feature over eligible training rows. Freeze expanded parameters/dependency versions. Convergence/nonfinite output rejects candidate. Training, selection/promotion offline only; no inference refitting. Selected artifact remains original training fit, never refit on validation.
 
 ## Inputs, outputs and dependencies
 
@@ -27,9 +27,9 @@ Training and the gate dry run refuse to run once a validation or test world exis
 | ID | Pass condition and required evidence |
 |---|---|
 | TRAIN-AC-01 | Seed sets disjoint; linked customers never cross worlds; scorecard rejects demo/fixture IDs. |
-| TRAIN-AC-02 | Held-out data fit no learned transform or fallback; assembly audits world IDs. |
+| TRAIN-AC-02 | Held-out data fit no learned transform; training fails if a training world uses the all-worlds category fallback; assembly audits world IDs and joins labels only with the truth written with the world. |
 | TRAIN-AC-03 | Each OOF row scored by a pipeline excluding its world; serving contains one final estimator. |
 | TRAIN-AC-04 | Five candidate records include expanded params/hashes/durations/warnings/rejections. |
 | TRAIN-AC-05 | Unsupervised fit cannot read customer labels. |
 
-Acceptance status: **NOT_RUN**. Record executed results and artifact hashes; prose requirements are not implementation evidence.
+Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.
