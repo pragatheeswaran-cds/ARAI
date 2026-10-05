@@ -1,7 +1,7 @@
 # ARAI runbook: start, stop, validate
 
 Commands are for PowerShell, run from the repository root
-(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `v3`.
+(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `v4`.
 
 The application serves experiment 4 (EXP-20261005-04). Its data, bundles and local database are in
 `data\EXP-20261005-04\` (`artifacts`, `private`, `postgres`). The folders `data\artifacts`, `data\private` and
