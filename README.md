@@ -124,3 +124,13 @@ three. Temporary-use detection lost most of its recall (76% to 37%) and the ward
 usable (13.5% precision), because a late return no longer tells honest customers from abusers. It is recorded and
 not published: `records/2026-10-05-experiment-3.md`. All data of the first two experiments is kept untouched and
 copied under `data/backups/`.
+
+### Sharing data and where the project stands
+
+- `docs/experiment-2-data-guide.md` explains the synthetic data of experiment 2: the worlds, the seven operational
+  tables, the truth tables, the configuration that produced them and where the simulation is kinder than reality.
+- `uv run python scripts/package_experiment_data.py --experiment EXP-20261005-02 --guide docs/experiment-2-data-guide.md`
+  writes the data, its truth, its configuration and the guide as zip archives under `data/exports/` (not in git),
+  after checking every file against the hashes recorded when the world was written.
+- `records/2026-10-05-status-and-open-decisions.md` is the current state of the three experiments and the decisions
+  still to be taken.
