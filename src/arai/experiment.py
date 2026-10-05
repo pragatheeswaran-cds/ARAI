@@ -275,8 +275,11 @@ def stress(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, private_
         dataset.build_features(world_id, reference, artifact_root)
         frame = _frozen_rankings(out, evaluation.evaluation_frame([world_id], artifact_root, private_root))
         card = selection.scorecard(frame, rankings, selectable, require_coverage=False)
+        evidence = evidence_metrics([world_id], artifact_root, private_root)
         rows.append({"world_id": world_id, "mechanism": mechanisms[world_id], "eligible": int(len(frame)),
-                     "prevalence": float(frame["y_abuse"].mean()), "rankings": _records(card)})
+                     "prevalence": float(frame["y_abuse"].mean()), "rankings": _records(card),
+                     "wardrobing": {key: evidence[key] for key in ("wardrobing_elevated", "wardrobing_possible",
+                                                                   "wardrobing_elevated_or_possible", "wardrobing_false_alerts")}})
     payload = {"kind": "frozen estimators on stress worlds; diagnostic only, selects nothing", "experiment_id": experiment_id,
                "recorded_at": _now(), "provenance": provenance(worlds, artifact_root), "worlds": rows}
     _write(out / "reports" / "stress.json", payload)
@@ -399,7 +402,8 @@ def evidence_metrics(world_ids: list, artifact_root=None, private_root=None) -> 
         features = dataset.load_features(world_id, artifact_root)
         wardrobing = pd.read_parquet(directory / "wardrobing.parquet")[["customer_id", "status"]]
         truth_c = world.truth["customer_truth"][["customer_id", "y_abuse", "temporary_use_return"]]
-        rows.append(features[["customer_id", "eligible", "late_window_share", "bracketing_share"]].merge(wardrobing, on="customer_id").merge(truth_c, on="customer_id"))
+        rows.append(features[["customer_id", "eligible", "late_window_share", "bracketing_share", "late_occasion_return_lines"]]
+                    .merge(wardrobing, on="customer_id").merge(truth_c, on="customer_id"))
     styles, customers = pd.concat(styles, ignore_index=True), pd.concat(rows, ignore_index=True)
     supported = styles[styles["mature_sale_lines"] >= F.STYLE_SUPPORT]
     out = {"style_states_by_truth": pd.crosstab([supported["defect_state"], supported["targeting_level"]], supported["state"]).reset_index().to_dict(orient="records")}
@@ -413,6 +417,7 @@ def evidence_metrics(world_ids: list, artifact_root=None, private_root=None) -> 
     eligible = customers[customers["eligible"]]
     actual = eligible["temporary_use_return"].astype(bool)
     for label, flagged in (("wardrobing_elevated", eligible["status"] == "elevated"),
+                           ("wardrobing_possible", eligible["status"] == "possible"),
                            ("wardrobing_elevated_or_possible", eligible["status"].isin(["elevated", "possible"]))):
         tp = int((flagged & actual).sum())
         out[label] = {"flagged": int(flagged.sum()), "true_positives": tp, "temporary_use_customers": int(actual.sum()),
@@ -423,5 +428,7 @@ def evidence_metrics(world_ids: list, artifact_root=None, private_root=None) -> 
         "honest_late_returners": {"customers": int((honest["late_window_share"] > 0).sum()),
                                   "alerted": int((alerts & (honest["late_window_share"] > 0)).sum())},
         "honest_size_bracketers": {"customers": int((honest["bracketing_share"] > 0).sum()),
-                                   "alerted": int((alerts & (honest["bracketing_share"] > 0)).sum())}}
+                                   "alerted": int((alerts & (honest["bracketing_share"] > 0)).sum())},
+        "honest_late_occasion_returners": {"customers": int((honest["late_occasion_return_lines"] >= 1).sum()),
+                                           "alerted": int((alerts & (honest["late_occasion_return_lines"] >= 1)).sum())}}
     return out

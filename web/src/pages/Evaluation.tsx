@@ -12,6 +12,7 @@ const SEGMENTS = [
   ["review_rate.defective_product_buyer", "Defective-product buyers"],
   ["review_rate.benign_household", "Household members"],
   ["review_rate.repeat_genuine_claimant", "Repeat genuine claimants"],
+  ["review_rate.one_genuine_failure", "One genuine failure"],
 ] as const;
 const ACTIONS = [
   ["recall.deceptive_nonreceipt_claim", "Deceptive non-receipt claims"],
@@ -39,6 +40,7 @@ const TEST_MEASURES: Record<string, string> = {
   "review_rate.defective_product_buyer": "defective-product buyers reviewed",
   "review_rate.benign_household": "household members reviewed",
   "review_rate.repeat_genuine_claimant": "repeat genuine claimants reviewed",
+  "review_rate.one_genuine_failure": "customers with one genuine failure reviewed",
 };
 const NAMES: Record<string, string> = {
   raw_return_rate: "Return-rate rule (baseline)",
@@ -48,6 +50,9 @@ const NAMES: Record<string, string> = {
   hgb_leaf15_w4: "Boosted trees, repeat claimants weighted x4",
   hgb_leaf15_w6: "Boosted trees, repeat claimants weighted x6",
   hgb_leaf15_w8: "Boosted trees, repeat claimants weighted x8",
+  hgb_leaf15_w6_s2: "Boosted trees, repeat claimants x6, one failure x2",
+  hgb_leaf15_w6_s3: "Boosted trees, repeat claimants x6, one failure x3",
+  hgb_leaf15_w8_s3: "Boosted trees, repeat claimants x8, one failure x3",
   iforest_256: "Isolation forest, 256 samples",
   iforest_1024: "Isolation forest, 1,024 samples",
   analyst_rulebook: "Analyst rulebook",

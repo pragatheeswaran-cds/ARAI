@@ -76,7 +76,7 @@
       "Eligibility threshold exactly three mature lines; recent requests affect composition but not mature rate.",
       "One shared type no edge; two edge; fanout26 value removed; empty vs failed graph distinguished.",
       "All six style states and signal boundaries correct; claims 7 days apart link and 8 do not; different SKUs of one style link; unsupported neighbors never link; low-link misses reported.",
-      "Wardrobing integer boundaries 35/75, one late return without occasion wear or a half share (25 points, no band), the 75%/100% window boundaries, a request after the window, a claim that is not an item return, and no-return fixtures match without mixing into model risk.",
+      "Wardrobing integer boundaries 70/100, a late occasion return alone (40 points, no band), supporting evidence without a late return (0 points), one returned occasion item (never an excess), a hand-calculated occasion excess and clean-style complaint, the incomplete status below the peer minimum, the 75%/100% window boundaries of a late return, a claim that is not an item return, and no-return fixtures match without mixing into model risk.",
       "Changing private labels with operational inputs fixed, or removing private truth altogether, changes no features or predictions.",
       "coordinated_claim_share matches the style-grain linked-claim rule on a hand-built fixture and counts each own line once.",
       "The claim-context and timing-grain features match a hand-calculated fixture (rates, whole-order and two-reason orders, the densest fortnight, self-excluded peer and style rates, window ratios), give zeros and nulls for a customer or a snapshot without claims or returns, and leave the first 17 features of a first-experiment world unchanged value for value."
@@ -122,7 +122,8 @@
       "Selection record precedes test; test failure prevents runner-up switching.",
       "Test-informed iteration retains failure and uses untouched test worlds.",
       "Dated gate dry run on out-of-fold training scores precedes validation manifests and selects nothing; gate rule and segment definitions are unchanged afterwards.",
-      "A candidate that reviews honest repeat genuine claimants more often than the rule fails the gate whatever its precision; an equal or lower rate passes that leg."
+      "A candidate that reviews honest repeat genuine claimants more often than the rule fails the gate whatever its precision; an equal or lower rate passes that leg.",
+      "A candidate that reviews honest customers with exactly one genuine failure more often than the rule fails the gate even when it reviews repeat claimants less often."
     ]
   ],
   [

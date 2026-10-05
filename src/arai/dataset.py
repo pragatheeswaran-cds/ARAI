@@ -112,9 +112,11 @@ def labelled(world_ids: list, artifact_root: Path | None = None, private_root: P
         private = verify_truth(world_id, artifact_root, private_root)
         truth = pd.read_parquet(private / "customer_truth.parquet")
         frame = features.merge(truth[["customer_id", "y_abuse"]], on="customer_id", validate="one_to_one")
-        # the honest group a candidate may weight in training (experiment.yaml honest_group_weights); never a feature
+        # the honest groups a candidate may weight in training (experiment.yaml honest_group_weights); never features
         orders = pd.read_parquet(Path(artifact_root or paths.ARTIFACT_ROOT) / "worlds" / world_id / "parquet" / "sales_order.parquet")
         failed = genuine_failure_units(pd.read_parquet(private / "unit_truth.parquet"), orders)
-        frame["repeat_genuine_claimant"] = frame["eligible"] & (frame["y_abuse"] == 0) & (frame["customer_id"].map(failed).fillna(0) >= 2)
+        honest, failures = frame["eligible"] & (frame["y_abuse"] == 0), frame["customer_id"].map(failed).fillna(0)
+        frame["repeat_genuine_claimant"] = honest & (failures >= 2)
+        frame["one_genuine_failure"] = honest & (failures == 1)
         frames.append(frame)
     return pd.concat(frames, ignore_index=True)

@@ -104,7 +104,9 @@ def benign_segments(world, features: pd.DataFrame) -> pd.DataFrame:
     defective buyer: requested at least one genuinely defective unit on a mature line (carrier damage excluded);
     household: actually used an identifier that another member of the same household also used;
     repeat genuine claimant: two or more of the customer's units genuinely failed in fulfilment (not received,
-                    wrong item, missing parts, empty package), so repeated claims are the truth, not abuse.
+                    wrong item, missing parts, empty package), so repeated claims are the truth, not abuse;
+    one genuine failure: exactly one such unit. A leg of its own, so that protecting repeat claimants cannot be
+                    paid for by reviewing these customers instead (experiment contract 4.0).
     """
     truth = world.truth["customer_truth"]
     frame = features[["customer_id", "eligible", "raw_return_rate"]].merge(truth[["customer_id", "y_abuse", "household_id"]], on="customer_id")
@@ -139,7 +141,9 @@ def benign_segments(world, features: pd.DataFrame) -> pd.DataFrame:
     out["defective_product_buyer"] = benign & out["customer_id"].isin(defective_buyers)
     out["benign_household"] = benign & out["customer_id"].isin(sharing)
     failed = dataset.genuine_failure_units(world.truth["unit_truth"], world.tables["sales_order"])
-    out["repeat_genuine_claimant"] = benign & (out["customer_id"].map(failed).fillna(0) >= REPEAT_CLAIMANT_UNITS)
+    failures = out["customer_id"].map(failed).fillna(0)
+    out["repeat_genuine_claimant"] = benign & (failures >= REPEAT_CLAIMANT_UNITS)
+    out["one_genuine_failure"] = benign & (failures == 1)
     return out
 
 

@@ -2,7 +2,8 @@
 #   cp .env.example .env   # set POSTGRES_PASSWORD
 #   docker compose up --build
 # UI: http://localhost:8080   API: http://localhost:8080/api/v1/health
-# Only data/artifacts is mounted. data/private (simulation truth) is never visible to these containers.
+# Only the artifacts folder of the current experiment is mounted (experiment.yaml data_root; ARAI_ARTIFACTS overrides it).
+# Its private folder (simulation truth) is never visible to these containers.
 services:
   db:
     image: postgres:16
@@ -12,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: arai
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_exp_20261005_04:/var/lib/postgresql/data      # one database per experiment, like its data folder
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U arai -d arai"]
       interval: 5s
@@ -31,7 +32,7 @@ services:
       BASIC_AUTH_USER: ${BASIC_AUTH_USER:-}
       BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:-}
     volumes:
-      - ./data/artifacts:/data/artifacts
+      - ${ARAI_ARTIFACTS:-./data/EXP-20261005-04/artifacts}:/data/artifacts
     depends_on:
       db:
         condition: service_healthy
@@ -42,7 +43,7 @@ services:
     command: ["uv", "run", "--no-sync", "arai", "worker"]
     environment: *service_env
     volumes:
-      - ./data/artifacts:/data/artifacts
+      - ${ARAI_ARTIFACTS:-./data/EXP-20261005-04/artifacts}:/data/artifacts
     depends_on:
       db:
         condition: service_healthy
@@ -58,4 +59,4 @@ services:
       - api
 
 volumes:
-  pgdata:
+  pgdata_exp_20261005_04:

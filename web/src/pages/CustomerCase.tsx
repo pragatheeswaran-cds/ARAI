@@ -83,7 +83,7 @@ function Evidence({ data, runId }: { data: Case; runId: string }) {
           {w.indicator_score === null ? "not available" : `${w.indicator_score} / 100`}
         </Row>
         {w.signals.length === 0 ? (
-          <p className="muted">{w.status === "insufficient_evidence" ? "No item return to assess." : "No timing signal fired."}</p>
+          <p className="muted">{w.status === "insufficient_evidence" ? "No item return to assess." : w.status === "incomplete" ? "Too few other customers in this snapshot to compare with." : "No signal fired."}</p>
         ) : (
           w.signals.map((signal) => (
             <Row key={signal.code} name={signal.label}>

@@ -39,6 +39,14 @@ def experiment_id() -> str:
     return str(_load("experiment.yaml")["experiment_id"])
 
 
+def retired_seed_owner(seed: int) -> str | None:
+    """The earlier experiment a seed belongs to, if this contract retired it; its world is that experiment's record."""
+    for record in _load("experiment.yaml").get("supersedes", {}).get("experiments", []):
+        if any(seed in seeds for seeds in record.get("retired_seeds", {}).values()):
+            return str(record["experiment_id"])
+    return None
+
+
 def segments() -> tuple:
     """The honest groups the gate protects: a candidate may review none of them more often than the rule does."""
     return tuple(_load("experiment.yaml")["selection"]["segments"])

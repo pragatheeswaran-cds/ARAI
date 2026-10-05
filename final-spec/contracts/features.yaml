@@ -1,4 +1,4 @@
-version: '2.0'
+version: '2.1'
 entity:
 - world_id
 - customer_id
@@ -211,28 +211,56 @@ not_inputs:
 - free_text
 - disposition
 wardrobing_indicator:
-  note: Report-only and independent of the model score (AM-28). Integer points; the band follows
-    the score.
-  late_return: an item-return line (not a transaction claim) requested at 75% to 100% of its
-    captured return window; a request after the window is not a late return
+  note: Report-only and independent of the model score. Rebuilt for EXP-20261005-04 (AM-52, replacing the rule of
+    AM-28). The signal is still a late return, now of occasion wear only, and it reaches a band only when what the
+    customer returned supports it. Integer points; the band follows the score. Operational tables only; the
+    customer is excluded from every snapshot statistic.
+  item_return: a visible, non-withdrawn return line that is not a transaction claim
+  late_return: an item-return line requested at 75% to 100% of its captured return window; a request after the
+    window is not a late return
+  occasion_excess_z: (r - n*p) / sqrt(n*p*(1-p)), with n the occasion-wear units delivered to the customer, r the
+    occasion-wear units on their item returns (never more than n), and p the customer's own item-return rate on
+    all other products, shrunk towards the snapshot's rate with a prior of 10 units, multiplied by the snapshot's
+    ratio of the occasion-wear rate to the other-products rate, and clipped to 0.01-0.95; null without occasion
+    wear delivered. A heuristic score, not a calibrated test
+  clean_style_complaint: an item-return line with a quality reason (reason group item_complaint_sku_quality) on a
+    style whose other buyers have a quality-complaint rate per delivered unit no higher than every other
+    customer's rate over all styles
   signals:
-  - name: repeat_late_returns
-    rule: late_return_lines >= 2
-    points: 50
-  - name: late_return
-    rule: late_return_lines >= 1
-    points: 25
   - name: late_occasion_return
     rule: at least one late return of occasion wear
-    points: 15
-  - name: late_return_share
-    rule: late_return_lines / item_return_lines >= 0.5
-    points: 10
+    points: 40
+  - name: occasion_excess
+    rule: late_occasion_return fired, occasion_excess_z >= 2.0 and at least 2 occasion-wear units returned
+    points: 30
+  - name: clean_style_complaint
+    rule: late_occasion_return fired and clean-style complaint lines >= 1
+    points: 30
   bands:
-    elevated: 75
-    possible: 35
-  insufficient_evidence: no item-return line with valid timing; no score
-  incomplete: reserved; not produced by this rule, which needs no training reference
+    elevated: 100
+    possible: 70
+  band_note: a late return of occasion wear alone (40) reaches no band; one kind of support makes it possible, both
+    make it elevated. The supporting evidence scores nothing without a late return
+  insufficient_evidence: no item-return line; no score
+  incomplete: other customers bought fewer than 200 units of occasion wear or of other products in the snapshot, so
+    there is nothing to compare with; no score and no fired signal
+  measured:
+    worlds: the training worlds of EXP-20261005-02 (W3101-W3110, generator-config 1.3) and EXP-20261005-03
+      (W4101-W4110, generator-config 3.0), eligible customers, read-only, before any world of EXP-20261005-04
+      existed; the choice was made on the first five worlds of each and held on the other five
+    generator_config_1_3: elevated right 96% (185 of 192), 15% of temporary-use customers found; possible right
+      82% (255 of 312), 20% found; either band right 87%, 35% found. The rule of AM-28 - elevated right 95%, 35%
+      found; either band right 72%, 59% found
+    generator_config_3_0: elevated right 75% (95 of 127), 9% found; possible right 25% (172 of 680), 16% found;
+      either band right 33%, 24% found. The rule of AM-28 - elevated right 13%, 26% found; either band right 11%,
+      46% found
+    per_world: 10 to 24 elevated customers per world; right for 93% to 100% of them on 1.3 and 59% to 100% on 3.0
+  limits: timing is still what tells temporary use apart here. Without a late return the supporting evidence is
+    right about one time in ten (39 of 408 and 41 of 369 alerts in an earlier draft that scored it alone), and it
+    is set aside for that reason. The rebuilt rule finds fewer than half of the customers the AM-28 rule found;
+    what it gains is that an honest habit of returning late no longer raises an alert by itself. The clean-style
+    test separates defect-prone styles only because this catalogue has 37 styles with a marked defect truth; most
+    clean-style complaints are genuine defects reported by honest customers
 formula_source: components/06-feature-engineering.md
 experiment_2_note: Features 18 to 43 were added for EXP-20261005-02 (AM-47) after exploration
   on the training worlds of the first experiment; all read operational tables only and exclude

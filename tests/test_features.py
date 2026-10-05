@@ -166,25 +166,75 @@ def test_style_without_support_or_returns_has_its_own_state():
     assert pd.isna(styles.loc["S3", "damage_share"])
 
 
-def _wardrobing(item_lines, late, late_occasion=0):
-    counts = pd.DataFrame({"customer_id": ["c1"], "item_return_lines": [item_lines], "late_return_lines": [late],
-                           "late_occasion_return_lines": [late_occasion]})
-    return F.wardrobing_indicator(counts).iloc[0]
+def _wardrobing(item_lines=4, late_occasion=0, occasion_returned=0, z=np.nan, complaints=0, peers=10_000):
+    evidence = pd.DataFrame({"customer_id": ["c1"], "item_return_lines": [item_lines], "late_occasion_return_lines": [late_occasion],
+                             "occasion_units": [6], "occasion_returned_units": [occasion_returned], "occasion_expected_units": [1.0],
+                             "occasion_excess_z": [z], "clean_style_complaint_lines": [complaints], "wardrobing_peer_units": [peers]})
+    return F.wardrobing_indicator(evidence).iloc[0]
 
 
-def test_wardrobing_bands_follow_late_item_returns_with_integer_points():
-    assert _wardrobing(0, 0)["status"] == "insufficient_evidence" and pd.isna(_wardrobing(0, 0)["indicator_score"])
-    assert _wardrobing(4, 0)["indicator_score"] == 0 and _wardrobing(4, 0)["status"] == "no_elevated_signal"
-    one = _wardrobing(4, 1)                                  # one late return among four: 25 points, no band
-    assert one["indicator_score"] == 25 and one["status"] == "no_elevated_signal"
-    assert _wardrobing(2, 1)["indicator_score"] == 35 and _wardrobing(2, 1)["status"] == "possible"      # half are late
-    assert _wardrobing(3, 1)["indicator_score"] == 25                                                      # a third is not half
-    occasion = _wardrobing(4, 1, late_occasion=1)            # the late return was occasion wear: 25 + 15
-    assert occasion["indicator_score"] == 40 and occasion["status"] == "possible"
-    two = _wardrobing(8, 2)                                  # two late returns: 50 + 25, whatever else was returned
-    assert two["indicator_score"] == 75 and two["status"] == "elevated"
-    assert _wardrobing(2, 2, late_occasion=2)["indicator_score"] == 100
-    assert bool(two["fired_repeat_late_returns"]) and not bool(two["fired_late_return_share"])
+def test_wardrobing_bands_need_a_late_occasion_return_and_support_for_it_with_integer_points():
+    """Feature contract 2.1 (AM-52): a late return of occasion wear is the signal; what was returned decides whether it counts."""
+    none = _wardrobing(item_lines=0)
+    assert none["status"] == "insufficient_evidence" and pd.isna(none["indicator_score"])
+    assert _wardrobing()["indicator_score"] == 0 and _wardrobing()["status"] == "no_elevated_signal"
+    # the supporting evidence scores nothing without a late return, however strong
+    unsupported = _wardrobing(occasion_returned=5, z=9.0, complaints=3)
+    assert unsupported["indicator_score"] == 0 and not bool(unsupported["fired_occasion_excess"])
+    # a late return alone reaches no band, however often: honest customers return late too
+    late = _wardrobing(late_occasion=3)
+    assert late["indicator_score"] == 40 and late["status"] == "no_elevated_signal" and bool(late["fired_late_occasion_return"])
+    assert _wardrobing(late_occasion=1, occasion_returned=1, z=5.0)["indicator_score"] == 40      # one returned item is never an excess
+    assert _wardrobing(late_occasion=1, occasion_returned=3, z=1.99)["indicator_score"] == 40     # below two standard deviations
+    excess = _wardrobing(late_occasion=1, occasion_returned=3, z=2.0)
+    assert excess["indicator_score"] == 70 and excess["status"] == "possible"
+    complaint = _wardrobing(late_occasion=1, complaints=1)
+    assert complaint["indicator_score"] == 70 and complaint["status"] == "possible"
+    both = _wardrobing(late_occasion=1, occasion_returned=3, z=2.4, complaints=1)
+    assert both["indicator_score"] == 100 and both["status"] == "elevated"
+    assert sum(F.WARDROBING_POINTS.values()) == 100
+    # too few other customers to compare with: no verdict and no fired signal
+    thin = _wardrobing(late_occasion=1, occasion_returned=3, z=2.4, complaints=1, peers=F.WARDROBING_MIN_PEER_UNITS - 1)
+    assert thin["status"] == "incomplete" and pd.isna(thin["indicator_score"]) and not bool(thin["fired_late_occasion_return"])
+    assert _wardrobing(late_occasion=1, occasion_returned=3, z=2.4, complaints=1, peers=F.WARDROBING_MIN_PEER_UNITS)["status"] == "elevated"
+
+
+def test_wardrobing_evidence_compares_occasion_returns_with_the_customers_other_returns_and_finds_clean_style_complaints(monkeypatch):
+    skus = [("A", "S1", "Shirt", "M", 0, 30), ("E", "S4", "Jacket", "M", 1, 45), ("G", "S5", "Jeans", "M", 0, 30)]
+    orders = [simple_order(f"O{i}", f"c{i}") for i in (1, 2, 3)]
+    lines = [("O1", 1, "A", 4, "delivered", DAY), ("O1", 2, "E", 3, "delivered", DAY), ("O1", 3, "G", 1, "delivered", DAY),
+             ("O2", 1, "A", 10, "delivered", DAY), ("O2", 2, "E", 5, "delivered", DAY), ("O2", 3, "G", 5, "delivered", DAY),
+             ("O3", 1, "A", 10, "delivered", DAY), ("O3", 2, "E", 5, "delivered", DAY), ("O3", 3, "G", 5, "delivered", DAY)]
+    returns = [("R1", 1, "O1", 2, 3, "didnt_suit", "2026-02-19 10:00", "refunded"),        # all three jackets, on day 40 of 45
+               ("R1", 2, "O1", 3, 1, "poor_quality", "2026-01-15 10:00", "refunded"),      # jeans nobody else complains about
+               ("R2", 1, "O2", 1, 2, "defective", "2026-01-15 10:00", "refunded"), ("R2", 2, "O2", 2, 1, "didnt_suit", "2026-01-15 10:00", "refunded"),
+               ("R3", 1, "O3", 1, 2, "poor_quality", "2026-01-15 10:00", "refunded"), ("R3", 2, "O3", 2, 1, "didnt_suit", "2026-01-15 10:00", "refunded")]
+    reference = F.Reference({"Shirt": 0.2, "Jeans": 0.2, "Jacket": 0.2})
+    tables = make_tables(skus, orders, lines, returns)
+    # three customers are too few to compare with: the evidence is computed, the indicator gives no verdict
+    small = F.compute_features(tables, CUTOFF, reference)
+    assert small.features.set_index("customer_id").loc["c1", "wardrobing_peer_units"] == 10            # the others bought ten jackets
+    assert small.wardrobing.set_index("customer_id").loc["c1", "status"] == "incomplete"
+    monkeypatch.setattr(F, "WARDROBING_MIN_PEER_UNITS", 5)
+    result = F.compute_features(tables, CUTOFF, reference)
+    f = result.features.set_index("customer_id")
+    # c1: the others return 2 of 10 jackets and 4 of 30 other units. Own rate on other products, shrunk with 10 units:
+    # (1 + 10 * 4/30) / (5 + 10); carried to occasion wear by (2/10) / (4/30); expected jackets = 3 * p
+    p = (1 + 10 * 4 / 30) / 15 * (2 / 10) / (4 / 30)
+    assert f.loc["c1", "occasion_units"] == 3 and f.loc["c1", "occasion_returned_units"] == 3
+    assert f.loc["c1", "occasion_expected_units"] == pytest.approx(3 * p) == pytest.approx(0.7)
+    assert f.loc["c1", "occasion_excess_z"] == pytest.approx((3 - 3 * p) / np.sqrt(3 * p * (1 - p)))
+    assert f.loc["c2", "occasion_excess_z"] < 0                                    # one jacket of five is fewer than their own rate predicts
+    # complaints: c1's is on a style no other buyer complains about; c2's and c3's shirt is complained about by the other
+    assert f["clean_style_complaint_lines"].to_dict() == {"c1": 1, "c2": 0, "c3": 0}
+    w = result.wardrobing.set_index("customer_id")
+    assert w.loc["c1", "status"] == "elevated" and w.loc["c1", "indicator_score"] == 100                # 40 + 30 + 30
+    assert w.loc["c2", "status"] == "no_elevated_signal" and w.loc["c2", "indicator_score"] == 0
+    # the same returns made early: the supporting evidence is unchanged and, without a late return, counts for nothing
+    early = [(*r[:6], "2026-01-15 10:00", r[7]) for r in returns]
+    again = F.compute_features(make_tables(skus, orders, lines, early), CUTOFF, reference)
+    assert again.features.set_index("customer_id").loc["c1", "occasion_excess_z"] == pytest.approx(f.loc["c1", "occasion_excess_z"])
+    assert again.wardrobing.set_index("customer_id").loc["c1", ["status", "indicator_score"]].tolist() == ["no_elevated_signal", 0]
 
 
 def test_a_late_return_is_an_item_return_in_the_last_quarter_of_its_window():
@@ -197,7 +247,7 @@ def test_a_late_return_is_an_item_return_in_the_last_quarter_of_its_window():
                ("R4", 1, "O4", 1, 1, "didnt_suit", "2026-02-10 10:00", "rejected"),          # day 31: after the window
                ("R5", 1, "O5", 1, 1, "item_not_received", "2026-02-05 10:00", "refunded")]   # a claim is not an item return
     result = F.compute_features(make_tables(SKUS, orders, lines, returns), CUTOFF, REFERENCE)
-    late = result.wardrobing.set_index("customer_id")["late_return_lines"]
+    late = result.features.set_index("customer_id")["late_return_lines"]
     assert late.to_dict() == {"c1": 0, "c2": 1, "c3": 1, "c4": 0, "c5": 0}
     assert result.wardrobing.set_index("customer_id").loc["c5", "status"] == "insufficient_evidence"
     f = result.features.set_index("customer_id")
@@ -215,7 +265,7 @@ def test_withdrawn_requests_are_ignored_everywhere():
     result = F.compute_features(make_tables(SKUS, orders, lines, returns), CUTOFF, REFERENCE)
     f = result.features.set_index("customer_id").loc["c1"]
     assert f["raw_return_rate"] == 0.5 and f["discretionary_share"] == 0 and f["all_requested_units"] == 1
-    assert result.wardrobing.set_index("customer_id").loc["c1", "late_return_lines"] == 0
+    assert f["late_return_lines"] == 0 and result.wardrobing.set_index("customer_id").loc["c1", "item_return_lines"] == 1
     assert len(result.requests) == 1
 
 

@@ -8,8 +8,8 @@ It contains separate component requirements, acceptance criteria, bundled contra
 - [Decision provenance](final-spec/DECISIONS.md)
 - [Package verification](final-spec/verification/REPORT.md)
 
-The folder is at version 3.0 (amended 2026-10-05; see the amendment sections of the decision provenance).
-Copy the entire final-spec folder or the ARAI-final-spec-v3.0.zip archive to another system.
+The folder is at version 4.0 (amended 2026-10-05; see the amendment sections of the decision provenance).
+Copy the entire final-spec folder or the ARAI-final-spec-v4.0.zip archive to another system.
 After any edit to final-spec, run `uv run python scripts/spec_package.py` to rebuild its register and hashes.
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
@@ -30,8 +30,13 @@ cd web && npm install && npm run build     # build the UI once
 cd .. && uv run arai local                 # embedded PostgreSQL + API + worker + UI on http://127.0.0.1:8000
 ```
 
-`arai local` needs the artifacts under `data/artifacts/` (worlds, bundles, the published experiment). They are
+`arai local` needs the artifacts of the current experiment (worlds, bundles, the published experiment). They are
 not in git; the offline pipeline below reproduces them from seeds, the specification and `uv.lock`.
+
+Each experiment contract names its data folder (`data_root` in `final-spec/contracts/experiment.yaml`). The current
+one, experiment 4, keeps everything under `data/EXP-20261005-04/`: `artifacts/`, `private/` and the local database
+`postgres/`. The data of experiments 1 to 3 stays in `data/artifacts`, `data/private` and `data/postgres` and is
+neither read nor written; check out an earlier experiment's commit to work with it.
 
 ### Reference runtime (Docker Compose)
 
@@ -40,30 +45,30 @@ cp .env.example .env                       # set POSTGRES_PASSWORD
 docker compose up --build                  # PostgreSQL, API, one worker, UI on http://localhost:8080
 ```
 
-Only `data/artifacts` is mounted into the containers. `data/private` (simulation truth) is never visible to serving.
+Only the experiment's `artifacts` folder is mounted into the containers (`ARAI_ARTIFACTS` in `.env` to point elsewhere).
+Its `private` folder (simulation truth) is never visible to serving.
 
 ### Offline pipeline, in order
 
 ```
-uv run arai generate --seed 4101 ... 4110 4501 ... 4507   # development worlds of the current contract (experiment 3)
-uv run arai train                          # freeze features, fit five candidates and two references
+uv run arai generate --seed 5101 ... 5110 5501 ... 5510   # development worlds of the current contract (experiment 4)
+uv run arai train                          # freeze features, fit nine candidates and two references
 uv run arai dry-run                        # gate dry run and calibration check, before any validation world
 uv run arai ablation                       # what the result depends on, and which honest groups are reviewed (training worlds)
 uv run arai stress                         # the frozen models on the stress worlds; diagnostic, selects nothing
-uv run arai generate --seed 4201 ... 4205  # validation worlds
+uv run arai generate --seed 5201 ... 5205  # validation worlds
 uv run arai select                         # apply the gate, freeze the selection
-uv run arai generate --seed 4301 ... 4305  # test worlds
+uv run arai generate --seed 5301 ... 5305  # test worlds
 uv run arai test                           # the final test: runs once
-uv run arai generate --seed 4401           # demonstration world
-uv run arai publish --demo-world W4401     # bundles, active pointer, published experiment report
-uv run arai register data/artifacts/worlds/W4401/operational   # or upload through the UI
+uv run arai generate --seed 5401           # demonstration world
+uv run arai publish --demo-world W5401     # bundles, active pointer, published experiment report
+uv run arai register data/EXP-20261005-04/artifacts/worlds/W5401/operational   # or upload through the UI
 ```
 
-Every command defaults to the experiment named in `final-spec/contracts/experiment.yaml` (now EXP-20261005-03). An
-experiment recorded under an earlier contract is a closed record: train, dry-run, ablation, stress, select and
-test refuse to run for it, and `arai generate` refuses to overwrite a world that an earlier simulator or contract
-produced. `arai publish --experiment EXP-20261005-02 --demo-world W3401` republishes the published experiment
-from its records.
+Every command defaults to the experiment named in `final-spec/contracts/experiment.yaml` (now EXP-20261005-04) and
+to its data folder. An experiment recorded under an earlier contract is a closed record: train, dry-run, ablation,
+stress, select and test refuse to run for it, and `arai generate` refuses to overwrite a world that an earlier
+simulator or contract produced.
 
 The order is enforced in code: training and the dry run refuse to run once validation worlds exist, selection
 needs a recorded dry run, and the test needs a frozen selection and runs once. `ablation` and `stress` read only
@@ -93,8 +98,9 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
 - `web/` is the analyst UI.
 - `notebooks/` walk through generation, exploration and features. `records/` holds the dated development records,
   including the independent reviews and what was done about each. `reports/` holds summary tables and UI screenshots.
-- `data/` (ignored by git) receives generated worlds and artifacts: operational data under `data/artifacts/`,
-  private truth under `data/private/`. Scoring results are not there: they are rows in PostgreSQL.
+- `data/` (ignored by git) receives generated worlds and artifacts, one folder per experiment from experiment 4 on
+  (`data/EXP-20261005-04/artifacts`, `private`, `postgres`); experiments 1 to 3 share `data/artifacts` and
+  `data/private`. Scoring results are not files: they are rows in PostgreSQL.
 
 ### Results in one paragraph
 

@@ -1,9 +1,20 @@
-version: '3.0'
+version: '4.0'
 status: IMPLEMENTATION BASELINE
-experiment_id: EXP-20261005-03
-purpose: 'robustness: the features, candidates and gate of EXP-20261005-02, unchanged, on
-  worlds from generator-config 3.0, where honest customers return late more often and abusers
-  act less often (AM-49)'
+experiment_id: EXP-20261005-04
+purpose: 'a fifth gate leg for honest customers with exactly one genuine delivery failure, training weights
+  on both honest claimant groups, and a rebuilt wardrobing indicator; on new worlds from generator-config 4.0,
+  which generates as generator-config 1.3 did (AM-51 to AM-54)'
+expectation: stated before any world exists. On this simulator the experiment is in effect a replication of
+  EXP-20261005-02 with one more leg. In exploration on that experiment's training worlds the fifth leg was met by
+  every boosted candidate, weighted or not (1.5% to 4.3% reviewed against 5.0% for the rule), and the weighted
+  candidates were within one point of precision of each other, so which of them is selected is not a finding.
+  On generator-config 3.0 no registered candidate met all five legs in exploration; stress world 5511 shows this
+  experiment's models there. A pass says the method and the wider gate hold on new worlds of the generous
+  simulator, and nothing more.
+data_root: data/EXP-20261005-04
+data_root_note: every world, feature file, record, bundle and the local database of this experiment live under
+  data_root (artifacts/, private/, postgres/), relative to the repository. The data of the superseded experiments
+  stays in data/artifacts and data/private and is neither read nor written by this contract.
 supersedes:
   experiments:
   - experiment_id: EXP-20261002-01
@@ -70,6 +81,43 @@ supersedes:
       - 2505
       - 2506
       - 2507
+  - experiment_id: EXP-20261005-03
+    generator_config: '3.0'
+    status: set aside by the owner on 2026-10-05 (AM-51); its records and worlds are kept unchanged
+    retired_seeds:
+      train_seeds:
+      - 4101
+      - 4102
+      - 4103
+      - 4104
+      - 4105
+      - 4106
+      - 4107
+      - 4108
+      - 4109
+      - 4110
+      validation_seeds:
+      - 4201
+      - 4202
+      - 4203
+      - 4204
+      - 4205
+      test_seeds:
+      - 4301
+      - 4302
+      - 4303
+      - 4304
+      - 4305
+      demo_seeds:
+      - 4401
+      stress_seeds:
+      - 4501
+      - 4502
+      - 4503
+      - 4504
+      - 4505
+      - 4506
+      - 4507
   note: retired seeds are never generated, scored or reused for this experiment; their worlds
     stay on disk as the records of the earlier experiments
 honest_group_weights: training-only sample weight on honest members of a gate segment (private
@@ -83,30 +131,30 @@ history_calendar_months: 12
 currency: INR
 seed_namespace: return-abuse-v02
 train_seeds:
-- 4101
-- 4102
-- 4103
-- 4104
-- 4105
-- 4106
-- 4107
-- 4108
-- 4109
-- 4110
+- 5101
+- 5102
+- 5103
+- 5104
+- 5105
+- 5106
+- 5107
+- 5108
+- 5109
+- 5110
 validation_seeds:
-- 4201
-- 4202
-- 4203
-- 4204
-- 4205
+- 5201
+- 5202
+- 5203
+- 5204
+- 5205
 test_seeds:
-- 4301
-- 4302
-- 4303
-- 4304
-- 4305
+- 5301
+- 5302
+- 5303
+- 5304
+- 5305
 demo_seeds:
-- 4401
+- 5401
 test_reuse: prohibited after any model/config/generator change prompted by test results
 eligibility:
   min_mature_sale_lines: 3
@@ -131,6 +179,9 @@ selection:
   - defective_product_buyer
   - benign_household
   - repeat_genuine_claimant
+  - one_genuine_failure
+  segment_note: one_genuine_failure (honest, exactly one genuinely failed unit) is a leg of its own and is not merged
+    with repeat_genuine_claimant, so that a lower review rate in one group cannot be paid for in the other (AM-53)
 candidates:
 - id: logreg_c1
   ordinal: 1
@@ -220,6 +271,57 @@ candidates:
     random_state: 20260925
     n_jobs: 1
   ranking_score: negative score_samples
+- id: hgb_leaf15_w6_s2
+  ordinal: 7
+  family: HistGradientBoostingClassifier
+  supervised: true
+  preprocessing: training-median imputation, missing indicators
+  params:
+    learning_rate: 0.05
+    max_iter: 200
+    max_leaf_nodes: 15
+    min_samples_leaf: 50
+    l2_regularization: 1.0
+    early_stopping: false
+    random_state: 20260925
+  ranking_score: decision_function
+  honest_group_weights:
+    repeat_genuine_claimant: 6
+    one_genuine_failure: 2
+- id: hgb_leaf15_w6_s3
+  ordinal: 8
+  family: HistGradientBoostingClassifier
+  supervised: true
+  preprocessing: training-median imputation, missing indicators
+  params:
+    learning_rate: 0.05
+    max_iter: 200
+    max_leaf_nodes: 15
+    min_samples_leaf: 50
+    l2_regularization: 1.0
+    early_stopping: false
+    random_state: 20260925
+  ranking_score: decision_function
+  honest_group_weights:
+    repeat_genuine_claimant: 6
+    one_genuine_failure: 3
+- id: hgb_leaf15_w8_s3
+  ordinal: 9
+  family: HistGradientBoostingClassifier
+  supervised: true
+  preprocessing: training-median imputation, missing indicators
+  params:
+    learning_rate: 0.05
+    max_iter: 200
+    max_leaf_nodes: 15
+    min_samples_leaf: 50
+    l2_regularization: 1.0
+    early_stopping: false
+    random_state: 20260925
+  ranking_score: decision_function
+  honest_group_weights:
+    repeat_genuine_claimant: 8
+    one_genuine_failure: 3
 uncertainty:
   world_bootstrap_repetitions: 1000
   seed: 20260926
@@ -234,13 +336,17 @@ fixture_seeds:
 - 2003
 fixture_customers: 1000
 stress_seeds:
-  4501: ordinary propensity x1.2
-  4502: ordinary propensity x0.8
-  4503: defect incidence x2
-  4504: household share x2
-  4505: per-account action rate x0.5
-  4506: per-account action rate x2
-  4507: actionable persona multipliers all 1
+  5501: ordinary propensity x1.2
+  5502: ordinary propensity x0.8
+  5503: defect incidence x2
+  5504: household share x2
+  5505: per-account action rate x0.5
+  5506: per-account action rate x2
+  5507: actionable persona multipliers all 1
+  5508: honest customers return late as in generator-config 3.0
+  5509: temporary-use returns come back early as in generator-config 3.0
+  5510: both return-timing changes of generator-config 3.0
+  5511: generator-config 3.0 in full (both timing changes and its lower action rate)
 risk_reference:
   supervised: 5-fold grouped by world; fold-local preprocessing; the category fallback is
     fitted on all training worlds and training fails if a training world uses it

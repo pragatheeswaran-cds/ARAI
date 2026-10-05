@@ -28,6 +28,8 @@ Amendment 2.0 (2026-10-05) is the contract of that experiment, EXP-20261005-02: 
 
 Amendment 3.0 (2026-10-05) records that experiment 2 passed its final test and sets up experiment 3, EXP-20261005-03: the same features, candidates and gate on a less generous simulator (honest customers return late more often, abusers act less often), to test how much of the result survives. Earlier worlds are never overwritten.
 
+Amendment 4.0 (2026-10-05) records the owner's decisions after experiment 3 and is the contract of experiment 4, EXP-20261005-04: the less generous simulator is set aside and its data kept untouched; new worlds are generated as generator-config 1.3 did, in a data folder of their own; the gate gets a fifth leg for honest customers with exactly one genuine delivery failure, with training weights on both honest claimant groups; and the wardrobing indicator is rebuilt so that a late return counts only when what the customer returned supports it.
+
 ## Start on any system
 
 1. Copy/extract the **whole final-spec folder**.

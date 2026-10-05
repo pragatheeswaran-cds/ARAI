@@ -78,8 +78,8 @@ def strongest_pairs(corr: pd.DataFrame, top: int = 10) -> pd.DataFrame:
 
 def wardrobing_report(frame: pd.DataFrame, wardrobing: pd.DataFrame) -> dict:
     """The wardrobing indicator against actual temporary-use actions, with its false alerts on honest look-alikes."""
-    data = frame.merge(wardrobing[["world_id", "customer_id", "status", "indicator_score", "late_return_lines"]]
-                       .rename(columns={"late_return_lines": "late_lines"}), on=["world_id", "customer_id"])
+    data = frame.merge(wardrobing[["world_id", "customer_id", "status", "indicator_score"]], on=["world_id", "customer_id"]) \
+        .rename(columns={"late_return_lines": "late_lines"})                    # the count is a model feature of the frame
     eligible = data[data["eligible"]]
     truth = eligible["temporary_use_return"].astype(bool)
     rows = []

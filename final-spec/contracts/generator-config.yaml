@@ -1,4 +1,4 @@
-version: '3.0'
+version: '4.0'
 status: engineering defaults; tune on development only before validation; record changes
 snapshot: '2026-09-09T23:59:59+05:30'
 history_start: '2025-09-10'
@@ -319,3 +319,33 @@ amendment_3_0:
     distribution: Beta(1.2, 7.2) per positive-propensity account and enabled family
     mean: 0.143
     applies_to: solo opportunities per relevant base-layer delivered order
+amendment_4_0:
+  note: Added 2026-10-05 (AM-51). The owner set the less generous simulator of amendment_3_0 aside. Worlds of
+    EXP-20261005-04 are generated with the behaviour of generator-config 1.3, the simulator of experiments 1 and 2;
+    with the values below the generator reproduces a generator-config 1.3 world table for table (checked on seed
+    3101 before any world of this experiment existed). amendment_3_0 stays above as the record of experiment 3.
+    This block is the one in force (settings.REALISM_IN_FORCE).
+  honest_return_timing:
+    late_returner_share: 0.0
+    late_returner_probability: 0.0
+    background_probability: 0.0
+    late_law: Beta(5, 2)
+    rule: no honest item return follows the late law; every one is requested at round(Beta(2,5) * window), as in
+      generator-config 1.3
+  temporary_use_timing:
+    early_probability: 0.0
+    early_law: Beta(2, 5)
+    rule: every temporary-use return is requested at round(Beta(5,2) * window), as in generator-config 1.3
+  action_rate:
+    distribution: Beta(1.2, 4.8) per positive-propensity account and enabled family
+    mean: 0.2
+    applies_to: solo opportunities per relevant base-layer delivered order
+  stress_worlds:
+    note: four stress worlds of experiment 4 take parts of their behaviour from amendment_3_0, so the model, the
+      gate and the rebuilt wardrobing indicator are also read where timing is blurred and where the five legs bind.
+      Diagnostic only, like every stress world. This list documents settings.STRESS_OVERRIDES, which the generator
+      reads.
+    5508: honest_return_timing of amendment_3_0
+    5509: temporary_use_timing of amendment_3_0
+    5510: honest_return_timing and temporary_use_timing of amendment_3_0
+    5511: honest_return_timing, temporary_use_timing and action_rate of amendment_3_0 (generator-config 3.0 in full)

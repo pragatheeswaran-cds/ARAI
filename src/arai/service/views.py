@@ -14,14 +14,18 @@ from arai import features as F
 from arai.service import scoring
 from arai.service.store import Store
 
-WARDROBING_LIMITATION = ("Timing pattern only. It cannot establish that an item was worn, and it is independent of the "
-                         "model score.")
-WARDROBING_LABELS = {
-    "repeat_late_returns": "Two or more item returns in the last quarter of the return window",
-    "late_return": "At least one item return in the last quarter of the return window",
-    "late_occasion_return": "A late return of occasion wear",
-    "late_return_share": "At least half of item returns were late",
+WARDROBING_LIMITATION = ("Occasion wear returned late in its return window, counted only when what the customer returned supports "
+                         "it. It cannot establish that an item was worn, and it is independent of the model score.")
+# code -> (label, value, denominator, unit); value and denominator name measures of the customer's result row
+WARDROBING_SIGNALS = {
+    "late_occasion_return": ("Occasion wear returned in the last quarter of the return window (reaches no band alone)",
+                             "late_occasion_return_lines", "item_return_lines", "of item-return lines"),
+    "occasion_excess": ("Occasion-wear units returned, far above what this customer's other returns predict",
+                        "occasion_returned_units", "occasion_units", "of occasion-wear units bought"),
+    "clean_style_complaint": ("Quality complaints on styles other buyers do not complain about",
+                              "clean_style_complaint_lines", "item_return_lines", "of item-return lines"),
 }
+OCCASION_EXPECTED = ("occasion_expected_units", "Occasion-wear returns this customer's other returns predict", "units")
 CASE_STYLES, STYLE_CUSTOMERS, SOURCE_REFS = 12, 50, 20
 
 
@@ -154,12 +158,15 @@ def customer_case(store: Store, run_id: str, customer: dict) -> dict:
                 row["max_identifier_fanout"], None, "accounts"),
         _signal("open_window_share", "Delivered units whose return window is still open", row["open_window_share"], None, "share"),
     ]
-    wardrobing_signals = [
-        _signal(name, WARDROBING_LABELS[name], row["late_return_share"] if name == "late_return_share" else
-                (row["late_occasion_return_lines"] if name == "late_occasion_return" else row["late_return_lines"]),
-                row["item_return_lines"] if name != "late_return_share" else None,
-                "share of item-return lines" if name == "late_return_share" else "of item-return lines")
-        for name in F.WARDROBING_POINTS if bool(row["fired_" + name])]
+    wardrobing_signals = []
+    for name in F.WARDROBING_POINTS:
+        if not bool(row.get("fired_" + name)):
+            continue
+        label, value, denominator, unit = WARDROBING_SIGNALS[name]
+        wardrobing_signals.append(_signal(name, label, row.get(value), row.get(denominator) if denominator else None, unit))
+        if name == "occasion_excess":                       # the prediction the excess is measured against
+            code, label, unit = OCCASION_EXPECTED
+            wardrobing_signals.append(_signal(code, label, row.get(code), None, unit))
     return {
         "signals": signals,
         "timeline": [{"source_ref": e["source_ref"], "event_type": e["event_type"], "observed_at": e["observed_at"],

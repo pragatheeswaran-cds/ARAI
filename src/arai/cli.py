@@ -19,6 +19,11 @@ from arai.validation import validate_world
 
 def _generate(args) -> int:
     for seed in args.seed:
+        owner = contract.retired_seed_owner(seed)
+        if owner:
+            print(f"Seed {seed} belongs to {owner}. Its world is the record of that experiment and is never generated under "
+                  "the current contract; check out that experiment's commit to reproduce it.")
+            return 1
         started = time.time()
         world = generate_world(seed, args.customers, abuse_enabled=not args.no_abuse)
         existing = _existing_generator(world, args.artifact_root)
@@ -154,7 +159,7 @@ def _local(args) -> int:
         print("The embedded PostgreSQL is a development dependency: run `uv sync` (or use docker compose).")
         return 1
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-    server = pgserver.get_server(args.pg_dir or paths.REPO_ROOT / "data" / "postgres")
+    server = pgserver.get_server(args.pg_dir or paths.POSTGRES_DIR)
     static = paths.REPO_ROOT / "web" / "dist"
     if not (static / "index.html").is_file():
         print("web/dist is missing: run `npm install` and `npm run build` in web/ to serve the UI; starting the API only.")
@@ -247,7 +252,7 @@ def main(argv=None) -> int:
     local = commands.add_parser("local", help="local rehearsal: embedded PostgreSQL + API + worker + built UI, one process")
     local.add_argument("--host", default="127.0.0.1")
     local.add_argument("--port", type=int, default=8000)
-    local.add_argument("--pg-dir", type=Path, default=None, help="PostgreSQL data directory (default: data/postgres)")
+    local.add_argument("--pg-dir", type=Path, default=None, help="PostgreSQL data directory (default: postgres/ in the contract's data folder)")
     local.set_defaults(run=_local)
     register = commands.add_parser("register", help="validate and register an operational world directory as a dataset")
     register.add_argument("directory", type=Path)

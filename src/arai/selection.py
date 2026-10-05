@@ -1,7 +1,7 @@
 """Reference rankings, the promotion gate and model selection (final-spec components 08 and 09).
 
 The gate is a point-estimate rule at the 5% budget: a candidate must have strictly higher precision than the
-raw-return-rate baseline and no higher false-positive rate in each of the three benign segments. Report-only
+raw-return-rate baseline and no higher false-positive rate in each benign segment the contract lists. Report-only
 references are scored the same way and can never be selected.
 """
 from __future__ import annotations

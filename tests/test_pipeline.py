@@ -57,8 +57,10 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
         with pytest.raises(RuntimeError, match="category fallback"):
             experiment.train("EXP-FALLBACK", **roots)
     result = experiment.train(EXPERIMENT, **roots)
-    assert [c["status"] for c in result["candidates"]] == ["fitted"] * 6
+    assert [c["status"] for c in result["candidates"]] == ["fitted"] * 9
     assert [c["honest_group_weights"] for c in result["candidates"]][2:5] == [{"repeat_genuine_claimant": w} for w in (4, 6, 8)]
+    assert [c["honest_group_weights"] for c in result["candidates"]][6:] == [
+        {"repeat_genuine_claimant": r, "one_genuine_failure": s} for r, s in ((6, 2), (6, 3), (8, 3))]
     trained = read("config.json")
     assert trained["scoring_code_sha256"] == bundles.code_sha256() and trained["cutoff"].startswith("2026-09-09")
     assert set(trained["feature_quantiles"]) == set(dataset.MODEL_FEATURES)
@@ -83,6 +85,8 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
     stress = experiment.stress(EXPERIMENT, **roots)
     assert [w["world_id"] for w in stress["worlds"]] == [f"W{halved}"] and "action rate" in stress["worlds"][0]["mechanism"]
     assert {r["ranking"] for r in stress["worlds"][0]["rankings"]} >= {"raw_return_rate", "hgb_leaf15", "analyst_rulebook"}
+    assert set(stress["worlds"][0]["wardrobing"]) == {"wardrobing_elevated", "wardrobing_possible", "wardrobing_elevated_or_possible",
+                                                      "wardrobing_false_alerts"}
 
     # ---- validation: worlds from another generator are refused; then selection is frozen
     small["generate"](config["validation_seeds"])
@@ -153,5 +157,10 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
     limits = " ".join(report["coverage_limitations"])
     assert "Two signals carry the model" in limits and "two or more genuinely failed deliveries" in limits
     assert "review rate, honest repeat genuine claimants" in {m["name"] for m in report["baseline_metrics"]}      # the fourth leg is reported
+    assert "review_rate.one_genuine_failure" in {m["code"] for m in report["baseline_metrics"]}                   # and the fifth
+    assert "exactly one genuinely failed delivery have a gate leg of their own" in limits
+    assert f"stress:W{halved}" in {m["slice"] for m in report["wardrobing_metrics"]}                              # the indicator per stress world
+    assert {"wardrobing_false_alerts.honest_late_occasion_returners", "wardrobing_possible.precision"} <= {
+        m["code"] for m in report["wardrobing_metrics"]}
     if chosen:
         assert "Quote the gap to the rule, not the level" in limits

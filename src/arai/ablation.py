@@ -2,8 +2,8 @@
 
 Out of fold on the ten training worlds, for one candidate at the review budget:
 - precision with all features and without each family the model leans on (claims, timing, both);
-- the share of each honest group sent for review by the model and by the return-rate rule, including honest
-  customers with repeated genuine delivery failures, a group the promotion gate has no leg for.
+- the share of each honest group sent for review by the model and by the return-rate rule: the gate legs and,
+  beside them, honest customers with no genuine delivery failure.
 Training worlds only: it reads no validation or test world and changes no fitted model, so it can be recorded at
 any time and belongs in every published report.
 """

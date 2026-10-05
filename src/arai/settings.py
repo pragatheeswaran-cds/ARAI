@@ -52,12 +52,31 @@ STRESS_OVERRIDES = {
     2507: {"actionable_multipliers_all_one": True},
 }
 STRESS_OVERRIDES.update({seed + 2000: override for seed, override in list(STRESS_OVERRIDES.items())})    # 4501-4507: experiment 3
+STRESS_OVERRIDES.update({seed + 3000: STRESS_OVERRIDES[seed] for seed in range(2501, 2508)})             # 5501-5507: experiment 4
+# four more stress worlds of experiment 4 take parts of their behaviour from another amendment (AM-51); 5511 is 3.0 in full
+STRESS_OVERRIDES.update({
+    5508: {"honest_return_timing": "amendment_3_0"},
+    5509: {"temporary_use_timing": "amendment_3_0"},
+    5510: {"honest_return_timing": "amendment_3_0", "temporary_use_timing": "amendment_3_0"},
+    5511: {"honest_return_timing": "amendment_3_0", "temporary_use_timing": "amendment_3_0", "action_rate": "amendment_3_0"},
+})
+REALISM_IN_FORCE = "amendment_4_0"      # the generator-config block whose return timing and action rate generate worlds
+REALISM_PARTS = ("honest_return_timing", "temporary_use_timing", "action_rate")
 
 
 def beta_law(text: str) -> tuple:
     """(a, b) of a law written 'Beta(a, b) ...' in the configuration."""
     a, b = re.search(r"Beta\(([\d.]+),\s*([\d.]+)\)", text).groups()
     return float(a), float(b)
+
+
+def _realism(config: dict, applied: dict) -> dict:
+    """The block in force; a stress world may take a part from the amendment its override names."""
+    realism = dict(config[REALISM_IN_FORCE])
+    for part in REALISM_PARTS:
+        if part in applied:
+            realism[part] = config[applied[part]][part]
+    return realism
 
 
 def _load(path: Path) -> dict:
@@ -77,7 +96,7 @@ class Settings:
     amendment: dict         # generator-config.yaml amendment_1_1
     amendment3: dict        # generator-config.yaml amendment_1_3
     amendment4: dict        # generator-config.yaml amendment_1_4
-    realism: dict           # generator-config.yaml amendment_3_0: honest and temporary-use return timing, action rate
+    realism: dict           # generator-config.yaml block in force: honest and temporary-use return timing, action rate
     policy: dict            # generator-policy.yaml
     profiles: dict          # assets/profile-config.yaml
     festive_windows: list   # assets/festive-windows.yaml
@@ -131,7 +150,7 @@ def load_settings(seed: int | None = None, spec_root: Path | None = None, overri
         amendment=config["amendment_1_1"],
         amendment3=config["amendment_1_3"],
         amendment4=config["amendment_1_4"],
-        realism=config["amendment_3_0"],
+        realism=_realism(config, applied),
         policy=_load(root / "contracts" / "generator-policy.yaml"),
         profiles=_load(root / "assets" / "profile-config.yaml"),
         festive_windows=_load(root / "assets" / "festive-windows.yaml")["windows"],

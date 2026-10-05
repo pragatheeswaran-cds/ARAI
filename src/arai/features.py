@@ -7,7 +7,8 @@ Outputs:
 - the ordered model features of contracts/features.yaml,
 - the observed relationship graph (an edge needs two shared identifier types),
 - style and SKU evidence (quality and targeting signals),
-- the wardrobing indicator, which is independent of the model score.
+- the wardrobing indicator, which is independent of the model score: a late return of occasion wear, counted
+  only when what the customer returned supports it.
 """
 from __future__ import annotations
 
@@ -42,9 +43,15 @@ TARGETING_LINKED_SHARE = 0.075
 # a late return: an item return requested in the last quarter of its return window, and still inside it
 LATE_FROM, LATE_TO = 0.75, 1.0
 # wardrobing: integer points, never floating point (decimal weights miss the band boundaries)
-WARDROBING_POINTS = {"repeat_late_returns": 50, "late_return": 25, "late_occasion_return": 15, "late_return_share": 10}
-WARDROBING_ELEVATED, WARDROBING_POSSIBLE = 75, 35
-WARDROBING_SUPPORT = ["item_return_lines", "late_return_lines", "late_occasion_return_lines"]
+WARDROBING_POINTS = {"late_occasion_return": 40, "occasion_excess": 30, "clean_style_complaint": 30}
+WARDROBING_ELEVATED, WARDROBING_POSSIBLE = 100, 70
+WARDROBING_SUPPORT = ["item_return_lines", "late_occasion_return_lines", "occasion_units", "occasion_returned_units",
+                      "occasion_expected_units", "occasion_excess_z", "clean_style_complaint_lines", "wardrobing_peer_units"]
+OCCASION_EXCESS_Z = 2.0                 # occasion-wear returns above expected, in standard deviations
+OCCASION_EXCESS_MIN_UNITS = 2           # one returned occasion item is never an excess
+OCCASION_PRIOR_UNITS = 10               # prior strength of the customer's own rate on everything else
+OCCASION_RATE_BOUNDS = (0.01, 0.95)
+WARDROBING_MIN_PEER_UNITS = 200         # units other customers bought, of occasion wear and of everything else, to compare with
 NONRECEIPT_CODE = "item_not_received"
 FORTNIGHT_DAYS = 14             # a claim day and the 14 days after it
 MID_FROM = 0.5                  # an item return from half of its window onwards is mid-late; from LATE_FROM it is late
@@ -368,6 +375,7 @@ def compute_features(tables: dict, cutoff, reference: Reference | None = None) -
     late = requests[requests["late_return"]]
     count = lambda part: part.groupby("customer_id").size().reindex(out.index, fill_value=0).astype(int)
     out["item_return_lines"] = count(item_returns)
+    out = out.join(wardrobing_evidence(delivered, item_returns, out.index))
     out["late_return_lines"] = count(late)
     out["late_occasion_return_lines"] = count(late[late["is_occasion_wear"] == 1])
     out["discretionary_share"] = unit_share(requests["reason_code"].isin(DISCRETIONARY_CODES))
@@ -410,7 +418,7 @@ def compute_features(tables: dict, cutoff, reference: Reference | None = None) -
 
     lines = lines.merge(mature[LINE_KEY + ["p_expected"]], on=LINE_KEY, how="left")
     styles, skus = style_evidence(lines, requests, claims, reference)
-    wardrobing = wardrobing_indicator(out[WARDROBING_SUPPORT].reset_index())
+    wardrobing = wardrobing_indicator(features[["customer_id", *WARDROBING_SUPPORT]])
     return FeatureResult(features=features, graph=graph, styles=styles, skus=skus, wardrobing=wardrobing,
                          lines=lines, requests=requests.merge(claims[["return_order_id", "return_line_no", "linked", "linked_neighbours"]],
                                                               on=["return_order_id", "return_line_no"], how="left"),
@@ -458,25 +466,72 @@ def style_evidence(lines: pd.DataFrame, requests: pd.DataFrame, claims: pd.DataF
 
 
 # ------------------------------------------------------------------ wardrobing indicator
-def wardrobing_indicator(counts: pd.DataFrame) -> pd.DataFrame:
+def wardrobing_evidence(delivered: pd.DataFrame, item_returns: pd.DataFrame, customers: pd.Index) -> pd.DataFrame:
+    """What a customer returned and with which reason, to weigh a late return of occasion wear. Nothing here reads timing.
+
+    Occasion wear: the units of occasion wear the customer returned, against the number their returns of everything
+    else predict. The prediction is the customer's own rate on other products (shrunk towards the snapshot's),
+    carried to occasion wear by the snapshot's ratio of the two rates, so a customer who returns a lot of
+    everything is not singled out. Complaints: quality complaints on styles whose other buyers complain no more
+    often than the snapshot as a whole. The customer is excluded from every snapshot statistic.
+    `item_returns` are visible, non-withdrawn requests that are not transaction claims. Operational tables only.
+    """
+    out = pd.DataFrame(index=customers)
+    total = lambda part, column: part.groupby("customer_id")[column].sum().reindex(customers, fill_value=0).astype(float)  # noqa: E731
+    bought, returned = delivered["is_occasion_wear"] == 1, item_returns["is_occasion_wear"] == 1
+    n_occasion, n_other = total(delivered[bought], "quantity"), total(delivered[~bought], "quantity")
+    r_occasion = np.minimum(total(item_returns[returned], "quantity_returned"), n_occasion)      # never more than was delivered
+    r_other = np.minimum(total(item_returns[~returned], "quantity_returned"), n_other)
+    peers_occasion, peers_other = n_occasion.sum() - n_occasion, n_other.sum() - n_other         # units everybody else bought
+    rate_occasion = (r_occasion.sum() - r_occasion) / peers_occasion.where(peers_occasion > 0)
+    rate_other = (r_other.sum() - r_other) / peers_other.where(peers_other > 0)
+    own_rate = (r_other + OCCASION_PRIOR_UNITS * rate_other) / (n_other + OCCASION_PRIOR_UNITS)
+    p = (own_rate * rate_occasion / rate_other.where(rate_other > 0)).clip(*OCCASION_RATE_BOUNDS)
+    has_occasion = n_occasion > 0
+    out["occasion_units"] = n_occasion.astype(int)
+    out["occasion_returned_units"] = r_occasion.astype(int)
+    out["occasion_expected_units"] = (n_occasion * p).where(has_occasion)
+    out["occasion_excess_z"] = (r_occasion - n_occasion * p) / np.sqrt((n_occasion * p * (1 - p)).where(has_occasion))
+    out["wardrobing_peer_units"] = np.minimum(peers_occasion, peers_other).astype(int)
+
+    complaints = item_returns[item_returns["reason_code"].isin(QUALITY_CODES)]
+    own = pd.concat([delivered.groupby(["style_id", "customer_id"])["quantity"].sum().rename("n"),
+                     complaints.groupby(["style_id", "customer_id"])["quantity_returned"].sum().rename("q")], axis=1).fillna(0.0)
+    style_n, style_q = own.groupby("style_id")["n"].transform("sum"), own.groupby("style_id")["q"].transform("sum")
+    mine_n, mine_q = own.groupby("customer_id")["n"].transform("sum"), own.groupby("customer_id")["q"].transform("sum")
+    style_rate = (style_q - own["q"]) / (style_n - own["n"]).where(style_n > own["n"])            # other buyers of the style
+    snapshot_rate = (own["q"].sum() - mine_q) / (own["n"].sum() - mine_n).where(own["n"].sum() > mine_n)   # everybody else, every style
+    clean = (style_rate <= snapshot_rate).rename("clean_style").reset_index()
+    lines = complaints[["customer_id", "style_id"]].merge(clean, on=["style_id", "customer_id"], how="left")
+    out["clean_style_complaint_lines"] = lines[lines["clean_style"].fillna(False).astype(bool)].groupby("customer_id").size() \
+        .reindex(customers, fill_value=0).astype(int)
+    return out
+
+
+def wardrobing_indicator(evidence: pd.DataFrame) -> pd.DataFrame:
     """Image-free behavioural indicator of temporary use. It cannot establish wear and never enters the model score.
 
-    Built on item returns requested in the last quarter of the return window: once is common, repeatedly is not.
-    `counts` has customer_id, item_return_lines, late_return_lines and late_occasion_return_lines.
+    The signal is occasion wear returned in the last quarter of its return window. Alone it reaches no band,
+    because honest customers return late too. It counts when what the customer returned supports it: occasion wear
+    returned far more often than their other returns predict, or a quality complaint on a style nobody else
+    complains about. One of the two makes the pattern possible, both make it elevated. The supporting evidence
+    without a late return scores nothing: measured on training worlds it is right about one time in ten.
+    A snapshot with too few other customers to compare with gives `incomplete`, not a verdict.
+    `evidence` has customer_id and WARDROBING_SUPPORT.
     """
-    out = counts[["customer_id", *WARDROBING_SUPPORT]].copy()
+    out = evidence[["customer_id", *WARDROBING_SUPPORT]].copy()
     has_returns = out["item_return_lines"] > 0
-    out["late_return_share"] = (out["late_return_lines"] / out["item_return_lines"].where(has_returns)).astype(float)
+    assessed = has_returns & (out["wardrobing_peer_units"] >= WARDROBING_MIN_PEER_UNITS)
+    late = out["late_occasion_return_lines"] >= 1
     fired = pd.DataFrame({
-        "repeat_late_returns": out["late_return_lines"] >= 2,
-        "late_return": out["late_return_lines"] >= 1,
-        "late_occasion_return": out["late_occasion_return_lines"] >= 1,
-        "late_return_share": out["late_return_share"] >= 0.5,
+        "late_occasion_return": late,
+        "occasion_excess": late & (out["occasion_excess_z"] >= OCCASION_EXCESS_Z) & (out["occasion_returned_units"] >= OCCASION_EXCESS_MIN_UNITS),
+        "clean_style_complaint": late & (out["clean_style_complaint_lines"] >= 1),
     })
     score = sum(fired[name].astype(int) * points for name, points in WARDROBING_POINTS.items())
-    out["status"] = np.select([~has_returns, score >= WARDROBING_ELEVATED, score >= WARDROBING_POSSIBLE],
-                              ["insufficient_evidence", "elevated", "possible"], default="no_elevated_signal")
-    out["indicator_score"] = score.where(has_returns).astype("Int64")
+    out["status"] = np.select([~has_returns, ~assessed, score >= WARDROBING_ELEVATED, score >= WARDROBING_POSSIBLE],
+                              ["insufficient_evidence", "incomplete", "elevated", "possible"], default="no_elevated_signal")
+    out["indicator_score"] = score.where(assessed).astype("Int64")
     for name in WARDROBING_POINTS:
-        out["fired_" + name] = (fired[name] & has_returns).to_numpy()
+        out["fired_" + name] = (fired[name] & assessed).to_numpy()
     return out

@@ -144,6 +144,10 @@ def main() -> int:
     parser.add_argument("--guide", type=Path, required=True, help="the data guide to place at the top of every archive")
     parser.add_argument("--records", type=Path, nargs="*", default=[], help="dated records to include with the configuration")
     args = parser.parse_args()
+    global ARTIFACTS, PRIVATE
+    own = ROOT / "data" / args.experiment                   # from experiment 4 on, an experiment has a data folder of its own
+    if (own / "artifacts").is_dir():
+        ARTIFACTS, PRIVATE = own / "artifacts", own / "private"
     experiment = ARTIFACTS / "experiments" / args.experiment
     commit = json.loads((experiment / "reports" / "dry_run.json").read_text(encoding="utf-8"))["provenance"]["git_commit"]
     roles = worlds_of(experiment)

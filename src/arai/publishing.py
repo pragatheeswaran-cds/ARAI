@@ -25,7 +25,8 @@ from arai.selection import BASELINE
 PRIMARY = "0.05"
 CALIBRATION_RECORD = "records/2026-10-02-gate-dry-run.md"      # for dry runs recorded before they named their record
 SEGMENT_LABELS = {"legit_heavy_returner": "honest heavy returners", "defective_product_buyer": "honest defective-product buyers",
-                  "benign_household": "honest household members", "repeat_genuine_claimant": "honest repeat genuine claimants"}
+                  "benign_household": "honest household members", "repeat_genuine_claimant": "honest repeat genuine claimants",
+                  "one_genuine_failure": "honest customers with one genuine delivery failure"}
 REFERENCE_LABELS = {"analyst_rulebook": "analyst rulebook", "volume_only_logreg": "volume-only model"}
 
 
@@ -73,7 +74,9 @@ def _account_metrics(account: dict | None, scope: str, slice: str) -> list:
     out = [_metric("false positives (count)", fp["false_positives"], scope=scope, code="errors.false_positives.count", slice=slice)]
     for key, label in (("legit_heavy_returner", "heavy returners"), ("defective_product_buyer", "defective-product buyers"),
                        ("benign_household", "household members"), ("repeat_genuine_claimant", "repeat genuine claimants"),
-                       ("none_of_these", "in none of these groups")):
+                       ("one_genuine_failure", "customers with one genuine delivery failure"), ("none_of_these", "in none of these groups")):
+        if key not in fp:                                       # a report recorded under a contract without this leg
+            continue
         out.append(_share(f"share of false positives who are {label}", fp[key], fp["false_positives"], scope + "; groups overlap",
                           code=f"errors.false_positive_share.{key}", slice=slice))
     out.append(_metric("false negatives (count)", fn["false_negatives"], scope=scope, code="errors.false_negatives.count", slice=slice))
@@ -109,13 +112,19 @@ def _evidence_metrics(evidence: dict | None, scope: str, slice: str) -> tuple:
                            code=f"style.{name}.recall_supported", slice=slice),
                    _metric(f"{name} signal recall, all styles", e["recall_all_styles"], scope=scope, code=f"style.{name}.recall_all", slice=slice)]
     wardrobing = []
-    for key, label in (("wardrobing_elevated", "elevated"), ("wardrobing_elevated_or_possible", "elevated or possible")):
+    for key, label in (("wardrobing_elevated", "elevated"), ("wardrobing_possible", "possible"),
+                       ("wardrobing_elevated_or_possible", "elevated or possible")):
+        if key not in evidence:                                 # a report recorded before the possible band was reported alone
+            continue
         e = evidence[key]
         wardrobing += [_metric(f"wardrobing {label}: precision", e["precision"], e["true_positives"], e["flagged"], scope=scope,
                                code=f"{key}.precision", slice=slice),
                        _metric(f"wardrobing {label}: recall", e["recall"], e["true_positives"], e["temporary_use_customers"], scope=scope,
                                code=f"{key}.recall", slice=slice)]
-    for key, label in (("honest_late_returners", "honest customers with a late request"), ("honest_size_bracketers", "honest size bracketers")):
+    for key, label in (("honest_late_returners", "honest customers with a late request"), ("honest_size_bracketers", "honest size bracketers"),
+                       ("honest_late_occasion_returners", "honest customers with a late return of occasion wear")):
+        if key not in evidence["wardrobing_false_alerts"]:
+            continue
         e = evidence["wardrobing_false_alerts"][key]
         wardrobing.append(_share(f"wardrobing alerts among {label}", e["alerted"], e["customers"], scope,
                                  code=f"wardrobing_false_alerts.{key}", slice=slice))
@@ -187,6 +196,24 @@ def _stress_metrics(experiment_dir: Path, chosen: str | None) -> tuple:
     return metrics, facts
 
 
+def _stress_wardrobing(experiment_dir: Path) -> list:
+    """The wardrobing indicator on each stress world (reports/stress.json), where the simulated behaviour is varied."""
+    path = experiment_dir / "reports" / "stress.json"
+    if not path.is_file():
+        return []
+    out = []
+    for world in json.loads(path.read_text(encoding="utf-8"))["worlds"]:
+        scope = f"stress world {world['world_id']}: {world['mechanism']}; one world, report only"
+        for key, label in (("wardrobing_elevated", "elevated"), ("wardrobing_elevated_or_possible", "elevated or possible")):
+            e = (world.get("wardrobing") or {}).get(key)
+            if e:
+                out += [_metric(f"wardrobing {label}: precision", e["precision"], e["true_positives"], e["flagged"], scope=scope,
+                                code=f"{key}.precision", slice=f"stress:{world['world_id']}"),
+                        _metric(f"wardrobing {label}: recall", e["recall"], e["true_positives"], e["temporary_use_customers"], scope=scope,
+                                code=f"{key}.recall", slice=f"stress:{world['world_id']}")]
+    return out
+
+
 def _dependence_limitations(dependence: dict, stress: dict) -> list:
     """The three statements a reader needs before quoting the headline, in plain words, from the measured facts."""
     out, pct = [], lambda v: f"{100 * v:.0f}%"  # noqa: E731
@@ -213,8 +240,13 @@ def _dependence_limitations(dependence: dict, stress: dict) -> list:
                        f"{100 * model:.1f}% of them for review against {100 * rule:.1f}% for the return-rate rule (training worlds, out "
                        f"of fold). They are still {share} of the model's false positives, and the model was trained to weigh them more "
                        "heavily, which uses simulation truth that real data would not have.")
+    if "group.one_genuine_failure" in dependence and "one_genuine_failure" in SEGMENTS:
+        model, rule = dependence["group.one_genuine_failure"]
+        out.append(f"Honest customers with exactly one genuinely failed delivery have a gate leg of their own, so that protecting repeat "
+                   f"claimants is not paid for by reviewing them instead: the model sends {100 * model:.1f}% of them for review against "
+                   f"{100 * rule:.1f}% for the return-rate rule (training worlds, out of fold).")
     if "model" in stress:
-        out.append(f"The level of the result follows the simulated action rate: across the {stress['worlds']} stress worlds the selected "
+        out.append(f"The level of the result follows the simulated behaviour: across the {stress['worlds']} stress worlds the selected "
                    f"model's precision ranges from {pct(stress['model'][0])} to {pct(stress['model'][1])} and the rule's from "
                    f"{pct(stress['rule'][0])} to {pct(stress['rule'][1])}; the model passes the gate on {stress['passed']} of them. "
                    "Quote the gap to the rule, not the level.")
@@ -310,7 +342,8 @@ def build_report(experiment_dir: Path, promoted_model_id: str | None) -> dict:
         "synthetic_only": True,
         "baseline_metrics": _ranking_metrics(source["sensitivity"][BASELINE][PRIMARY], scope, intervals.get(BASELINE), BASELINE, main),
         "candidates": candidates, "per_world_metrics": per_world, "sensitivity_metrics": sensitivity,
-        "style_metrics": style_metrics, "wardrobing_metrics": wardrobing_metrics, "coverage_limitations": limitations,
+        "style_metrics": style_metrics, "wardrobing_metrics": wardrobing_metrics + _stress_wardrobing(experiment_dir),
+        "coverage_limitations": limitations,
         "report_only_evidence_metrics": True, "reference_metrics": references, "error_account": account,
         "difficulty_calibration": {"calibrated": bool(levers), "levers": list(levers),
                                    "record_ref": calibration.get("record_ref") or CALIBRATION_RECORD},

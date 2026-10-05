@@ -122,6 +122,20 @@ describe("evaluation page, experiment with a gate leg for repeat genuine claiman
     expect(caveat).toHaveTextContent("simulation truth that real data would not have");
     expect(screen.getByRole("row", { name: /Two or more genuinely failed deliveries/ })).toHaveTextContent("(gate group)");
   });
+  it("shows the fifth leg, for customers with one genuine failure, when the experiment has it", async () => {
+    const five: Experiment = {
+      ...gated,
+      baseline_metrics: [...gated.baseline_metrics, metric("review_rate.one_genuine_failure", 0.05, "raw_return_rate", "validation")],
+      candidates: [{ ...gated.candidates[0], candidate_id: "hgb_leaf15_w6_s3",
+        metrics: [...gated.candidates[0].metrics.map((m) => ({ ...m, ranking: "hgb_leaf15_w6_s3" })),
+          metric("review_rate.one_genuine_failure", 0.015, "hgb_leaf15_w6_s3", "validation")] }],
+      summary: { ...gated.summary, selected_candidate_id: "hgb_leaf15_w6_s3" },
+    };
+    await show(five);
+    expect(screen.getByRole("columnheader", { name: /One genuine failure reviewed/ })).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: /repeat claimants x6, one failure x3.*Candidate model/ });
+    expect(within(row).getByText("1.5%")).toBeInTheDocument();
+  });
 });
 
 describe("worker state", () => {

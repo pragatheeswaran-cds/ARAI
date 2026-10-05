@@ -106,6 +106,9 @@ def test_benign_segments_follow_the_definitions():
     assert segments.index[segments["benign_household"]].tolist() == ["c4", "c5"]
     # two genuinely failed units make an honest repeat claimant (c3); one does not (c7); an abuser never is one (c1)
     assert segments.index[segments["repeat_genuine_claimant"]].tolist() == ["c3"]
+    # exactly one failed unit is the fifth segment (c7), and nobody is in both claimant segments
+    assert segments.index[segments["one_genuine_failure"]].tolist() == ["c7"]
+    assert not (segments["one_genuine_failure"] & segments["repeat_genuine_claimant"]).any()
     assert not segments.loc["c1", list(SEGMENTS)].any()
 
 
@@ -143,7 +146,8 @@ def test_error_account_splits_false_positives_and_false_negatives_with_denominat
     actions = pd.Series([4, 0, 0, 1, 2] + [0] * 35)
     account = evaluation.error_account(frame, evaluation.select(frame, "score"), evaluation.select(frame, "baseline"), actions)
     assert account["false_positives"] == {"false_positives": 1, "legit_heavy_returner": 1, "defective_product_buyer": 0,
-                                          "benign_household": 0, "repeat_genuine_claimant": 1, "none_of_these": 0}
+                                          "benign_household": 0, "repeat_genuine_claimant": 1, "one_genuine_failure": 0,
+                                          "none_of_these": 0}
     fn = account["false_negatives"]
     assert fn["false_negatives"] == 2 and fn["temporary_use_return"] == 1 and fn["deceptive_contents_claim"] == 1
     assert fn["completed_actions_1"] == 1 and fn["positives_with_1_actions"] == 1 and fn["completed_actions_2-3"] == 1
@@ -155,7 +159,7 @@ def test_error_account_splits_false_positives_and_false_negatives_with_denominat
 
 # ------------------------------------------------------------------ the gate
 BASE = {"precision": 0.20, "legit_heavy_returner_fpr": 0.40, "defective_product_buyer_fpr": 0.06, "benign_household_fpr": 0.04,
-        "repeat_genuine_claimant_fpr": 0.07, **{s + "_size": 500 for s in SEGMENTS}}
+        "repeat_genuine_claimant_fpr": 0.07, "one_genuine_failure_fpr": 0.05, **{s + "_size": 500 for s in SEGMENTS}}
 
 
 def _result(**changes):
@@ -169,10 +173,14 @@ def test_gate_needs_strictly_higher_precision_and_no_worse_segment_rate():
     passed, reasons = selection.gate(_result(precision=0.20, legit_heavy_returner_fpr=0.0), BASE)        # equal precision fails
     assert not passed and reasons == ["precision not above the baseline"]
     # the fourth leg (experiment contract 2.0): honest repeat claimants may not be reviewed more often than under the rule
-    assert SEGMENTS == ("legit_heavy_returner", "defective_product_buyer", "benign_household", "repeat_genuine_claimant")
+    assert SEGMENTS == ("legit_heavy_returner", "defective_product_buyer", "benign_household", "repeat_genuine_claimant",
+                        "one_genuine_failure")
     passed, reasons = selection.gate(_result(precision=0.9, repeat_genuine_claimant_fpr=0.071), BASE)
     assert not passed and reasons == ["repeat_genuine_claimant false-positive rate above the baseline"]
     assert selection.gate(_result(precision=0.9, repeat_genuine_claimant_fpr=0.05), BASE) == (True, [])
+    # the fifth leg (experiment contract 4.0): protecting repeat claimants may not be paid for by customers with one failure
+    passed, reasons = selection.gate(_result(precision=0.9, repeat_genuine_claimant_fpr=0.03, one_genuine_failure_fpr=0.051), BASE)
+    assert not passed and reasons == ["one_genuine_failure false-positive rate above the baseline"]
 
 
 def test_gate_refuses_thin_or_empty_segments():

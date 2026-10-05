@@ -784,7 +784,7 @@ def test_the_published_experiment_matches_the_contract_and_the_offline_reports(e
     recorded = json.loads((REAL_EXPERIMENT / "selection.json").read_text())
     assert report["summary"]["final_test_status"] == recorded["final_test_status"]
     assert report["summary"]["selected_candidate_id"] == recorded["selected_model_id"]
-    assert "review_rate.repeat_genuine_claimant" in {m["code"] for m in report["baseline_metrics"]}      # the fourth gate leg
+    assert {"review_rate.repeat_genuine_claimant", "review_rate.one_genuine_failure"} <= {m["code"] for m in report["baseline_metrics"]}
 
     published = env["root"] / "experiments" / EXPERIMENT_ID / "published"
     published.mkdir(parents=True)

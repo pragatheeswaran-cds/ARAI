@@ -131,7 +131,7 @@ def test_volume_only_reference_is_never_selectable():
     assert reference.features == ["mature_sale_lines", "log_order_count"] and not reference.selectable
     assert reference.params == _candidate("logreg_c1").params
     assert [c.id for c in modeling.candidates()] == ["logreg_c1", "hgb_leaf15", "hgb_leaf15_w4", "hgb_leaf15_w6", "hgb_leaf15_w8",
-                                                     "iforest_256"]
+                                                     "iforest_256", "hgb_leaf15_w6_s2", "hgb_leaf15_w6_s3", "hgb_leaf15_w8_s3"]
 
 
 def test_percentile_is_position_in_the_frozen_reference():
@@ -159,6 +159,10 @@ def test_weighted_candidates_count_honest_gate_members_more_in_training_and_neve
     weights = modeling.training_weights(weighted, data)
     assert set(np.unique(weights)) == {1.0, 6.0} and (weights[data["repeat_genuine_claimant"].to_numpy()] == 6.0).all()
     assert modeling.training_weights(plain, data) is None
+    both = _candidate("hgb_leaf15_w6_s3")                                                     # experiment contract 4.0: both claimant groups
+    assert both.honest_group_weights == {"repeat_genuine_claimant": 6, "one_genuine_failure": 3}
+    two = data.assign(one_genuine_failure=(data["y_abuse"] == 0) & ~data["repeat_genuine_claimant"] & (rng.random(len(data)) < 0.2))
+    assert set(np.unique(modeling.training_weights(both, two))) == {1.0, 3.0, 6.0}
     a, _ = modeling.fit(weighted, data, data["y_abuse"])
     b, _ = modeling.fit(plain, data, data["y_abuse"])
     assert not np.allclose(modeling.raw_scores(weighted, a, data), modeling.raw_scores(plain, b, data))   # the weight changes the model

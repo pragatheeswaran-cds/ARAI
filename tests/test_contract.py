@@ -52,3 +52,25 @@ def test_exploration_uses_the_review_rule_and_the_segments_of_evaluation(world):
     direct = evaluation.benign_segments(world, summary[["customer_id", "eligible", "raw_return_rate"]])
     pd.testing.assert_frame_equal(explored, direct)
     assert np.isfinite(eligible["raw_return_rate"]).all()
+
+
+def test_the_contract_names_the_data_folder_of_its_experiment(tmp_path):
+    """AM-51: an experiment keeps its worlds, records and database in a folder of its own."""
+    from arai import paths
+    assert EXPERIMENT["data_root"] == f"data/{EXPERIMENT['experiment_id']}"
+    assert paths.contract_data_root() == paths.REPO_ROOT / "data" / EXPERIMENT["experiment_id"]
+    earlier = {seed for record in EXPERIMENT["supersedes"]["experiments"] for seeds in record["retired_seeds"].values() for seed in seeds}
+    current = {seed for key in ("train_seeds", "validation_seeds", "test_seeds", "demo_seeds") for seed in EXPERIMENT[key]}
+    assert not earlier & (current | set(EXPERIMENT["stress_seeds"]))                 # no world of an earlier experiment is reused
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts" / "experiment.yaml").write_text("experiment_id: EXP-EARLIER\n", encoding="utf-8")
+    assert paths.contract_data_root(tmp_path) == paths.REPO_ROOT / "data"            # a contract that names none keeps the old layout
+
+
+def test_the_reference_runtime_mounts_the_data_folder_and_a_database_of_the_contracts_experiment():
+    from arai import paths
+    compose = (paths.REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert compose.count(f"./{EXPERIMENT['data_root']}/artifacts}}:/data/artifacts") == 2          # API and worker
+    volume = "pgdata_" + EXPERIMENT["experiment_id"].lower().replace("-", "_")
+    assert compose.count(volume) == 2 and "pgdata:" not in compose                                 # never the database of another experiment
+    assert "private" not in compose.split("services:")[1]                                          # truth is never mounted

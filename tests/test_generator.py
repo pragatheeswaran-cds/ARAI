@@ -364,7 +364,8 @@ def _item_returns_with_truth(world):
     return lines[~lines["reason_code"].isin(["item_not_received", "wrong_item_sent", "missing_parts", "empty_package"])]
 
 
-def test_honest_customers_return_late_often_enough_that_a_late_return_is_not_a_tell(world):
+def test_honest_customers_return_late_often_enough_that_a_late_return_is_not_a_tell():
+    world = generate_world(2001, overrides={"honest_return_timing": "amendment_3_0"})      # as stress world 5508 is generated
     settings = world.context.s.realism["honest_return_timing"]
     profile = world.truth["customer_profile"]
     active = profile["persona"] != "Dormant"
@@ -385,7 +386,7 @@ def test_some_temporary_use_returns_come_back_as_early_as_honest_ones():
     """Enough temporary-use actions to measure: three fixture seeds pooled."""
     ratios = []
     for seed in (2001, 2002, 2003):
-        item = _item_returns_with_truth(generate_world(seed))
+        item = _item_returns_with_truth(generate_world(seed, overrides={"temporary_use_timing": "amendment_3_0"}))    # as stress world 5509
         ratios.append(item.loc[item["action_type"] == "temporary_use_return", "ratio"])
     ratios = pd.concat(ratios)
     assert len(ratios) > 30
@@ -393,17 +394,48 @@ def test_some_temporary_use_returns_come_back_as_early_as_honest_ones():
     assert (ratios >= 0.75).mean() > 0.2                              # and it still returns late more often than an honest customer
 
 
-def test_action_rates_follow_the_configured_law_and_stress_seeds_of_experiment_three_keep_their_meaning():
+def test_action_rates_follow_the_configured_law_and_stress_seeds_keep_their_meaning():
     from arai.settings import STRESS_OVERRIDES, beta_law, load_settings
     settings = load_settings()
     a, b = beta_law(settings.realism["action_rate"]["distribution"])
-    assert (a, b) == (1.2, 7.2) and a / (a + b) == pytest.approx(settings.realism["action_rate"]["mean"], abs=0.001)
-    assert STRESS_OVERRIDES[4505] == STRESS_OVERRIDES[2505] == {"action_rate_scale": 0.5}
-    assert set(settings.experiment["stress_seeds"]) == set(range(4501, 4508)) and settings.purpose_of(4505) == "stress"
+    assert (a, b) == (1.2, 4.8) and a / (a + b) == pytest.approx(settings.realism["action_rate"]["mean"], abs=0.001)
+    assert STRESS_OVERRIDES[5505] == STRESS_OVERRIDES[4505] == STRESS_OVERRIDES[2505] == {"action_rate_scale": 0.5}
+    assert set(settings.experiment["stress_seeds"]) == set(range(5501, 5512)) and settings.purpose_of(5505) == "stress"
     profiles = pd.concat([generate_world(seed).truth["customer_profile"] for seed in (2001, 2002, 2003)])
     rates = pd.concat([profiles.loc[profiles["claim_propensity"], "claim_action_rate"],
                        profiles.loc[profiles["temporary_use_propensity"], "temporary_use_action_rate"]])
-    assert abs(rates.mean() - 0.143) < 0.03
+    assert abs(rates.mean() - 0.2) < 0.03
+
+
+def test_generator_config_four_generates_as_version_one_three_did_and_three_stress_worlds_blur_timing(world):
+    """AM-51: the less generous values of amendment_3_0 are set aside; three stress worlds apply one part of them each."""
+    from arai.settings import load_settings
+    plain = load_settings().realism
+    assert plain["honest_return_timing"]["late_returner_share"] == 0 and plain["honest_return_timing"]["background_probability"] == 0
+    assert plain["temporary_use_timing"]["early_probability"] == 0
+    assert not world.truth["customer_profile"]["late_returner"].any()                       # nobody has the habit
+    item = _item_returns_with_truth(world)
+    honest = item[item["action_type"].isna() & (item["ratio"] <= 1)]
+    assert (honest["ratio"] >= 0.75).mean() < 0.02                                          # Beta(2,5): about one in two hundred
+    late, early, both, full = (load_settings(seed).realism for seed in (5508, 5509, 5510, 5511))
+    assert late["honest_return_timing"]["late_returner_share"] == 0.12 and late["temporary_use_timing"]["early_probability"] == 0
+    assert early["honest_return_timing"]["late_returner_share"] == 0 and early["temporary_use_timing"]["early_probability"] == 0.3
+    assert both["honest_return_timing"]["late_returner_share"] == 0.12 and both["temporary_use_timing"]["early_probability"] == 0.3
+    assert {r["action_rate"]["mean"] for r in (plain, late, early, both)} == {0.2}           # only 5511 takes the 3.0 action rate
+    assert full["action_rate"]["mean"] == 0.143 and full["honest_return_timing"] == late["honest_return_timing"]
+    assert full["temporary_use_timing"] == early["temporary_use_timing"]
+    hashes = [load_settings(seed).config_sha256() for seed in (None, 5508, 5509, 5510, 5511)]
+    assert len(set(hashes)) == 5                                                             # each world records what generated it
+
+
+def test_generate_refuses_a_seed_of_an_earlier_experiment(tmp_path, capsys):
+    """A retired seed would otherwise be generated as a small fixture world carrying the name of a recorded world."""
+    from arai import cli, contract
+    assert contract.retired_seed_owner(3101) == "EXP-20261005-02" and contract.retired_seed_owner(4401) == "EXP-20261005-03"
+    assert contract.retired_seed_owner(2001) is None and contract.retired_seed_owner(5101) is None
+    roots = ["--artifact-root", str(tmp_path / "artifacts"), "--private-root", str(tmp_path / "private")]
+    assert cli.main(["generate", "--seed", "3101", *roots]) == 1
+    assert "belongs to EXP-20261005-02" in capsys.readouterr().out and not (tmp_path / "artifacts").exists()
 
 
 def test_generate_refuses_to_overwrite_a_world_of_another_simulator(tmp_path, capsys):

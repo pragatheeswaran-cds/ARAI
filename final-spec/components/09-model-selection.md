@@ -1,6 +1,6 @@
 # Model selection and promotion gate
 
-Version 2.0 (amended 2026-10-05) | Implementation baseline | Component SEL
+Version 4.0 (amended 2026-10-05) | Implementation baseline | Component SEL
 
 ## Requirements and boundary
 
@@ -29,5 +29,6 @@ Gate dry run: before any validation manifest exists, apply the full gate to pool
 | SEL-AC-05 | Test-informed iteration retains failure and uses untouched test worlds. |
 | SEL-AC-06 | Dated gate dry run on out-of-fold training scores precedes validation manifests and selects nothing; gate rule and segment definitions are unchanged afterwards. |
 | SEL-AC-07 | A candidate that reviews honest repeat genuine claimants more often than the rule fails the gate whatever its precision; an equal or lower rate passes that leg. |
+| SEL-AC-08 | A candidate that reviews honest customers with exactly one genuine failure more often than the rule fails the gate even when it reviews repeat claimants less often. |
 
 Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

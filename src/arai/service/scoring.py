@@ -182,7 +182,6 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
     wardrobing = result.wardrobing.set_index("customer_id")
     customers["wardrobing_status"] = customers["customer_id"].map(wardrobing["status"])
     customers["indicator_score"] = customers["customer_id"].map(wardrobing["indicator_score"]).astype("Int64")
-    customers["late_return_share"] = customers["customer_id"].map(wardrobing["late_return_share"])
     for name in F.WARDROBING_POINTS:
         customers["fired_" + name] = customers["customer_id"].map(wardrobing["fired_" + name]).astype(bool)
     for name in F.WARDROBING_SUPPORT:
