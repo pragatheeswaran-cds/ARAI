@@ -1,20 +1,25 @@
 # ARAI runbook: start, stop, validate
 
 Commands are for PowerShell, run from the repository root
-(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `v1`.
+(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `v3`.
+
+The application serves experiment 4 (EXP-20261005-04). Its data, bundles and local database are in
+`data\EXP-20261005-04\` (`artifacts`, `private`, `postgres`). The folders `data\artifacts`, `data\private` and
+`data\postgres` belong to experiments 1 to 3 and are not used in this state of the branch; to demonstrate
+experiment 2 again, check out commit `b157edf` and follow the runbook of that commit.
 
 If `uv` is "not recognized", open a new terminal (it was installed with winget and older terminals do not have
 it on PATH yet), or call it by its full path:
 `C:\Users\<you>\AppData\Local\Microsoft\WinGet\Packages\astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe\uv.exe`.
 
 There are two ways to run the application. **Use one at a time**, never both together: they would share the
-`data\artifacts` folder.
+`data\EXP-20261005-04\artifacts` folder.
 
 | | Local (recommended for the demo) | Docker Compose (reference runtime) |
 |---|---|---|
 | Needs | uv, Node (only to build the UI once) | Docker Desktop running |
 | Address | http://127.0.0.1:8000 | http://localhost:8080 |
-| Database | embedded PostgreSQL in `data\postgres` | `postgres:16` container, volume `pgdata` |
+| Database | embedded PostgreSQL in `data\EXP-20261005-04\postgres` | `postgres:16` container, volume `pgdata_exp_20261005_04` |
 | Keeps datasets, runs and notes between restarts | yes | yes, until `down -v` |
 
 ---
@@ -64,15 +69,15 @@ $c = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyCon
 if ($c) { Stop-Process -Id $c.OwningProcess -Force }
 
 # 2. stop the embedded PostgreSQL if it is still running
-.\.venv\Lib\site-packages\pgserver\pginstall\bin\pg_ctl.exe stop -D .\data\postgres -m fast
+.\.venv\Lib\site-packages\pgserver\pginstall\bin\pg_ctl.exe stop -D .\data\EXP-20261005-04\postgres -m fast
 ```
 
 `pg_ctl` answers `server stopped`, or says no server is running, which is also fine.
 
 ### Restart
 
-Stop, then start. Runs, their results and review notes are kept in the database (`data\postgres`); registered
-snapshots and model bundles are kept as files in `data\artifacts`.
+Stop, then start. Runs, their results and review notes are kept in the database (`data\EXP-20261005-04\postgres`);
+registered snapshots and model bundles are kept as files in `data\EXP-20261005-04\artifacts`.
 
 If a scoring run was in progress when the server stopped, it shows as **interrupted** after the restart and
 publishes nothing. Use **Retry** on the Datasets & runs page.
@@ -82,7 +87,7 @@ publishes nothing. Use **Retry** on the Datasets & runs page.
 Stop everything first, then:
 
 ```powershell
-Remove-Item -Recurse -Force .\data\postgres, .\data\artifacts\datasets
+Remove-Item -Recurse -Force .\data\EXP-20261005-04\postgres, .\data\EXP-20261005-04\artifacts\datasets
 uv run arai local
 ```
 
@@ -119,14 +124,14 @@ separately (section 4, using port 8080).
 Only needed on an empty database.
 
 **In the browser:** open **Datasets & runs**, choose the eight files in
-`data\artifacts\worlds\W3401\operational` (`manifest.json` and the seven `.csv` files), press
+`data\EXP-20261005-04\artifacts\worlds\W5401\operational` (`manifest.json` and the seven `.csv` files), press
 **Validate and register**, then **Score with the active bundle**. Scoring 10,000 customers takes about 12
 seconds; the page updates by itself.
 
 **From the terminal** (same thing through the API; change the port to 8080 for Docker):
 
 ```powershell
-$d = "data\artifacts\worlds\W3401\operational"
+$d = "data\EXP-20261005-04\artifacts\worlds\W5401\operational"
 curl.exe -s -X POST http://127.0.0.1:8000/api/v1/datasets `
   -F "manifest=<$d\manifest.json" `
   -F "customer_master=@$d\customer_master.csv" -F "sku_master=@$d\sku_master.csv" `
@@ -158,7 +163,7 @@ Expected:
 | You see | Meaning |
 |---|---|
 | no answer | the server is not running |
-| `scoring_ready: false` | no valid model bundle, or the worker has stopped: restart; if it persists run `uv run arai publish --experiment EXP-20261005-02 --demo-world W3401` |
+| `scoring_ready: false` | no valid model bundle, or the worker has stopped: restart; if it persists run `uv run arai publish --demo-world W5401` |
 | `promoted_model_ready: false`, `model_kind: baseline_fallback` | only the return-rate baseline is active; the UI shows a banner saying why |
 | `worker_seconds_since_seen` is `null` or keeps growing while `queue_depth` is above 0 | no scoring worker is running: restart (local), or `docker compose restart worker` |
 
@@ -166,8 +171,8 @@ Expected:
 curl.exe -s http://127.0.0.1:8000/api/v1/runs       # the latest run should be "succeeded"
 ```
 
-Then open http://127.0.0.1:8000: the Overview should show 5,690 eligible customers and 285 selected for world
-W3401.
+Then open http://127.0.0.1:8000: the Overview should show 5,676 eligible customers and 284 selected for world
+W5401.
 
 ### Full check before a demonstration
 
@@ -193,13 +198,13 @@ with "file is being used by another process".
 The walkthrough writes one review note on the top-ranked customer each time it runs. Notes are append only,
 so they accumulate; that is expected.
 
-Screenshots and results from steps 3 and 4 are written to `reports\ui\2026-10-02\`.
+Screenshots and results from steps 3 and 4 are written to `reports\ui\<today's date>\`.
 
 ### Validate data
 
 ```powershell
 # an operational snapshot against the data contract; exit code 0 and "accepted": true mean it passed
-uv run --no-sync arai validate data\artifacts\worlds\W3401\operational
+uv run --no-sync arai validate data\EXP-20261005-04\artifacts\worlds\W5401\operational
 ```
 
 Uploading through the UI or the API runs the same validation; a snapshot that fails is rejected whole and the
@@ -218,16 +223,17 @@ After editing anything under `final-spec\`, rebuild its register and hashes firs
 
 The numbers are frozen records, not something to re-run:
 
-- `data\artifacts\experiments\EXP-20261005-02\selection.json`: selected model and `final_test_status`.
-- `data\artifacts\experiments\EXP-20261005-02\reports\`: `dry_run.json`, `validation.json`, `test.json`, and
-  `ablation.json` and `stress.json`. They are closed records: the contract in this repository now describes
-  experiment 3 (EXP-20261005-03), and the offline steps refuse to run for an experiment of an earlier contract.
-  Experiment 3's own records are in `data\artifacts\experiments\EXP-20261005-03\`.
-- The same figures are on the **Evaluation** page and in `records\2026-10-02-final-test.md`.
+- `data\EXP-20261005-04\artifacts\experiments\EXP-20261005-04\selection.json`: selected model and
+  `final_test_status`.
+- `data\EXP-20261005-04\artifacts\experiments\EXP-20261005-04\reports\`: `dry_run.json`, `validation.json`,
+  `test.json`, `ablation.json` and `stress.json`.
+- The same figures are on the **Evaluation** page and in `records\2026-10-05-experiment-4.md`.
+- The records of experiments 1 to 3 are closed and stay in `data\artifacts\experiments\`; the offline steps
+  refuse to run for an experiment of an earlier contract.
 
 **Do not run `arai train`, `arai dry-run`, `arai select` or `arai test` again for this experiment.** The code
-refuses most of these, and the final test is designed to run exactly once. Do not regenerate worlds 2201-2205
-or 2301-2305.
+refuses most of these, and the final test is designed to run exactly once. Do not regenerate worlds 5201-5205
+or 5301-5305, and never a world of an earlier experiment (the command refuses those seeds).
 
 ---
 
@@ -242,9 +248,9 @@ or 2301-2305.
 | A run shows **failed / output_missing** | it was scored by an earlier version and its result files were deleted before they were loaded into the database | press **Retry**; it creates a new run with the same dataset and model |
 | A run shows **interrupted** | the server stopped while scoring | press **Retry** |
 | A run carries a warning that scores or inputs are outside training | the snapshot differs from the training worlds | expected for unusual data; treat percentiles and the review list with caution |
-| A run warns that the scoring code differs from the published bundle | code changed after `arai publish` | `uv run --no-sync arai publish --experiment EXP-20261005-02 --demo-world W3401`, restart, score again |
+| A run warns that the scoring code differs from the published bundle | code changed after `arai publish` | `uv run --no-sync arai publish --demo-world W5401`, restart, score again |
 | `arai publish` says the feature code no longer reproduces the training features | `features.py` changed in a way that changes values | restore the code, or train a new experiment on fresh seeds |
-| Banner: baseline only | no promoted model is active | `uv run --no-sync arai publish --experiment EXP-20261005-02 --demo-world W3401`, then restart |
+| Banner: baseline only | no promoted model is active | `uv run --no-sync arai publish --demo-world W5401`, then restart |
 | Evaluation page is empty after `arai publish` | the report is loaded into the database when the worker starts | restart (local), or `docker compose restart worker` |
 | `web/dist is missing` at start | UI not built | `cd web; npm install; npm run build` |
 | Docker: `POSTGRES_PASSWORD is missing a value` | no `.env` | copy `.env.example` to `.env` and set it |

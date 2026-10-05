@@ -1,5 +1,43 @@
 # Status and open decisions (end of 2026-10-05)
 
+## Update, later on 2026-10-05: experiment 4
+
+The owner answered three of the decisions below: D1 "since experiment 3 is harsher, ignore it. but don't touch
+those data. Keep as-is. you create new expermient with new data on separate folder for new data"; D2 "rebuilt
+with new experiment"; D3 "go with recommendation". They were carried out as experiment 4 (EXP-20261005-04,
+specification 4.0, AM-51 to AM-54). The rest of this record describes the state before it and is kept as written.
+
+| | |
+|---|---|
+| Result | Final test passed: 0.766 against 0.218 for the return-rate rule, five legs met. `records/2026-10-05-experiment-4.md` |
+| Where | `data/EXP-20261005-04/` (artifacts, private, postgres). Nothing in `data/artifacts`, `data/private` or `data/postgres` was modified |
+| Served by this branch | Experiment 4: bundle `m-7f2dafb5f8101da88c6859e7`, demonstration world W5401. Experiment 2 stays published in the old folder and is demonstrated from commit `b157edf` |
+| Tests | 189 Python tests and 14 front-end tests pass; browser walkthrough 47 of 47 |
+
+What the answers settled and what they opened:
+
+- **D1, settled.** Experiment 3 is set aside; its data and records are kept unchanged.
+- **D2, done differently from the recommendation.** The recommendation was an indicator that does not rest on
+  timing. Measured, such an indicator is right about one time in ten in this simulation. The rebuilt indicator
+  keeps a late return of occasion wear as its signal and requires support from what the customer returned.
+  Elevated band: right for 99% on the test worlds and 76% to 93% on the stress worlds with honest late returns.
+- **D3, done.** Fifth leg for customers with one genuine failure, weights on both groups. It works for that group
+  (1.5% reviewed against 4.6%) and costs margin on the repeat claimants.
+
+Decisions now open, in addition to D4 to D7 below:
+
+- **D8. Confirm AM-54.** Experiment 4 was published in its own folder on passing. This is the implementer's
+  reading of "you create new experiment". To undo it, delete nothing: check out `b157edf`, which serves experiment 2.
+- **D9. The selection rule.** The selected model meets the repeat-claimant leg with little margin and misses it
+  on training worlds and on the pooled stress worlds. Candidates weighted on repeat claimants only keep a clear
+  margin on both claimant legs for about one point of precision less. Preferring margin on the protected groups
+  within a precision tolerance would be a change of the selection rule and needs a new experiment on fresh seeds.
+- **D10. What to claim about robustness.** A model trained on the generous simulator reaches only 35-46% on
+  worlds where honest customers return late. "About three times the rule on both simulators" is true only when
+  the model is trained on the behaviour it is scored on.
+- **D4, new fact.** The 0.75-0.85 target is met on the out-of-fold training scores it is defined on (0.770 best,
+  0.751 best that meets the gate) and, for the first time, on the test worlds (0.766). Validation was 0.743.
+
 Written at the owner's request: everything is recorded here so the open decisions can be taken later. Branch `v3`,
 specification 3.0, 183 Python tests and 13 front-end tests passing. Nothing is pushed: the repository has no
 remote.

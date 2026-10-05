@@ -79,7 +79,7 @@ points serving at the new bundle only after the report is written.
 ### Tests
 
 ```
-uv run pytest                              # 170+ tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
+uv run pytest                              # 185+ tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
 cd web && npm test                         # front-end unit tests
 uv run python tests/e2e/walkthrough.py     # browser walkthrough against a running `arai local`
 ```
@@ -102,34 +102,45 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
   (`data/EXP-20261005-04/artifacts`, `private`, `postgres`); experiments 1 to 3 share `data/artifacts` and
   `data/private`. Scoring results are not files: they are rows in PostgreSQL.
 
-### Results in one paragraph
+### Results in short
 
-Three experiments have been run. The second (EXP-20261005-02) is the published one; the third reran the same method on a
-less generous simulator.
+Four experiments have been run, each with a single final test that it passed. The fourth (EXP-20261005-04) is the
+one this branch serves.
 
-On five untouched simulated test worlds its selected model (boosted trees, 43 features) is right about 73.7% of
-the customers it sends for review at a 5% review budget, against 24.0% for a return-rate rule and about 37% for a
-hand-written rulebook (validation). It passed a four-leg gate: it reviews honest heavy returners, defective-product
-buyers, household members and customers whose deliveries genuinely failed more than once no more often than the
-rule does. That last group is the one the first experiment's model reviewed more than twice as often as the rule
-(15.8% against 6.7%); here it is 4.5% against 5.3% on the test worlds.
+| Experiment | Simulator | Gate | Final test: model against rule | State |
+|---|---|---|---|---|
+| 1, EXP-20261002-01 | generous (1.3) | three legs | 71.5% / 23.9% | recorded; branch `v2` |
+| 2, EXP-20261005-02 | generous (1.3) | four legs | 73.7% / 24.0% | published in `data/artifacts`; commit `b157edf` |
+| 3, EXP-20261005-03 | less generous (3.0) | four legs | 54.8% / 18.6% | recorded, set aside by the owner |
+| 4, EXP-20261005-04 | generous (4.0, generates as 1.3) | five legs | 76.6% / 21.8% | published in `data/EXP-20261005-04` |
 
-The gap is the result, not the level: the level follows how often simulated abusers act (56% to 87% across the
-stress worlds, with the rule at 14% to 44%). Two signal families carry the model, claims and return timing; on
-training worlds it reaches 63% without the claim features, 59% without the timing features and 38% without both.
-The model was trained to weigh honest repeat claimants more heavily, which uses simulation truth that real data
-would not have. The development target of 75-85% is met on the out-of-fold training scores it is defined on (79%
-best candidate, 77% selected) and not on validation or test (73.7%). This is a result about one simulation, not
-about real returns. See `records/2026-10-05-experiment-2.md`; the first experiment (71.5% against 23.9%, three-leg
-gate) is in `records/2026-10-02-final-test.md` and its review in `records/2026-10-05-principal-ml-review.md`.
+Experiment 4: on five untouched simulated test worlds the selected model (boosted trees, 43 features) is right
+about 76.6% of the customers it sends for review at a 5% review budget, against 21.8% for a return-rate rule. It
+passed a five-leg gate: it reviews honest heavy returners, defective-product buyers, household members, customers
+whose deliveries genuinely failed more than once (5.8% against 7.5%) and customers with exactly one genuine
+failure (1.5% against 4.6%) no more often than the rule does.
 
-The third experiment (EXP-20261005-03) asked how much of this survives a less generous simulation, in which honest
-customers often return late and abusers act less often. With the same features, candidates and gate it passed its
-final test at 54.8% against 18.6% for the rule. The level fell by a quarter; the ratio to the rule stayed at about
-three. Temporary-use detection lost most of its recall (76% to 37%) and the wardrobing indicator stopped being
-usable (13.5% precision), because a late return no longer tells honest customers from abusers. It is recorded and
-not published: `records/2026-10-05-experiment-3.md`. All data of the first two experiments is kept untouched and
-copied under `data/backups/`.
+Read it with three caveats, all measured (`records/2026-10-05-experiment-4.md`):
+
+- **The level belongs to this simulator.** On stress worlds where honest customers return late, the same frozen
+  model falls to 35-46% against 18-24% for the rule. A model trained where a late return is a tell does not carry
+  over; experiment 3, trained on that behaviour, reached 54.8%.
+- **The repeat-claimant leg is met with little margin.** The model reviews about 6% of that group everywhere,
+  while the rule's rate moves between 5.9% and 7.5% from one set of worlds to the next, so the leg is met on
+  validation and test and missed on training worlds and on the pooled stress worlds.
+- **The model was trained with weights that use simulation truth** (which delivery failures were genuine). Real
+  data has no such label.
+
+The wardrobing indicator was rebuilt with this experiment. It is still built on a late return, now of occasion
+wear only, and it reaches a band only when what the customer returned supports it. On the test worlds its
+elevated band is right for 89 of 90 customers and holds 15% of the customers with a temporary-use return; on the
+stress worlds with honest late returns it is right for 76% to 93%, where the timing rule it replaces was right
+13.5% of the time in experiment 3. An indicator that does not use timing at all was tried first and dropped:
+without a late return its alerts were right about one time in ten.
+
+Earlier records: `records/2026-10-05-experiment-2.md`, `records/2026-10-05-experiment-3.md`,
+`records/2026-10-02-final-test.md`, and the review in `records/2026-10-05-principal-ml-review.md`. All data of
+experiments 1 to 3 is kept untouched, with a copy of experiments 1 and 2 under `data/backups/`.
 
 ### Sharing data and where the project stands
 
@@ -138,5 +149,5 @@ copied under `data/backups/`.
 - `uv run python scripts/package_experiment_data.py --experiment EXP-20261005-02 --guide docs/experiment-2-data-guide.md`
   writes the data, its truth, its configuration and the guide as zip archives under `data/exports/` (not in git),
   after checking every file against the hashes recorded when the world was written.
-- `records/2026-10-05-status-and-open-decisions.md` is the current state of the three experiments and the decisions
+- `records/2026-10-05-status-and-open-decisions.md` is the current state of the four experiments and the decisions
   still to be taken.

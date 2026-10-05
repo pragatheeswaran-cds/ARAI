@@ -4,7 +4,7 @@
   "created": "2026-09-26",
   "amended": "2026-10-05",
   "files_sha256": {
-    "acceptance-register.csv": "d7a64033fd9e97beeb22e0700f9b21a6c1461f17b9948d2adac10c52bafa1ec1",
+    "acceptance-register.csv": "b37f27c96ae74597c5c0d62dc15c9b22607016e8e399053c8cea0bb6c680ec06",
     "assets/festive-windows.yaml": "ebf90d1688929879b3315f46413f5193b48d27686423000a96c5f6bdbbedb3c8",
     "assets/profile-config.yaml": "9c6b7e905c5ebcdefa1b4fcd9055062a1fa69f005af1e0ccbabee0438774fcb5",
     "assets/reason_codes.csv": "a62965040742c75ca646039fda9986d2a95d37656707b2c442213d0b3c5b5c7d",
@@ -34,7 +34,7 @@
     "contracts/openapi.yaml": "c16d717843121b089390575c24c446a1bca87cf82f96af6ef64a88f244610c85",
     "contracts/private-truth.yaml": "9a5fefae6c305f866630f0d5c74d08356312dca2c3deedb2a3304acdae042ba9",
     "contracts/reason-groups.yaml": "372b4ae553f35acf62a4f16eccb4e7df9c5de824c17f731534453be4e3d999d6",
-    "DECISIONS.md": "1223db2b0ca44a1d02abc6216bfabe16ff0271f451b8c8ff3951523948071ca2",
+    "DECISIONS.md": "34eee279e20c7294df8e527bc99049227c0a591e4a4b9bfebf1a944004e08f6a",
     "README.md": "243fa2a70c520b5b604b9396c5414c8e939d0c96993218003236a9f22ab741b0",
     "reference/ARAI-original.pdf": "0ce327a112597913647db7934d5d92c1b3906c54059846e9b8738b449552d0a9",
     "reference/source-provenance.json": "b0170968a977d49180d9d11c1681b862d846798a8ba0dd9e99ef4b7cb0a0a0ac",
