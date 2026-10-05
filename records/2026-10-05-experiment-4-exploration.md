@@ -51,17 +51,18 @@ Two normalised measures were built from this:
 **First design, dropped.** It scored these two alone and used a late return only as a bonus. Its headline looked
 acceptable (elevated right 80% on 1.3 and 63% on 3.0). The independent review split the alerts by whether a late
 return was present and found the design did not do what it claimed: without a late return its alerts were right
-about one time in ten, and the pair "excess and complaint" alone 8% to 12%. I confirmed it:
+about one time in ten, and the pair "excess and complaint" alone 8% to 12% (its figures, for that design). The
+same split with the definitions now in the code confirms it:
 
-| Signals present (W3101-W3105 / W4101-W4105) | Right on 1.3 | Right on 3.0 |
+| Evidence present (ten training worlds each) | Right on 1.3 | Right on 3.0 |
 |---|---|---|
-| Excess only | 23 of 623 (4%) | 28 of 572 (5%) |
-| Complaint only | 56 of 1,939 (3%) | 72 of 1,787 (4%) |
-| Excess and complaint, no late return | 7 of 78 (9%) | 7 of 78 (9%) |
-| Late occasion return only | 102 of 166 (61%) | 80 of 750 (11%) |
-| Late occasion return and complaint | 36 of 50 (72%) | 35 of 160 (22%) |
-| Late occasion return and excess | 50 of 58 (86%) | 32 of 114 (28%) |
-| Late occasion return, excess and complaint | 38 of 41 (93%) | 17 of 26 (65%) |
+| Excess only | 58 of 1,424 (4%) | 59 of 1,324 (4%) |
+| Complaint only | 132 of 4,253 (3%) | 163 of 3,930 (4%) |
+| Excess and complaint, no late return | 26 of 226 (12%) | 37 of 221 (17%) |
+| Late occasion return only | 192 of 320 (60%) | 157 of 1,443 (11%) |
+| Late occasion return and complaint | 120 of 154 (78%) | 93 of 411 (23%) |
+| Late occasion return and excess | 135 of 158 (85%) | 79 of 269 (29%) |
+| Late occasion return, excess and complaint | 185 of 192 (96%) | 95 of 127 (75%) |
 
 So in this simulation timing is what tells temporary use apart, and nothing else comes close. The recommendation
 I gave the owner, an indicator that "should not rest on timing", cannot be met with a transparent rule on this
@@ -71,7 +72,8 @@ data. What can be met is the reason for the rebuild: a late return alone must st
 of support (excess or complaint) the pattern is "possible"; with both it is "elevated". The supporting evidence
 without a late return scores nothing. A snapshot with too few other customers to compare with gives "incomplete".
 
-Measured with the implemented code on all twenty training worlds (eligible customers):
+Measured with the implemented code on all twenty training worlds (eligible customers). Both tables in this
+section come out of `scripts/exploration/experiment_4_indicator.py`, which reads only:
 
 | | Simulator 1.3: right / found | Simulator 3.0: right / found |
 |---|---|---|
@@ -97,7 +99,8 @@ genuine defects reported by honest customers.
 ## 3. Weights for both honest claimant groups
 
 Out of fold on ten training worlds, boosted trees with the settings of the registered candidates. The two legs
-are the share of each honest group sent for review; the rule's share is the limit.
+are the share of each honest group sent for review; the rule's share is the limit. The tables come out of
+`scripts/exploration/experiment_4_claimant_weights.py --all`, which reads only.
 
 Generator-config 1.3 (W3101-W3110). Rule: precision 0.259, repeat claimants 6.6%, one failure 5.0%.
 

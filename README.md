@@ -151,3 +151,5 @@ experiments 1 to 3 is kept untouched, with a copy of experiments 1 and 2 under `
   after checking every file against the hashes recorded when the world was written.
 - `records/2026-10-05-status-and-open-decisions.md` is the current state of the four experiments and the decisions
   still to be taken.
+- `docs/experiment-4-verification-guide.md` says what was done in experiment 4 and how to check it;
+  `uv run --no-sync python scripts/verify_experiment.py` runs the checks (read-only, half a minute).

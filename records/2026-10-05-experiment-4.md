@@ -115,7 +115,8 @@ a clear margin on both claimant legs (pooled stress: 4.6% and 3.9% against 5.9% 
 precision less. The fifth leg did what it was added for: one-failure customers are reviewed about a third as
 often as under the rule everywhere. But adding weight for them cost margin on the repeat claimants, which is the
 trade the exploration showed. Whether selection should prefer margin on the protected groups over the last
-fraction of precision is a decision for the owner; the rule was applied as registered.
+fraction of precision is a decision for the owner; the rule was applied as registered. The pooled figures come out of
+`scripts/exploration/experiment_4_stress_pooled.py`.
 
 **The training weights use simulation truth** (which customers' failures were genuine). Real data has no such
 label (AM-48).
@@ -162,6 +163,8 @@ Style signals, unchanged and report-only: targeting 18 of 19 right with 18 of 19
 
 Publishing on a pass is decision AM-54, which is the implementer's reading of "you create new experiment" and
 awaits the owner's confirmation. Nothing was replaced by it.
+
+How to check all of this: `docs/experiment-4-verification-guide.md` and `scripts/verify_experiment.py`.
 
 ## 8. Rules that now apply to this experiment
 
