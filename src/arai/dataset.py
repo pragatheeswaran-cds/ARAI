@@ -94,6 +94,12 @@ def load_world(world_id: str, artifact_root: Path | None = None, private_root: P
     return generated.load_world(world_id, artifact_root, private_root)
 
 
+def genuine_failure_units(unit_truth: pd.DataFrame, sales_order: pd.DataFrame) -> pd.Series:
+    """Per customer: units that genuinely failed in fulfilment (not received, wrong item, missing parts, empty). Private truth."""
+    failed = unit_truth[unit_truth["genuine_fulfilment_cause"].notna()].merge(sales_order[["order_id", "customer_id"]], on="order_id")
+    return failed.groupby("customer_id").size().rename("genuine_claim_units")
+
+
 def load_features(world_id: str, artifact_root: Path | None = None) -> pd.DataFrame:
     return pd.read_parquet(feature_dir(world_id, artifact_root) / "features.parquet")
 
@@ -103,6 +109,12 @@ def labelled(world_ids: list, artifact_root: Path | None = None, private_root: P
     frames = []
     for world_id in world_ids:
         features = load_features(world_id, artifact_root)
-        truth = pd.read_parquet(verify_truth(world_id, artifact_root, private_root) / "customer_truth.parquet")
-        frames.append(features.merge(truth[["customer_id", "y_abuse"]], on="customer_id", validate="one_to_one"))
+        private = verify_truth(world_id, artifact_root, private_root)
+        truth = pd.read_parquet(private / "customer_truth.parquet")
+        frame = features.merge(truth[["customer_id", "y_abuse"]], on="customer_id", validate="one_to_one")
+        # the honest group a candidate may weight in training (experiment.yaml honest_group_weights); never a feature
+        orders = pd.read_parquet(Path(artifact_root or paths.ARTIFACT_ROOT) / "worlds" / world_id / "parquet" / "sales_order.parquet")
+        failed = genuine_failure_units(pd.read_parquet(private / "unit_truth.parquet"), orders)
+        frame["repeat_genuine_claimant"] = frame["eligible"] & (frame["y_abuse"] == 0) & (frame["customer_id"].map(failed).fillna(0) >= 2)
+        frames.append(frame)
     return pd.concat(frames, ignore_index=True)

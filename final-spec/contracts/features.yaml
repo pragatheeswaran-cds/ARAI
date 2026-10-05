@@ -1,4 +1,4 @@
-version: '1.4'
+version: '2.0'
 entity:
 - world_id
 - customer_id
@@ -36,8 +36,7 @@ ordered_features:
   scope: all_visible_nonwithdrawn_requests
   'null': null without requests
 - name: bracketing_share
-  definition: mature units in order/style with >=2 distinct purchased sizes / mature
-    units
+  definition: mature units in order/style with >=2 distinct purchased sizes / mature units
   scope: mature_sales
   'null': null if no mature units
 - name: late_window_share
@@ -65,8 +64,8 @@ ordered_features:
   scope: all_delivered
   'null': null without delivered units
 - name: coordinated_claim_share
-  definition: fraction own transaction claim return lines with a supported neighbor
-    claim on the same style (any SKU) <=7 calendar days apart; count own line once
+  definition: fraction own transaction claim return lines with a supported neighbor claim
+    on the same style (any SKU) <=7 calendar days apart; count own line once
   scope: all_visible_nonwithdrawn_requests
   'null': null without own claims
 - name: late_return_lines
@@ -74,9 +73,120 @@ ordered_features:
     of the captured return window
   scope: all_visible_nonwithdrawn_requests
   'null': '0'
+- name: claim_lines
+  definition: count of own transaction-claim return lines
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: claim_order_count
+  definition: count of own orders with >=1 transaction-claim line
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: claim_order_rate
+  definition: orders with a transaction claim / orders with >=1 delivered line
+  scope: all_delivered
+  'null': null without delivered orders
+- name: claim_unit_rate
+  definition: transaction-claim requested units / delivered units
+  scope: all_delivered
+  'null': null without delivered units
+- name: claim_excess_z
+  definition: (own claim units - E)/sqrt(E), E = own delivered units * claim-unit rate of
+    all other customers in the snapshot
+  scope: all_delivered
+  'null': null if E is zero
+- name: claimed_share_of_claim_orders
+  definition: claim units / delivered units, over own orders with a claim
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without own claims
+- name: whole_order_claim_share
+  definition: share of own claimed orders whose claim units cover every delivered unit of
+    the order
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without own claims
+- name: claim_day_span
+  definition: calendar days between the first and the last own claim request
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without own claims
+- name: claim_distinct_days
+  definition: distinct local dates with an own claim request
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: claims_in_densest_fortnight
+  definition: largest number of own claim lines requested on a day and the 14 days after it
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: nonreceipt_share_of_claims
+  definition: item_not_received lines / own claim lines
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without own claims
+- name: item_ratio_max
+  definition: largest days/window among own item-return lines (not claims) requested inside
+    their window
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without such lines
+- name: item_ratio_second
+  definition: second largest of the same
+  scope: all_visible_nonwithdrawn_requests
+  'null': null with fewer than two such lines
+- name: item_ratio_mean
+  definition: mean of the same
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without such lines
+- name: mid_late_lines
+  definition: count of in-window item-return lines requested at 50% to under 75% of the window
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: late_occasion_return_lines
+  definition: count of late returns (75% to 100% of the window) of occasion wear
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: mid_or_late_occasion_lines
+  definition: count of in-window item-return lines of occasion wear requested at 50% of the
+    window or later
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: item_in_window_lines
+  definition: count of item-return lines requested inside their window
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: multi_code_claim_orders
+  definition: count of own orders with claim lines of >=2 different reason codes
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: multi_code_claim_share
+  definition: the same as a share of own claimed orders
+  scope: all_visible_nonwithdrawn_requests
+  'null': null without own claims
+- name: max_claim_lines_per_order
+  definition: largest number of claim lines on one own order
+  scope: all_visible_nonwithdrawn_requests
+  'null': '0'
+- name: claimed_order_size_ratio
+  definition: mean delivered units of own claimed orders / mean delivered units of own delivered
+    orders
+  scope: all_delivered
+  'null': null without own claims
+- name: units_per_order
+  definition: mean delivered units per own order with a delivered line
+  scope: all_delivered
+  'null': null without delivered orders
+- name: claim_style_others_rate_mean
+  definition: mean over the styles the customer claimed on of the claim-unit rate of all OTHER
+    customers on that style, divided by the snapshot's claim-unit rate
+  scope: all_delivered
+  'null': null without own claims or without other buyers
+- name: claim_style_others_rate_max
+  definition: maximum of the same
+  scope: all_delivered
+  'null': null without own claims or without other buyers
+- name: claim_value_ratio
+  definition: mean net unit value of own claimed units / mean net unit value of own delivered
+    units
+  scope: all_delivered
+  'null': null without own claims
 evidence_only:
-  note: Computed with the features and shown to the analyst, never a model input (AM-26). Sharing an
-    identifier is not guilt; the model may use only what linked accounts do.
+  note: Computed with the features and shown to the analyst, never a model input (AM-26).
+    Sharing an identifier is not guilt; the model may use only what linked accounts do.
   features:
   - name: max_identifier_fanout
     definition: max distinct account fanout of own observed IDs, capped25
@@ -89,7 +199,7 @@ evidence_only:
 preprocessing:
   fit_population: eligible training only
   impute: training median; all-null zero
-  missing_indicators: one per each of 17 features
+  missing_indicators: one per each of 43 features
   scaler: StandardScaler logistic only
 not_inputs:
 - IDs
@@ -101,9 +211,10 @@ not_inputs:
 - free_text
 - disposition
 wardrobing_indicator:
-  note: Report-only and independent of the model score (AM-28). Integer points; the band follows the score.
-  late_return: an item-return line (not a transaction claim) requested at 75% to 100% of its captured
-    return window; a request after the window is not a late return
+  note: Report-only and independent of the model score (AM-28). Integer points; the band follows
+    the score.
+  late_return: an item-return line (not a transaction claim) requested at 75% to 100% of its
+    captured return window; a request after the window is not a late return
   signals:
   - name: repeat_late_returns
     rule: late_return_lines >= 2
@@ -123,3 +234,6 @@ wardrobing_indicator:
   insufficient_evidence: no item-return line with valid timing; no score
   incomplete: reserved; not produced by this rule, which needs no training reference
 formula_source: components/06-feature-engineering.md
+experiment_2_note: Features 18 to 43 were added for EXP-20261005-02 (AM-47) after exploration
+  on the training worlds of the first experiment; all read operational tables only and exclude
+  the customer from every peer statistic.

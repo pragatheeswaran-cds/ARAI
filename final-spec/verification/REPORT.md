@@ -83,3 +83,12 @@ Limits are unchanged: nothing is built or measured. The thresholds and distribut
 - The package verifier passes after the rebuild; the OpenAPI contract (1.3.0) validates as OpenAPI 3.0; 109 acceptance criteria (EVAL-AC-09, ART-AC-06, INF-AC-07, API-AC-08, UI-AC-09 and OPS-AC-07 added).
 - The offline pipeline runs end to end on small worlds under temporary roots in the test suite; a database dump restores to another database and artifact root with identical answers.
 - The current feature code reproduces the frozen features of training world W2101 value for value; the ablation and stress commands reproduce the figures of the review exactly.
+
+## Amendment 1.9 checks (2026-10-05)
+
+- The package verifier passes after the rebuild; 109 acceptance criteria; no contract, component requirement or acceptance criterion changed. The amendment records decisions only.
+
+## Amendment 2.0 checks (2026-10-05)
+
+- The package verifier passes after the rebuild; 112 acceptance criteria (FEAT-AC-09, TRAIN-AC-06 and SEL-AC-07 added).
+- The 26 new features equal the exploration's definitions value for value on a first-experiment training world, and the first 17 features of that world are unchanged. No world of experiment 2 existed when this contract was recorded.

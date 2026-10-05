@@ -130,7 +130,8 @@ def test_volume_only_reference_is_never_selectable():
     reference = modeling.volume_only_reference()
     assert reference.features == ["mature_sale_lines", "log_order_count"] and not reference.selectable
     assert reference.params == _candidate("logreg_c1").params
-    assert [c.id for c in modeling.candidates()] == ["logreg_c1", "hgb_leaf15", "hgb_leaf31", "iforest_256", "iforest_1024"]
+    assert [c.id for c in modeling.candidates()] == ["logreg_c1", "hgb_leaf15", "hgb_leaf15_w4", "hgb_leaf15_w6", "hgb_leaf15_w8",
+                                                     "iforest_256"]
 
 
 def test_percentile_is_position_in_the_frozen_reference():
@@ -146,3 +147,25 @@ def test_the_loader_refuses_types_outside_the_allow_list(tmp_path):
     sio.dump(FunctionTransformer(func=os.getcwd), path)
     with pytest.raises(Exception, match="allow-list"):
         modeling.load_pipeline(path)
+
+
+def test_weighted_candidates_count_honest_gate_members_more_in_training_and_never_as_a_feature(frame):
+    """Experiment contract 2.0: the weight uses private truth as the label does, in training only."""
+    weighted, plain = _candidate("hgb_leaf15_w6"), _candidate("hgb_leaf15")
+    assert weighted.honest_group_weights == {"repeat_genuine_claimant": 6} and weighted.params == plain.params
+    assert "repeat_genuine_claimant" not in weighted.features and not plain.honest_group_weights
+    rng = np.random.default_rng(1)
+    data = frame.assign(repeat_genuine_claimant=(frame["y_abuse"] == 0) & (rng.random(len(frame)) < 0.2))
+    weights = modeling.training_weights(weighted, data)
+    assert set(np.unique(weights)) == {1.0, 6.0} and (weights[data["repeat_genuine_claimant"].to_numpy()] == 6.0).all()
+    assert modeling.training_weights(plain, data) is None
+    a, _ = modeling.fit(weighted, data, data["y_abuse"])
+    b, _ = modeling.fit(plain, data, data["y_abuse"])
+    assert not np.allclose(modeling.raw_scores(weighted, a, data), modeling.raw_scores(plain, b, data))   # the weight changes the model
+    assert a.n_features_in_ == len(MODEL_FEATURES)                                            # and adds no input
+    with pytest.raises(KeyError):
+        modeling.fit(weighted, frame, frame["y_abuse"])                                       # no group flag, no silent unweighted fit
+    leaky = modeling.Candidate("x", 9, plain.family, True, dict(plain.params), list(MODEL_FEATURES) + ["repeat_genuine_claimant"],
+                               honest_group_weights={"repeat_genuine_claimant": 6})
+    with pytest.raises(ValueError, match="can never be a feature"):
+        modeling.training_weights(leaky, data)

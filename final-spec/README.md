@@ -1,6 +1,6 @@
 # ARAI - portable development specification
 
-Version **1.8** - Consolidated 2026-09-26, amended 2026-10-05 - **Implementation baseline**
+Version **2.0** - Consolidated 2026-09-26, amended 2026-10-05 - **Implementation baseline**
 
 Each component has its own specification and acceptance criteria. This folder is the authoritative development package; no previous version, original laptop path or sibling archive is required.
 
@@ -21,6 +21,10 @@ Amendment 1.6 (2026-10-02) records the outcome (selection on validation, the fin
 Amendment 1.7 (2026-10-05) records the project owner's decision after a review of the code: the API reads from PostgreSQL only. Run results, the published experiment report and the truth export are stored there; no result file is written. The API contract is unchanged.
 
 Amendment 1.8 (2026-10-05) follows a principal-ML review of the specification and the code: the report now states what the result depends on and which honest group the model reviews more often than the rule, the development target is closed as a property of the simulation, the API contract moves to 1.3.0 (stable metric codes, worker heartbeat), and provenance, publication and monitoring gaps are closed. A version label on a component or contract names the amendment in which that file last changed in substance.
+
+Amendment 1.9 (2026-10-05) records two owner decisions: the 0.75-0.85 development target stays open until it is reached (the closure in 1.8 is withdrawn), and a new experiment on fresh seeds will add a gate leg for honest repeat claimants.
+
+Amendment 2.0 (2026-10-05) is the contract of that experiment, EXP-20261005-02: fresh seeds, 43 features (the first 17 unchanged), six candidates of which three weight honest repeat claimants in training, and a four-leg gate. The simulator is unchanged.
 
 ## Start on any system
 

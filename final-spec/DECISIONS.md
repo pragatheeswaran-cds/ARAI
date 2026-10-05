@@ -195,3 +195,25 @@ A review of the specification and the codebase from a principal ML engineer's st
 Housekeeping in this amendment: the per-component acceptance footers now point to the register instead of stating NOT_RUN; a version label on a component or contract names the amendment in which that file last changed in substance.
 
 Open for the project owner: a gate leg for honest repeat claimants belongs in the next experiment and cannot be added to this one (it needs a revised experiment.yaml, which voids the generated worlds, and untouched validation and test seeds); the rehearsal on the presentation machine and the optional VM (OPS-AC-05) remain to be done; the code repository has no remote.
+
+## Amendment 1.9 (2026-10-05)
+
+The project owner reviewed amendment 1.8 on 2026-10-05 and decided two things. This is the owner's decision; AM-41 had been recorded on the strength of a general instruction to fix every item of the review and is withdrawn.
+
+| ID | Decision | Supersedes | Final owner |
+|---|---|---|---|
+| AM-45 | The 0.75-0.85 development target for the best supervised candidate stays open until it is reached. It is not closed as a property of the simulation. The measurements behind AM-41 stand and stay disclosed: across the stress worlds the frozen model ranges from .523 to .846 with the simulated action rate, so any figure that reaches the target is reported with how it was reached (features, or a dated change to a permitted calibration lever) | AM-41 | 01 goals, 05 exploration |
+| AM-46 | A new experiment follows on fresh validation and test seeds, with a fourth gate leg for honest customers with two or more genuinely failed deliveries. Its contract (seeds, the leg's definition and coverage, any feature or lever change) is fixed in a later amendment before any of its validation worlds exists. EXP-20261002-01 and its final test stand as recorded and stay the published result until the new experiment passes its own test | The open item of amendment 1.8 that deferred the leg | 07 training, 08 evaluation, 09 selection |
+
+## Amendment 2.0 (2026-10-05)
+
+The contract of the second experiment, EXP-20261005-02, fixed before any of its worlds exists. The owner chose to explore on training worlds first and then approved this contract. The exploration is recorded in the code repository (records/2026-10-05-experiment-2-exploration.md): on the ten training worlds of the first experiment, out of fold, the 17 features gave .694 and failed the new leg (15.8% of honest repeat claimants reviewed against 6.7% for the rule); 43 features unweighted gave .773 and still failed it; 43 features with those customers weighted six times gave .750 and passed all four legs, and passed them on six of the seven stress worlds, which took no part in choosing. Those figures are development figures on worlds looked at many times; the result of this experiment is what its own validation and test worlds show. The simulator is unchanged and no calibration lever was touched. EXP-20261002-01 stands as recorded.
+
+| ID | Decision | Supersedes | Final owner |
+|---|---|---|---|
+| AM-47 | Experiment 2 contract (experiment.yaml 2.0, features.yaml 2.0): fresh seeds for every sealed and training set (train 3101-3110, validation 3201-3205, test 3301-3305, demo 3401; stress and fixture seeds unchanged); 43 ordered features, the first 17 being contract 1.4 unchanged; six candidates (logistic, boosted trees unweighted and weighted 4, 6 and 8, one isolation forest); a four-leg gate that adds honest repeat genuine claimants (two or more genuinely failed units), strict like the other legs and with the same 200-member coverage rule. The experiment identifier and the gate segments are read from the contract | Experiment contract 1.1 and feature contract 1.4 for new work; the open item of AM-46 | 06 features, 07 training, 08 evaluation, 09 selection, experiment.yaml, features.yaml |
+| AM-48 | A candidate may weight the honest members of a gate segment in training. The weight uses simulation truth in training only, as the label does; it is never a model input and is not needed to score. It is disclosed wherever the result is presented, because real data has no ground truth for which claims were genuine | Unweighted training only | 07 training |
+
+Consequence on this branch: bundles of EXP-20261002-01 carry the 17-feature schema and are refused by an installation whose feature contract has 43, so serving has no promoted model here until experiment 2 publishes one. The previous branch stays the state that can be demonstrated until then.
+
+Open for the project owner, unchanged: the rehearsal on the presentation machine, the optional VM (OPS-AC-05), a git remote. The 0.75-0.85 target stays open (AM-45) until this experiment's gate dry run and results are recorded.

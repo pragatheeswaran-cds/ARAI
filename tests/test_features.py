@@ -53,7 +53,8 @@ def test_a_category_without_peers_needs_the_frozen_reference():
 def test_feature_schema_is_the_ordered_contract():
     result = F.compute_features(expectation_fixture(), CUTOFF, REFERENCE)
     order = F.feature_order()
-    assert len(order) == 17 and list(result.features.columns[1:18]) == order
+    assert len(order) == 43 and list(result.features.columns[1:44]) == order
+    assert order[:17] == F.feature_order()[:17] and order[16] == "late_return_lines"     # contract 1.4 is the first 17, unchanged
     # raw link structure is evidence for the analyst, never a model input
     assert F.evidence_features() == ["max_identifier_fanout", "supported_neighbor_count"]
     assert not set(F.evidence_features()) & set(order)
@@ -308,3 +309,70 @@ def test_features_are_built_without_private_truth_and_ignore_it(world, tmp_path,
     monkeypatch.setattr(paths, "PRIVATE_TRUTH_ROOT", tmp_path / "nowhere")
     second = dataset.build_features(world.world_id, reference, artifact_root=tmp_path / "artifacts").features
     pd.testing.assert_frame_equal(first, second)
+
+
+# ------------------------------------------------------------------ feature contract 2.0: claims and timing in context
+def context_fixture():
+    """Three customers, hand-calculable.
+
+    a: three orders (3, 1 and 1 units). Claims the whole of O1 with two different reasons on 12 Jan, and O2 on 30 Jan.
+    b: no claim; one item return at half of its window and one late return of occasion wear.
+    c: ten units of style S1 and one claim, so that 'other customers on the same style' is not empty for a.
+    """
+    skus = [("A", "S1", "Shirt", "M", 0, 30), ("B", "S2", "Dress", "M", 1, 30)]
+    orders = [simple_order("O1", "a"), simple_order("O2", "a", date="2026-01-02"), simple_order("O3", "a", date="2026-01-03"),
+              simple_order("O4", "b"), simple_order("O5", "b", date="2026-01-02"), simple_order("O6", "c")]
+    lines = [("O1", 1, "A", 2, "delivered", DAY), ("O1", 2, "B", 1, "delivered", DAY), ("O2", 1, "A", 1, "delivered", DAY),
+             ("O3", 1, "A", 1, "delivered", DAY), ("O4", 1, "A", 2, "delivered", DAY), ("O5", 1, "B", 1, "delivered", DAY),
+             ("O6", 1, "A", 10, "delivered", DAY)]
+    returns = [("R1", 1, "O1", 1, 2, "item_not_received", "2026-01-12 10:00", "refunded"),
+               ("R1", 2, "O1", 2, 1, "wrong_item_sent", "2026-01-12 11:00", "refunded"),
+               ("R2", 1, "O2", 1, 1, "item_not_received", "2026-01-30 10:00", "pending"),
+               ("R3", 1, "O4", 1, 1, "didnt_suit", "2026-01-25 10:00", "refunded"),          # day 15 of 30: half of the window
+               ("R4", 1, "O5", 1, 1, "changed_my_mind", "2026-02-03 10:00", "refunded"),     # day 24 of 30: late, occasion wear
+               ("R5", 1, "O6", 1, 1, "missing_parts", "2026-01-13 10:00", "refunded")]
+    return make_tables(skus, orders, lines, returns)
+
+
+def test_claims_are_measured_against_what_was_bought_and_how_orders_were_claimed():
+    reference = F.Reference(category_rate={"Shirt": 0.2, "Dress": 0.2})
+    f = F.compute_features(context_fixture(), CUTOFF, reference).features.set_index("customer_id")
+    a = f.loc["a"]
+    assert (a["claim_lines"], a["claim_order_count"], a["claim_distinct_days"], a["max_claim_lines_per_order"]) == (3, 2, 2, 2)
+    assert a["claim_order_rate"] == pytest.approx(2 / 3) and a["claim_unit_rate"] == pytest.approx(4 / 5)
+    assert a["claimed_share_of_claim_orders"] == 1.0 and a["whole_order_claim_share"] == 1.0   # both claimed orders in full
+    assert a["claim_day_span"] == 18 and a["claims_in_densest_fortnight"] == 2                # 30 Jan is outside 12 Jan + 14 days
+    assert a["nonreceipt_share_of_claims"] == pytest.approx(2 / 3)
+    assert a["multi_code_claim_orders"] == 1 and a["multi_code_claim_share"] == 0.5           # O1 has two kinds of failure
+    assert a["units_per_order"] == pytest.approx(5 / 3) and a["claimed_order_size_ratio"] == pytest.approx(2 / (5 / 3))
+    assert a["claim_value_ratio"] == 1.0                                                      # every unit costs the same here
+    # peers exclude the customer: the other two bought 13 units and claimed 1
+    expected = 5 * (1 / 13)
+    assert a["claim_excess_z"] == pytest.approx((4 - expected) / expected ** 0.5)
+    # style S1: others bought 12 and claimed 1; style S2: the other buyer claimed nothing; the snapshot rate is 5 of 18
+    assert a["claim_style_others_rate_max"] == pytest.approx((1 / 12) / (5 / 18))
+    assert a["claim_style_others_rate_mean"] == pytest.approx(((1 / 12) / (5 / 18) + 0) / 2)
+    b = f.loc["b"]                                                                            # no claim: counts are zero, shares are null
+    assert (b["claim_lines"], b["claim_order_count"], b["claims_in_densest_fortnight"], b["multi_code_claim_orders"]) == (0, 0, 0, 0)
+    assert b["claim_order_rate"] == 0 and b["claim_unit_rate"] == 0
+    assert b[["claimed_share_of_claim_orders", "claim_day_span", "nonreceipt_share_of_claims", "claim_style_others_rate_mean",
+              "claim_value_ratio", "claimed_order_size_ratio"]].isna().all()
+
+
+def test_timing_is_read_in_finer_grain_than_late_or_not():
+    reference = F.Reference(category_rate={"Shirt": 0.2, "Dress": 0.2})
+    f = F.compute_features(context_fixture(), CUTOFF, reference).features.set_index("customer_id")
+    b = f.loc["b"]
+    assert b["item_ratio_max"] == pytest.approx(0.8) and b["item_ratio_second"] == pytest.approx(0.5) and b["item_ratio_mean"] == pytest.approx(0.65)
+    assert (b["mid_late_lines"], b["late_return_lines"], b["late_occasion_return_lines"], b["mid_or_late_occasion_lines"],
+            b["item_in_window_lines"]) == (1, 1, 1, 1, 2)
+    a = f.loc["a"]                                                                            # claims are never item returns
+    assert a["item_in_window_lines"] == 0 and a["mid_late_lines"] == 0 and pd.isna(a["item_ratio_max"]) and pd.isna(a["item_ratio_second"])
+
+
+def test_new_features_survive_a_snapshot_without_any_return():
+    tables = make_tables([("A", "S1", "Shirt", "M", 0, 30)], [simple_order("O1", "a"), simple_order("O2", "b")],
+                         [("O1", 1, "A", 1, "delivered", DAY), ("O2", 1, "A", 2, "delivered", DAY)])
+    f = F.compute_features(tables, CUTOFF, F.Reference(category_rate={"Shirt": 0.2})).features
+    assert (f[["claim_lines", "claim_distinct_days", "claims_in_densest_fortnight", "item_in_window_lines", "mid_late_lines"]] == 0).all().all()
+    assert f[["item_ratio_max", "claim_day_span", "claim_excess_z"]].isna().all().all() and f["units_per_order"].tolist() == [1.0, 2.0]

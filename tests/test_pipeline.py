@@ -56,7 +56,8 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
         with pytest.raises(RuntimeError, match="category fallback"):
             experiment.train("EXP-FALLBACK", **roots)
     result = experiment.train(EXPERIMENT, **roots)
-    assert [c["status"] for c in result["candidates"]] == ["fitted"] * 5
+    assert [c["status"] for c in result["candidates"]] == ["fitted"] * 6
+    assert [c["honest_group_weights"] for c in result["candidates"]][2:5] == [{"repeat_genuine_claimant": w} for w in (4, 6, 8)]
     trained = read("config.json")
     assert trained["scoring_code_sha256"] == bundles.code_sha256() and trained["cutoff"].startswith("2026-09-09")
     assert set(trained["feature_quantiles"]) == set(dataset.MODEL_FEATURES)
@@ -69,8 +70,9 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
 
     # ---- what the result depends on, and the stress table, are pipeline outputs
     measured = ablation.run(EXPERIMENT, **roots)
-    assert [row["key"] for row in measured["variants"]] == ["all", "without_late_return_lines", "without_timing", "without_claims",
-                                                            "without_claims_and_timing"]
+    assert [row["key"] for row in measured["variants"]] == ["all", "first_contract", "without_late_return_lines", "without_timing",
+                                                            "without_claims", "without_claims_and_timing"]
+    assert measured["variants"][1]["features"] == 17
     groups = {row["group"]: row for row in measured["honest_groups"]["groups"]}
     assert set(groups) == set(ablation.GROUP_LABELS)
     by_failures = [groups[g] for g in ("repeat_genuine_claimant", "one_genuine_failure", "no_genuine_failure")]
@@ -83,7 +85,8 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
 
     # ---- validation: worlds from another generator are refused; then selection is frozen
     small["generate"](config["validation_seeds"])
-    manifest = artifact_root / "worlds" / "W2201" / "operational" / "manifest.json"
+    first_training, first_validation = f"W{config['train_seeds'][0]}", f"W{config['validation_seeds'][0]}"
+    manifest = artifact_root / "worlds" / first_validation / "operational" / "manifest.json"
     original = manifest.read_bytes()
     tampered = json.loads(original)
     tampered["generator"]["code_sha256"] = "0" * 64
@@ -97,12 +100,12 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
         experiment.train(EXPERIMENT, **roots)
 
     # ---- labels are joined only with the truth written with the world
-    truth_file = roots["private_root"] / "W2101" / "customer_truth.parquet"
+    truth_file = roots["private_root"] / first_training / "customer_truth.parquet"
     kept = truth_file.read_bytes()
     truth = pd.read_parquet(truth_file)
     truth.assign(y_abuse=1 - truth["y_abuse"]).to_parquet(truth_file, index=False)
     with pytest.raises(ValueError, match="differs from the one written with the world"):
-        dataset.labelled(["W2101"], **roots)
+        dataset.labelled([first_training], **roots)
     truth_file.write_bytes(kept)
 
     # ---- the final test runs once
@@ -134,7 +137,7 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
     assert pointer["baseline_id"] == published["baseline_id"] and pointer["model_id"] == published["model_id"]
     served = bundles.load_bundle(pointer["model_id"] or pointer["baseline_id"], artifact_root)
     assert served.manifest["training_code_sha256"] == trained["scoring_code_sha256"] and served.manifest["training_code_source"] == "training record"
-    assert served.manifest["training_cutoff"] == trained["cutoff"] and served.manifest["feature_check"]["world_id"] == "W2101"
+    assert served.manifest["training_cutoff"] == trained["cutoff"] and served.manifest["feature_check"]["world_id"] == first_training
     assert served.manifest["feature_quantiles"]["raw_return_rate"] == trained["feature_quantiles"]["raw_return_rate"]
     assert not bundles.code_differs(served)
 
@@ -147,6 +150,7 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
                            "style_metrics", "wardrobing_metrics") for m in report[key]] + [m for c in report["candidates"] for m in c["metrics"]]
     assert all(m["code"] for m in every)                                       # every published number can be found without its wording
     limits = " ".join(report["coverage_limitations"])
-    assert "Two signals carry the model" in limits and "promotion gate has no leg for this group" in limits
+    assert "Two signals carry the model" in limits and "two or more genuinely failed deliveries" in limits
+    assert "review rate, honest repeat genuine claimants" in {m["name"] for m in report["baseline_metrics"]}      # the fourth leg is reported
     if chosen:
         assert "Quote the gap to the rule, not the level" in limits

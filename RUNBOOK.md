@@ -119,14 +119,14 @@ separately (section 4, using port 8080).
 Only needed on an empty database.
 
 **In the browser:** open **Datasets & runs**, choose the eight files in
-`data\artifacts\worlds\W2401\operational` (`manifest.json` and the seven `.csv` files), press
+`data\artifacts\worlds\W3401\operational` (`manifest.json` and the seven `.csv` files), press
 **Validate and register**, then **Score with the active bundle**. Scoring 10,000 customers takes about 12
 seconds; the page updates by itself.
 
 **From the terminal** (same thing through the API; change the port to 8080 for Docker):
 
 ```powershell
-$d = "data\artifacts\worlds\W2401\operational"
+$d = "data\artifacts\worlds\W3401\operational"
 curl.exe -s -X POST http://127.0.0.1:8000/api/v1/datasets `
   -F "manifest=<$d\manifest.json" `
   -F "customer_master=@$d\customer_master.csv" -F "sku_master=@$d\sku_master.csv" `
@@ -158,7 +158,7 @@ Expected:
 | You see | Meaning |
 |---|---|
 | no answer | the server is not running |
-| `scoring_ready: false` | no valid model bundle, or the worker has stopped: restart; if it persists run `uv run arai publish --demo-world W2401` |
+| `scoring_ready: false` | no valid model bundle, or the worker has stopped: restart; if it persists run `uv run arai publish --demo-world W3401` |
 | `promoted_model_ready: false`, `model_kind: baseline_fallback` | only the return-rate baseline is active; the UI shows a banner saying why |
 | `worker_seconds_since_seen` is `null` or keeps growing while `queue_depth` is above 0 | no scoring worker is running: restart (local), or `docker compose restart worker` |
 
@@ -167,7 +167,7 @@ curl.exe -s http://127.0.0.1:8000/api/v1/runs       # the latest run should be "
 ```
 
 Then open http://127.0.0.1:8000: the Overview should show 5,690 eligible customers and 285 selected for world
-W2401.
+W3401.
 
 ### Full check before a demonstration
 
@@ -199,7 +199,7 @@ Screenshots and results from steps 3 and 4 are written to `reports\ui\2026-10-02
 
 ```powershell
 # an operational snapshot against the data contract; exit code 0 and "accepted": true mean it passed
-uv run --no-sync arai validate data\artifacts\worlds\W2401\operational
+uv run --no-sync arai validate data\artifacts\worlds\W3401\operational
 ```
 
 Uploading through the UI or the API runs the same validation; a snapshot that fails is rejected whole and the
@@ -218,8 +218,8 @@ After editing anything under `final-spec\`, rebuild its register and hashes firs
 
 The numbers are frozen records, not something to re-run:
 
-- `data\artifacts\experiments\EXP-20261002-01\selection.json`: selected model and `final_test_status`.
-- `data\artifacts\experiments\EXP-20261002-01\reports\`: `dry_run.json`, `validation.json`, `test.json`, and
+- `data\artifacts\experiments\EXP-20261005-02\selection.json`: selected model and `final_test_status`.
+- `data\artifacts\experiments\EXP-20261005-02\reports\`: `dry_run.json`, `validation.json`, `test.json`, and
   the two that may be rerun at any time because they read only training and stress worlds: `ablation.json`
   (`uv run --no-sync arai ablation`) and `stress.json` (`uv run --no-sync arai stress`). Publish again afterwards.
 - The same figures are on the **Evaluation** page and in `records\2026-10-02-final-test.md`.
@@ -241,9 +241,9 @@ or 2301-2305.
 | A run shows **failed / output_missing** | it was scored by an earlier version and its result files were deleted before they were loaded into the database | press **Retry**; it creates a new run with the same dataset and model |
 | A run shows **interrupted** | the server stopped while scoring | press **Retry** |
 | A run carries a warning that scores or inputs are outside training | the snapshot differs from the training worlds | expected for unusual data; treat percentiles and the review list with caution |
-| A run warns that the scoring code differs from the published bundle | code changed after `arai publish` | `uv run --no-sync arai publish --demo-world W2401`, restart, score again |
+| A run warns that the scoring code differs from the published bundle | code changed after `arai publish` | `uv run --no-sync arai publish --demo-world W3401`, restart, score again |
 | `arai publish` says the feature code no longer reproduces the training features | `features.py` changed in a way that changes values | restore the code, or train a new experiment on fresh seeds |
-| Banner: baseline only | no promoted model is active | `uv run --no-sync arai publish --demo-world W2401`, then restart |
+| Banner: baseline only | no promoted model is active | `uv run --no-sync arai publish --demo-world W3401`, then restart |
 | Evaluation page is empty after `arai publish` | the report is loaded into the database when the worker starts | restart (local), or `docker compose restart worker` |
 | `web/dist is missing` at start | UI not built | `cd web; npm install; npm run build` |
 | Docker: `POSTGRES_PASSWORD is missing a value` | no `.env` | copy `.env.example` to `.env` and set it |

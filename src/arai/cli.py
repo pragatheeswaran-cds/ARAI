@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from arai import contract
 from arai.generator import generate_world, write_world
 from arai.validation import validate_world
 
@@ -36,8 +37,7 @@ def _validate(args) -> int:
 
 
 def _card(card) -> str:
-    columns = ["role", "status", "k", "true_positives", "precision", "recall", "legit_heavy_returner_fpr",
-               "defective_product_buyer_fpr", "benign_household_fpr", "reasons"]
+    columns = ["role", "status", "k", "true_positives", "precision", "recall", *(s + "_fpr" for s in contract.segments()), "reasons"]
     return card[columns].round(4).to_string()
 
 
@@ -200,21 +200,21 @@ def main(argv=None) -> int:
             ("select", _select, "score the validation worlds, apply the gate and freeze the selection"),
             ("test", _test, "evaluate the frozen selection once on the test worlds")):
         command = commands.add_parser(name, help=text)
-        command.add_argument("--experiment", default="EXP-20261002-01")
+        command.add_argument("--experiment", default=contract.experiment_id())
         command.set_defaults(run=handler)
         if name == "dry-run":
             command.add_argument("--lever", action="append", help="a difficulty lever that was changed (repeatable); disclosed in reports")
             command.add_argument("--record", default=None, help="path of the dated calibration record, disclosed in reports")
     ablation = commands.add_parser("ablation", help="what the result depends on: feature-family ablations and honest-group review "
                                                     "rates, out of fold on training worlds")
-    ablation.add_argument("--experiment", default="EXP-20261002-01")
+    ablation.add_argument("--experiment", default=contract.experiment_id())
     ablation.add_argument("--candidate", default=None, help="default: the selected candidate, else the best of the dry run")
     ablation.set_defaults(run=_ablation)
     stress = commands.add_parser("stress", help="the frozen estimators on the stress worlds; diagnostic, selects nothing")
-    stress.add_argument("--experiment", default="EXP-20261002-01")
+    stress.add_argument("--experiment", default=contract.experiment_id())
     stress.set_defaults(run=_stress)
     publish = commands.add_parser("publish", help="build bundles, set the active pointer and write the published experiment report")
-    publish.add_argument("--experiment", default="EXP-20261002-01")
+    publish.add_argument("--experiment", default=contract.experiment_id())
     publish.add_argument("--demo-world", default=None, help="export this world's synthetic truth for the evaluation page")
     publish.set_defaults(run=_publish)
 

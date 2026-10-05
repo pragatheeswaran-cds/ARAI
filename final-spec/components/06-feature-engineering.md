@@ -1,6 +1,6 @@
 # Feature engineering and explanatory evidence
 
-Version 1.4 (amended 2026-10-02) | Implementation baseline | Component FEAT
+Version 2.0 (amended 2026-10-05) | Implementation baseline | Component FEAT
 
 ## Requirements and boundary
 
@@ -14,7 +14,7 @@ Graph: fanout=distinct accounts. Drop individual values with fanout>25; edge nee
 
 Style evidence: rates and shares use mature sales/requests; claim linkage uses all visible non-withdrawn transaction-claim return lines on delivered lines of the style. Support >=20 mature sale lines, not units. damage_share=defective/poor_quality/not_as_described requested units over requested units (exclude carrier damage); claim_share uses the four claim codes. A claim line is linked iff a supported neighbor of the claimant has a transaction-claim line on the same style with requested local dates <=7 calendar days apart; the SKU need not match. linked_claim_share=linked claim lines/all claim lines, null without claims; linked_claimers=distinct claimants with >=1 linked line. Support<20 -> insufficient_support; supported with zero mature requested units and zero visible claim lines -> no_return_evidence. quality_signal=(damage_share>=.30); targeting_signal=(linked_claimers>=3 AND linked_claim_share>=.075). Both -> mixed_or_uncertain; quality only -> quality; targeting only -> targeting; neither -> no_elevated_signal. Both thresholds were checked on the ten regenerated training worlds on 2026-10-02 (AM-25): the quality threshold was kept and the linked-claim share was set to .075, the lowest value tried that lets no untargeted style through now that honest linked claims exist; they stay fixed from here unless a dated development record changes them before validation generation. The v1.0 induced returner graph and component_share are withdrawn: a linked group of 3-6 can never be half of a style's returners at 10,000 customers. Retain signal booleans/continuous axes. SKU drill-down has own support. Descriptive style shrunk rate=(R_style+20*training_category_rate)/(N_style+20), distinct from customer self-excluding formula.
 
-Late returns: a late return is a visible non-withdrawn item-return line (any reason other than the four transaction-claim codes) requested at 75% to 100% of its captured return window; a request after the window is not a late return. late_return_lines counts them per customer and is the 17th model feature (AM-27): customer-level medians and shares hide a behaviour that shows on single lines.
+Late returns: a late return is a visible non-withdrawn item-return line (any reason other than the four transaction-claim codes) requested at 75% to 100% of its captured return window; a request after the window is not a late return. Feature contract 2.0 (AM-47) adds 26 features to the 17, in the same order after them, all from operational tables and with the customer excluded from every peer statistic. Claims in proportion to purchases: claim lines and claimed orders as counts, claimed orders per delivered order, claimed units per delivered unit, and claim_excess_z=(own claim units-E)/sqrt(E) with E=own delivered units times the claim-unit rate of all other customers. The shape of claimed orders: the share of a claimed order that was claimed, the share of claimed orders claimed in full, days between first and last claim, distinct claim days, the most claim lines on a day and the 14 days after it, the non-receipt share of claims, orders with two different claim reasons (count and share), the most claim lines on one order, claimed-order size against the customer's usual order, and units per order. Timing in finer grain, on item-return lines requested inside their window: the largest, second largest and mean days/window, lines at 50% to under 75% of the window, late returns of occasion wear, occasion-wear lines at 50% or later, and the count of such lines. Style context: mean and maximum, over the styles claimed on, of other customers' claim-unit rate on the style relative to the snapshot's. Claim value: mean net unit value of claimed units over that of delivered units. A share of requested units cannot tell two claims in sixty deliveries from two claims in four; these can. late_return_lines counts them per customer and is the 17th model feature (AM-27): customer-level medians and shares hide a behaviour that shows on single lines.
 
 Wardrobing signals (AM-28, superseding AM-12): repeat_late_returns (late_return_lines>=2) 50 points, late_return (>=1) 25, late_occasion_return (>=1 late return of occasion wear) 15, late_return_share (late_return_lines/item_return_lines>=.5) 10. Points are integers summed as integers (never floating point); indicator_score is the 0-100 total. elevated>=75, possible>=35, otherwise no_elevated_signal: two late returns are always elevated, one late return is possible only when it is occasion wear or at least half of the customer's item returns, and nothing else reaches a band. No item-return line with valid timing -> insufficient_evidence with no score. The rule needs no training reference; the status incomplete is reserved and not produced. The indicator cannot establish wear and never enters the model score.
 
@@ -23,7 +23,7 @@ Fit median imputation and one missingness indicator per feature on training only
 ## Inputs, outputs and dependencies
 
 - Inputs: Complete operational snapshot and frozen training fallbacks.
-- Outputs: 17 ordered model features, 2 evidence-only link measures, graph, style/SKU evidence, wardrobing indicators.
+- Outputs: 43 ordered model features (the 17 of contract 1.4 first, unchanged), 2 evidence-only link measures, graph, style/SKU evidence, wardrobing indicators.
 - Dependencies: contracts/features.yaml and reason-groups.yaml.
 
 ## Acceptance criteria
@@ -31,12 +31,13 @@ Fit median imputation and one missingness indicator per feature on training only
 | ID | Pass condition and required evidence |
 |---|---|
 | FEAT-AC-01 | Hand-calculated partial quantity, two-level shrinkage, sole buyer, single-SKU style/no peers and V=0 fixtures match. |
-| FEAT-AC-02 | Ordered 17-feature schema enforced, with the two link measures kept out of the model matrix; identity renaming preserving equality leaves features unchanged. |
+| FEAT-AC-02 | Ordered 43-feature schema enforced, its first 17 being contract 1.4 unchanged, with the two link measures kept out of the model matrix; identity renaming preserving equality leaves features unchanged. |
 | FEAT-AC-03 | Eligibility threshold exactly three mature lines; recent requests affect composition but not mature rate. |
 | FEAT-AC-04 | One shared type no edge; two edge; fanout26 value removed; empty vs failed graph distinguished. |
 | FEAT-AC-05 | All six style states and signal boundaries correct; claims 7 days apart link and 8 do not; different SKUs of one style link; unsupported neighbors never link; low-link misses reported. |
 | FEAT-AC-06 | Wardrobing integer boundaries 35/75, one late return without occasion wear or a half share (25 points, no band), the 75%/100% window boundaries, a request after the window, a claim that is not an item return, and no-return fixtures match without mixing into model risk. |
 | FEAT-AC-07 | Changing private labels with operational inputs fixed, or removing private truth altogether, changes no features or predictions. |
 | FEAT-AC-08 | coordinated_claim_share matches the style-grain linked-claim rule on a hand-built fixture and counts each own line once. |
+| FEAT-AC-09 | The claim-context and timing-grain features match a hand-calculated fixture (rates, whole-order and two-reason orders, the densest fortnight, self-excluded peer and style rates, window ratios), give zeros and nulls for a customer or a snapshot without claims or returns, and leave the first 17 features of a first-experiment world unchanged value for value. |
 
 Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.

@@ -45,12 +45,14 @@ class Candidate:
     params: dict
     features: list = field(default_factory=lambda: list(MODEL_FEATURES))
     selectable: bool = True                     # report-only references can never be selected
+    honest_group_weights: dict = field(default_factory=dict)    # training-only weight on honest members of a gate segment
 
 
 def candidates(settings=None) -> list:
     """The five registered candidates, exactly as contracts/experiment.yaml lists them."""
     experiment = (settings or load_settings()).experiment
-    return [Candidate(c["id"], c["ordinal"], c["family"], c["supervised"], dict(c["params"])) for c in experiment["candidates"]]
+    return [Candidate(c["id"], c["ordinal"], c["family"], c["supervised"], dict(c["params"]),
+                      honest_group_weights=dict(c.get("honest_group_weights", {}))) for c in experiment["candidates"]]
 
 
 def volume_only_reference(settings=None) -> Candidate:
@@ -70,6 +72,22 @@ def make_pipeline(candidate: Candidate) -> Pipeline:
     return Pipeline(steps)
 
 
+def training_weights(candidate: Candidate, X: pd.DataFrame) -> np.ndarray | None:
+    """Per-row training weights: honest members of a gate segment count more as negatives (experiment.yaml).
+
+    The group flags are private truth, joined for training exactly as the label is. They are never model inputs
+    and nothing of the kind exists, or is needed, when a snapshot is scored.
+    """
+    if not candidate.honest_group_weights:
+        return None
+    weights = np.ones(len(X))
+    for group, weight in candidate.honest_group_weights.items():
+        if group in candidate.features:
+            raise ValueError(f"{group} is private truth and can never be a feature")
+        weights[X[group].to_numpy(dtype=bool)] = float(weight)
+    return weights
+
+
 def fit(candidate: Candidate, X: pd.DataFrame, y=None):
     """Fit one pipeline; returns (pipeline, warnings). Unsupervised candidates are fitted without any label."""
     pipeline = make_pipeline(candidate)
@@ -79,7 +97,8 @@ def fit(candidate: Candidate, X: pd.DataFrame, y=None):
         if candidate.supervised:
             if y is None:
                 raise ValueError(f"{candidate.id} is supervised and needs labels")
-            pipeline.fit(matrix, np.asarray(y))
+            weights = training_weights(candidate, X)
+            pipeline.fit(matrix, np.asarray(y), **({} if weights is None else {"model__sample_weight": weights}))
         else:
             pipeline.fit(matrix)                # no label reaches an unsupervised fit
     return pipeline, [f"{w.category.__name__}: {w.message}" for w in caught]
@@ -164,6 +183,7 @@ def train_candidate(candidate: Candidate, frame: pd.DataFrame, folds: dict, out_
     record = {
         "candidate_id": candidate.id, "ordinal": candidate.ordinal, "family": candidate.family,
         "supervised": candidate.supervised, "selectable": candidate.selectable, "features": candidate.features,
+        "honest_group_weights": candidate.honest_group_weights,
         "params": {k: (v if isinstance(v, (int, float, str, bool, type(None))) else str(v))
                    for k, v in pipeline.named_steps["model"].get_params().items()},
         "preprocessing": [name for name, _ in pipeline.steps[:-1]], "reference_kind": reference_kind,

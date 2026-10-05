@@ -25,7 +25,7 @@ from arai.selection import BASELINE
 PRIMARY = "0.05"
 CALIBRATION_RECORD = "records/2026-10-02-gate-dry-run.md"      # for dry runs recorded before they named their record
 SEGMENT_LABELS = {"legit_heavy_returner": "honest heavy returners", "defective_product_buyer": "honest defective-product buyers",
-                  "benign_household": "honest household members"}
+                  "benign_household": "honest household members", "repeat_genuine_claimant": "honest repeat genuine claimants"}
 REFERENCE_LABELS = {"analyst_rulebook": "analyst rulebook", "volume_only_logreg": "volume-only model"}
 
 
@@ -201,10 +201,18 @@ def _dependence_limitations(dependence: dict, stress: dict) -> list:
                    "behaviour would be; the precision without any timing feature is the figure to quote as robust.")
     if "group.repeat_genuine_claimant" in dependence:
         model, rule = dependence["group.repeat_genuine_claimant"]
-        out.append(f"Honest customers with two or more genuinely failed deliveries are sent for review more often by the model than by "
-                   f"the return-rate rule ({100 * model:.1f}% against {100 * rule:.1f}% on training worlds, out of fold) and are "
-                   f"{pct(dependence['repeat_share_of_false_positives'])} of the model's false positives. The promotion gate has no leg "
-                   "for this group.")
+        gated = "repeat_genuine_claimant" in SEGMENTS
+        share = pct(dependence["repeat_share_of_false_positives"])
+        if model > rule:
+            out.append(f"Honest customers with two or more genuinely failed deliveries are sent for review more often by the model than "
+                       f"by the return-rate rule ({100 * model:.1f}% against {100 * rule:.1f}% on training worlds, out of fold) and are "
+                       f"{share} of the model's false positives. " + ("The gate has a leg for this group; this figure is from training "
+                       "worlds." if gated else "The promotion gate has no leg for this group."))
+        else:
+            out.append(f"Honest customers with two or more genuinely failed deliveries are a gate group: the model sends "
+                       f"{100 * model:.1f}% of them for review against {100 * rule:.1f}% for the return-rate rule (training worlds, out "
+                       f"of fold). They are still {share} of the model's false positives, and the model was trained to weigh them more "
+                       "heavily, which uses simulation truth that real data would not have.")
     if "model" in stress:
         out.append(f"The level of the result follows the simulated action rate: across the {stress['worlds']} stress worlds the selected "
                    f"model's precision ranges from {pct(stress['model'][0])} to {pct(stress['model'][1])} and the rule's from "

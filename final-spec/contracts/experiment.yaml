@@ -1,5 +1,37 @@
-version: '1.1'
+version: '2.0'
 status: IMPLEMENTATION BASELINE
+experiment_id: EXP-20261005-02
+supersedes:
+  experiment_id: EXP-20261002-01
+  retired_seeds:
+    train_seeds:
+    - 2101
+    - 2102
+    - 2103
+    - 2104
+    - 2105
+    - 2106
+    - 2107
+    - 2108
+    - 2109
+    - 2110
+    validation_seeds:
+    - 2201
+    - 2202
+    - 2203
+    - 2204
+    - 2205
+    test_seeds:
+    - 2301
+    - 2302
+    - 2303
+    - 2304
+    - 2305
+    demo_seeds:
+    - 2401
+  note: retired seeds are never generated, scored or reused for this experiment
+honest_group_weights: training-only sample weight on honest members of a gate segment (private
+  truth, as the label is); never used to score
 snapshot_date: '2026-09-09'
 history_start: '2025-09-10'
 timezone: Asia/Kolkata
@@ -9,30 +41,30 @@ history_calendar_months: 12
 currency: INR
 seed_namespace: return-abuse-v02
 train_seeds:
-- 2101
-- 2102
-- 2103
-- 2104
-- 2105
-- 2106
-- 2107
-- 2108
-- 2109
-- 2110
+- 3101
+- 3102
+- 3103
+- 3104
+- 3105
+- 3106
+- 3107
+- 3108
+- 3109
+- 3110
 validation_seeds:
-- 2201
-- 2202
-- 2203
-- 2204
-- 2205
+- 3201
+- 3202
+- 3203
+- 3204
+- 3205
 test_seeds:
-- 2301
-- 2302
-- 2303
-- 2304
-- 2305
+- 3301
+- 3302
+- 3303
+- 3304
+- 3305
 demo_seeds:
-- 2401
+- 3401
 test_reuse: prohibited after any model/config/generator change prompted by test results
 eligibility:
   min_mature_sale_lines: 3
@@ -46,13 +78,17 @@ budgets:
   rounding: ceil
   tie_break: ascending SHA256 of world_id/customer_id with fixed public tie namespace
 selection:
-  aggregate: pooled confusion counts over validation worlds, with k calculated per
-    world
-  gate: precision above raw-rate baseline; FPR no higher in each benign group
-  order: descending precision, ascending worst benign-group FPR, ascending registered
-    candidate ordinal
+  aggregate: pooled confusion counts over validation worlds, with k calculated per world
+  gate: precision above raw-rate baseline; FPR no higher in each benign group listed in segments
+  order: descending precision, ascending worst benign-group FPR, ascending registered candidate
+    ordinal
   no_pass: no_selected_model
   refit_after_selection: false
+  segments:
+  - legit_heavy_returner
+  - defective_product_buyer
+  - benign_household
+  - repeat_genuine_claimant
 candidates:
 - id: logreg_c1
   ordinal: 1
@@ -80,7 +116,7 @@ candidates:
     early_stopping: false
     random_state: 20260925
   ranking_score: decision_function
-- id: hgb_leaf31
+- id: hgb_leaf15_w4
   ordinal: 3
   family: HistGradientBoostingClassifier
   supervised: true
@@ -88,34 +124,54 @@ candidates:
   params:
     learning_rate: 0.05
     max_iter: 200
-    max_leaf_nodes: 31
+    max_leaf_nodes: 15
     min_samples_leaf: 50
     l2_regularization: 1.0
     early_stopping: false
     random_state: 20260925
   ranking_score: decision_function
-- id: iforest_256
+  honest_group_weights:
+    repeat_genuine_claimant: 4
+- id: hgb_leaf15_w6
   ordinal: 4
+  family: HistGradientBoostingClassifier
+  supervised: true
+  preprocessing: training-median imputation, missing indicators
+  params:
+    learning_rate: 0.05
+    max_iter: 200
+    max_leaf_nodes: 15
+    min_samples_leaf: 50
+    l2_regularization: 1.0
+    early_stopping: false
+    random_state: 20260925
+  ranking_score: decision_function
+  honest_group_weights:
+    repeat_genuine_claimant: 6
+- id: hgb_leaf15_w8
+  ordinal: 5
+  family: HistGradientBoostingClassifier
+  supervised: true
+  preprocessing: training-median imputation, missing indicators
+  params:
+    learning_rate: 0.05
+    max_iter: 200
+    max_leaf_nodes: 15
+    min_samples_leaf: 50
+    l2_regularization: 1.0
+    early_stopping: false
+    random_state: 20260925
+  ranking_score: decision_function
+  honest_group_weights:
+    repeat_genuine_claimant: 8
+- id: iforest_256
+  ordinal: 6
   family: IsolationForest
   supervised: false
   preprocessing: training-median imputation, missing indicators
   params:
     n_estimators: 300
     max_samples: 256
-    contamination: auto
-    max_features: 1.0
-    bootstrap: false
-    random_state: 20260925
-    n_jobs: 1
-  ranking_score: negative score_samples
-- id: iforest_1024
-  ordinal: 5
-  family: IsolationForest
-  supervised: false
-  preprocessing: training-median imputation, missing indicators
-  params:
-    n_estimators: 300
-    max_samples: 1024
     contamination: auto
     max_features: 1.0
     bootstrap: false
@@ -144,12 +200,13 @@ stress_seeds:
   2506: per-account action rate x2
   2507: actionable persona multipliers all 1
 risk_reference:
-  supervised: 5-fold grouped by world; fold-local preprocessing/fallback fitting
+  supervised: 5-fold grouped by world; fold-local preprocessing; the category fallback is
+    fitted on all training worlds and training fails if a training world uses it
   unsupervised: in-sample training scores
   baseline: training raw_return_rate
 references:
-  status: report-only; same population, k, ties and budgets as candidates; never gate
-    inputs and never selectable
+  status: report-only; same population, k, ties and budgets as candidates; never gate inputs
+    and never selectable
   volume_only_logreg:
     family: LogisticRegression
     params_from: logreg_c1
@@ -159,8 +216,7 @@ references:
   analyst_rulebook:
     score: count of fired rules (0-5)
     tie_break: descending raw_return_rate, then the standard hash
-    thresholds_from: eligible training customers; linear-interpolated percentiles;
-      frozen
+    thresholds_from: eligible training customers; linear-interpolated percentiles; frozen
     null_input: rule does not fire
     rules:
     - raw_return_rate >= training p90
@@ -184,11 +240,9 @@ difficulty_calibration:
   - address failure multiplier dispersion
   - genuine claim rates
   forbidden: gate, truth definitions, eligibility, benign segments, household generation
-  deadline: before any validation manifest exists; each change dated with before/after
-    values
+  deadline: before any validation manifest exists; each change dated with before/after values
 gate_dry_run:
-  input: pooled out-of-fold training-world scores; Isolation Forest in-sample, flagged
-    optimistic
+  input: pooled out-of-fold training-world scores; Isolation Forest in-sample, flagged optimistic
   rule: identical gate, k, ties and segment definitions
   effect: diagnostic only; never selects, promotes or replaces validation
   deadline: before any validation manifest exists

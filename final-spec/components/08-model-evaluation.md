@@ -1,6 +1,6 @@
 # Model and evidence evaluation
 
-Version 1.8 (amended 2026-10-05) | Implementation baseline | Component EVAL
+Version 2.0 (amended 2026-10-05) | Implementation baseline | Component EVAL
 
 ## Requirements and boundary
 
@@ -8,7 +8,7 @@ For every world/fraction: N=eligible, k=min(N,ceil(f*N)); N=0 invalid. Rank desc
 
 Pool counts after choosing k independently per world. Precision=sumTP/sumk; recall=sumTP/sumpositives; segment FPR=selected benign segment/all benign segment. Report per-world counts, overlapping action recall, eligible and excluded whole-population abuse coverage. Undefined ratios null; overlapping groups never sum as disjoint totals.
 
-All benign groups require y=0 and eligibility: heavy returner raw rate>=90th percentile over ALL eligible customers including abusers (linear-interpolated quantile, include ties); defective buyer requested >=1 genuinely defective mature unit (not carrier damage); household member actually used an identifier also used by another household member. Graph-linked subset and heavy-return generator flag are diagnostics. Validation requires >=200 pooled per segment. Test1-199 is a coverage limitation; zero unverifiable. No test regeneration.
+All benign groups require y=0 and eligibility: heavy returner raw rate>=90th percentile over ALL eligible customers including abusers (linear-interpolated quantile, include ties); defective buyer requested >=1 genuinely defective mature unit (not carrier damage); household member actually used an identifier also used by another household member; repeat genuine claimant (a gate segment from experiment 2, AM-47) had two or more units genuinely fail in fulfilment (not received, wrong item, missing parts, empty package), whether or not a claim for them is visible. The gate segments of an experiment are listed in experiment.yaml selection.segments. Graph-linked subset and heavy-return generator flag are diagnostics. Validation requires >=200 pooled per segment. Test1-199 is a coverage limitation; zero unverifiable. No test regeneration.
 
 Use1000 paired whole-world bootstrap resamples seed20260926; percentile2.5/97.5 intervals and all five world results. Coarse uncertainty, no significant-improvement claim from point gate.
 

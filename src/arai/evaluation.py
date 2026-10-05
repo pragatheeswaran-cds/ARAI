@@ -14,7 +14,8 @@ from arai import contract, dataset, paths
 from arai.dataset import load_world
 from arai.ranking import PRIMARY_FRACTION, budget, rank_world, tie_key  # noqa: F401  (tie_key is part of this module's interface)
 
-SEGMENTS = ("legit_heavy_returner", "defective_product_buyer", "benign_household")
+SEGMENTS = contract.segments()             # the honest groups the gate protects (experiment.yaml selection.segments)
+REPEAT_CLAIMANT_UNITS = 2                   # genuinely failed units that make an honest customer a repeat genuine claimant
 ACTION_TYPES = ("deceptive_nonreceipt_claim", "deceptive_contents_claim", "temporary_use_return")
 SENSITIVITY_FRACTIONS = contract.sensitivity_fractions()
 BOOTSTRAP_REPETITIONS, BOOTSTRAP_SEED, BOOTSTRAP_PERCENTILES = contract.bootstrap()
@@ -96,12 +97,14 @@ def bootstrap(frame: pd.DataFrame, scores: dict, baseline: str, fraction: float 
 
 # ------------------------------------------------------------------ private joins
 def benign_segments(world, features: pd.DataFrame) -> pd.DataFrame:
-    """The three benign segments of the gate, per customer. All require an honest, eligible customer.
+    """The benign segments of the gate, per customer. All require an honest, eligible customer.
 
     heavy returner: raw return rate at or above the 90th percentile of ALL eligible customers, abusers included
                     (linear interpolation, ties included);
     defective buyer: requested at least one genuinely defective unit on a mature line (carrier damage excluded);
-    household: actually used an identifier that another member of the same household also used.
+    household: actually used an identifier that another member of the same household also used;
+    repeat genuine claimant: two or more of the customer's units genuinely failed in fulfilment (not received,
+                    wrong item, missing parts, empty package), so repeated claims are the truth, not abuse.
     """
     truth = world.truth["customer_truth"]
     frame = features[["customer_id", "eligible", "raw_return_rate"]].merge(truth[["customer_id", "y_abuse", "household_id"]], on="customer_id")
@@ -135,6 +138,8 @@ def benign_segments(world, features: pd.DataFrame) -> pd.DataFrame:
     out["legit_heavy_returner"] = benign & out["customer_id"].isin(heavy)
     out["defective_product_buyer"] = benign & out["customer_id"].isin(defective_buyers)
     out["benign_household"] = benign & out["customer_id"].isin(sharing)
+    failed = dataset.genuine_failure_units(world.truth["unit_truth"], world.tables["sales_order"])
+    out["repeat_genuine_claimant"] = benign & (out["customer_id"].map(failed).fillna(0) >= REPEAT_CLAIMANT_UNITS)
     return out
 
 
@@ -200,8 +205,9 @@ def error_account(frame: pd.DataFrame, selected: pd.Series, baseline_selected: p
     fp = {"false_positives": int(false_positive.sum())}
     for segment in SEGMENTS:
         fp[segment] = int((false_positive & frame[segment].astype(bool)).sum())
-    fp["repeat_genuine_claimant"] = int((false_positive & (frame["genuine_claim_units"] >= 2)).sum())
-    fp["none_of_these"] = int((false_positive & ~frame[list(SEGMENTS)].any(axis=1) & (frame["genuine_claim_units"] < 2)).sum())
+    fp["repeat_genuine_claimant"] = int((false_positive & (frame["genuine_claim_units"] >= REPEAT_CLAIMANT_UNITS)).sum())
+    fp["none_of_these"] = int((false_positive & ~frame[list(SEGMENTS)].any(axis=1)
+                               & (frame["genuine_claim_units"] < REPEAT_CLAIMANT_UNITS)).sum())
     fn = {"false_negatives": int(false_negative.sum())}
     for action in ACTION_TYPES:
         fn[action] = int((false_negative & frame[action].astype(bool)).sum())
@@ -230,9 +236,6 @@ def world_counts(world) -> pd.DataFrame:
     """Per customer of one world: completed abusive actions and genuine fulfilment-failure units."""
     actions = opportunity_actions(world.truth["action_truth"])            # a whole-parcel claim is one action
     done = actions[actions["completed_action"]].groupby("customer_id").size().rename("completed_actions")
-    units = world.truth["unit_truth"]
-    units = units[units["genuine_fulfilment_cause"].notna()].merge(
-        world.tables["sales_order"][["order_id", "customer_id"]], on="order_id")
-    genuine = units.groupby("customer_id").size().rename("genuine_claim_units")
+    genuine = dataset.genuine_failure_units(world.truth["unit_truth"], world.tables["sales_order"])
     frame = world.tables["customer_master"][["customer_id"]]
     return frame.merge(done, on="customer_id", how="left").merge(genuine, on="customer_id", how="left").fillna(0)

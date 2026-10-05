@@ -11,6 +11,7 @@ const SEGMENTS = [
   ["review_rate.legit_heavy_returner", "Heavy returners"],
   ["review_rate.defective_product_buyer", "Defective-product buyers"],
   ["review_rate.benign_household", "Household members"],
+  ["review_rate.repeat_genuine_claimant", "Repeat genuine claimants"],
 ] as const;
 const ACTIONS = [
   ["recall.deceptive_nonreceipt_claim", "Deceptive non-receipt claims"],
@@ -27,9 +28,9 @@ const HONEST_GROUPS = [
   ["repeat_genuine_claimant", "Two or more genuinely failed deliveries"],
   ["one_genuine_failure", "Exactly one genuinely failed delivery"],
   ["no_genuine_failure", "No genuine delivery failure"],
-  ["legit_heavy_returner", "Heavy returners (gate group)"],
-  ["defective_product_buyer", "Defective-product buyers (gate group)"],
-  ["benign_household", "Household members (gate group)"],
+  ["legit_heavy_returner", "Heavy returners"],
+  ["defective_product_buyer", "Defective-product buyers"],
+  ["benign_household", "Household members"],
 ] as const;
 const TEST_MEASURES: Record<string, string> = {
   precision: "precision",
@@ -37,12 +38,16 @@ const TEST_MEASURES: Record<string, string> = {
   "review_rate.legit_heavy_returner": "heavy returners reviewed",
   "review_rate.defective_product_buyer": "defective-product buyers reviewed",
   "review_rate.benign_household": "household members reviewed",
+  "review_rate.repeat_genuine_claimant": "repeat genuine claimants reviewed",
 };
 const NAMES: Record<string, string> = {
   raw_return_rate: "Return-rate rule (baseline)",
   logreg_c1: "Logistic regression",
   hgb_leaf15: "Boosted trees, 15 leaves",
   hgb_leaf31: "Boosted trees, 31 leaves",
+  hgb_leaf15_w4: "Boosted trees, repeat claimants weighted x4",
+  hgb_leaf15_w6: "Boosted trees, repeat claimants weighted x6",
+  hgb_leaf15_w8: "Boosted trees, repeat claimants weighted x8",
   iforest_256: "Isolation forest, 256 samples",
   iforest_1024: "Isolation forest, 1,024 samples",
   analyst_rulebook: "Analyst rulebook",
@@ -112,6 +117,7 @@ function PrecisionChart({ data }: { data: RowData[] }) {
 }
 
 function Scorecard({ data }: { data: RowData[] }) {
+  const segments = SEGMENTS.filter(([code]) => data.some((row) => find(row.metrics, code)));
   return (
     <div className="tablewrap">
       <table>
@@ -120,7 +126,7 @@ function Scorecard({ data }: { data: RowData[] }) {
             <th scope="col">Ranking</th>
             <th scope="col">Precision at 5%</th>
             <th scope="col">Recall</th>
-            {SEGMENTS.map(([, text]) => (
+            {segments.map(([, text]) => (
               <th scope="col" key={text} title="Share of this honest group that the ranking would send for review">
                 {text} reviewed
               </th>
@@ -149,7 +155,7 @@ function Scorecard({ data }: { data: RowData[] }) {
                   {percent(recall?.value)}
                   <small>{fraction(recall)}</small>
                 </td>
-                {SEGMENTS.map(([code]) => {
+                {segments.map(([code]) => {
                   const m = find(row.metrics, code);
                   return (
                     <td key={code}>
@@ -192,6 +198,7 @@ function MetricList({ metrics }: { metrics: Metric[] }) {
 
 /** Honest groups: how much of each the model and the rule would send for review. The first row is not a gate group. */
 function HonestGroups({ experiment }: { experiment: Experiment }) {
+  const gated = (group: string) => experiment.baseline_metrics.some((m) => m.code === `review_rate.${group}`);
   const metrics = experiment.reference_metrics.filter((m) => m.slice === "honest_groups");
   if (!metrics.length) return <p className="muted">Not measured for this experiment yet (run the ablation step and publish again).</p>;
   const cell = (group: string, rule: boolean) =>
@@ -216,6 +223,7 @@ function HonestGroups({ experiment }: { experiment: Experiment }) {
               <tr key={group}>
                 <th scope="row">
                   {text}
+                  {gated(group) ? " (gate group)" : ""}
                   {worse && <small>model reviews this group more often than the rule</small>}
                 </th>
                 <td>
@@ -392,6 +400,7 @@ export function Evaluation() {
   const target = pick(references, "calibration", "calibration.best_supervised_precision");
   const repeatModel = references.find((m) => m.slice === "honest_groups" && m.code === "group_review_rate.repeat_genuine_claimant" && m.ranking !== RULE) ?? null;
   const repeatRule = pick(references, "honest_groups", "group_review_rate.repeat_genuine_claimant", RULE);
+  const repeatGated = !!experiment?.baseline_metrics.some((m) => m.code === "review_rate.repeat_genuine_claimant");
   const stress = selected
     ? slices(references, "stress:")
         .map((slice) => pick(references, slice, "precision", selected.id)?.value)
@@ -439,10 +448,21 @@ export function Evaluation() {
                 training worlds.{" "}
               </>
             )}
-            {repeatModel && repeatRule && (
+            {repeatModel && repeatRule && repeatModel.value !== null && repeatRule.value !== null && (
               <>
-                Honest customers whose deliveries genuinely failed more than once are sent for review more often by the model (
-                {percent(repeatModel.value)}) than by the rule ({percent(repeatRule.value)}); the gate has no check for them.{" "}
+                {repeatModel.value > repeatRule.value ? (
+                  <>
+                    Honest customers whose deliveries genuinely failed more than once are sent for review more often by the model (
+                    {percent(repeatModel.value)}) than by the rule ({percent(repeatRule.value)});{" "}
+                    {repeatGated ? "the gate checks this group on validation and test worlds" : "the gate has no check for them"}.{" "}
+                  </>
+                ) : (
+                  <>
+                    Honest customers whose deliveries genuinely failed more than once are a gate group: the model sends{" "}
+                    {percent(repeatModel.value)} of them for review against {percent(repeatRule.value)} for the rule. It was trained to
+                    weigh them more heavily, which uses simulation truth that real data would not have.{" "}
+                  </>
+                )}
               </>
             )}
             {stress.length > 0 && (
@@ -464,9 +484,9 @@ export function Evaluation() {
             <PrecisionChart data={data} />
             <Scorecard data={data} />
             <Callout>
-              The gate: strictly higher precision than the return-rate rule and no higher review rate in each honest group, at the 5% budget. The
-              heavy-returner group is defined on return rate itself, so the rule always does worst there; the household and defective-buyer groups
-              are the informative checks. The rulebook and the volume-only model are references and can never be selected. Spreads come from
+              The gate: strictly higher precision than the return-rate rule and no higher review rate in each honest group shown, at the 5%
+              budget. The heavy-returner group is defined on return rate itself, so the rule always does worst there; the other groups are
+              the informative checks. The rulebook and the volume-only model are references and can never be selected. Spreads come from
               resampling whole simulated worlds; they are not significance tests.
             </Callout>
           </Panel>
@@ -572,9 +592,9 @@ export function Evaluation() {
               </p>
               <HonestGroups experiment={experiment} />
               <Callout>
-                The model reviews far fewer honest customers than the rule overall, but more of those whose parcels genuinely went missing or
-                arrived wrong more than once: their record looks like repeated deceptive claims. The gate checks the last three groups and has
-                no check for the first. Treat a claim-driven selection as a reason to look at the deliveries, not as a finding.
+                Honest customers whose parcels genuinely went missing or arrived wrong more than once have a record that looks like repeated
+                deceptive claims, so they are the group a claim-driven model is most likely to send for review wrongly. Rows marked gate group
+                are checked by the gate. Treat a claim-driven selection as a reason to look at the deliveries, not as a finding.
               </Callout>
             </Panel>
             <Panel title="Stress worlds: one setting changed per world">

@@ -8,8 +8,8 @@ It contains separate component requirements, acceptance criteria, bundled contra
 - [Decision provenance](final-spec/DECISIONS.md)
 - [Package verification](final-spec/verification/REPORT.md)
 
-The folder is at version 1.8 (amended 2026-10-05; see the amendment sections of the decision provenance).
-Copy the entire final-spec folder or the ARAI-final-spec-v1.8.zip archive to another system.
+The folder is at version 2.0 (amended 2026-10-05; see the amendment sections of the decision provenance).
+Copy the entire final-spec folder or the ARAI-final-spec-v2.0.zip archive to another system.
 After any edit to final-spec, run `uv run python scripts/spec_package.py` to rebuild its register and hashes.
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
@@ -45,18 +45,18 @@ Only `data/artifacts` is mounted into the containers. `data/private` (simulation
 ### Offline pipeline, in order
 
 ```
-uv run arai generate --seed 2001 2002 2003 2101 ... 2110 2501 ... 2507   # development worlds
+uv run arai generate --seed 2001 2002 2003 3101 ... 3110 2501 ... 2507   # development worlds
 uv run arai train                          # freeze features, fit five candidates and two references
 uv run arai dry-run                        # gate dry run and calibration check, before any validation world
 uv run arai ablation                       # what the result depends on, and which honest groups are reviewed (training worlds)
 uv run arai stress                         # the frozen models on the stress worlds; diagnostic, selects nothing
-uv run arai generate --seed 2201 ... 2205  # validation worlds
+uv run arai generate --seed 3201 ... 3205  # validation worlds
 uv run arai select                         # apply the gate, freeze the selection
-uv run arai generate --seed 2301 ... 2305  # test worlds
+uv run arai generate --seed 3301 ... 3305  # test worlds
 uv run arai test                           # the final test: runs once
-uv run arai generate --seed 2401           # demonstration world
-uv run arai publish --demo-world W2401     # bundles, active pointer, published experiment report
-uv run arai register data/artifacts/worlds/W2401/operational   # or upload through the UI
+uv run arai generate --seed 3401           # demonstration world
+uv run arai publish --demo-world W3401     # bundles, active pointer, published experiment report
+uv run arai register data/artifacts/worlds/W3401/operational   # or upload through the UI
 ```
 
 The order is enforced in code: training and the dry run refuse to run once validation worlds exist, selection
@@ -98,6 +98,7 @@ rulebook (validation). The gap is the result, not the level: the level follows h
 (52% to 85% across the stress worlds, with the rule at 14% to 44%). Two signals carry the model, claims and late
 returns; on training worlds it reaches 55% without the claim features, 56% without the timing features and 38%
 without both. Honest customers whose deliveries genuinely failed more than once are sent for review more often by
-the model than by the rule (15.8% against 6.7%), and the gate has no check for them. This is a result about one
-simulation, not about real returns. See `records/2026-10-02-final-test.md` and
-`records/2026-10-05-principal-ml-review.md`.
+the model than by the rule (15.8% against 6.7%), and the gate has no check for them. The development target of
+75-85% for the best model was not met (69% on training worlds) and stays open; a new experiment on branch `v3`
+adds a gate check for those honest repeat claimants. This is a result about one simulation, not about real
+returns. See `records/2026-10-02-final-test.md` and `records/2026-10-05-principal-ml-review.md`.

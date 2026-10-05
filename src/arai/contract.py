@@ -34,6 +34,16 @@ def sensitivity_fractions() -> tuple:
     return tuple(float(f) for f in _load("experiment.yaml")["budgets"]["sensitivity_fractions"])
 
 
+def experiment_id() -> str:
+    """The experiment this contract describes. A new experiment is a new contract with new sealed seeds."""
+    return str(_load("experiment.yaml")["experiment_id"])
+
+
+def segments() -> tuple:
+    """The honest groups the gate protects: a candidate may review none of them more often than the rule does."""
+    return tuple(_load("experiment.yaml")["selection"]["segments"])
+
+
 def bootstrap() -> tuple:
     """(repetitions, seed, percentiles) of the paired whole-world bootstrap."""
     uncertainty = _load("experiment.yaml")["uncertainty"]

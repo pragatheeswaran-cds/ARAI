@@ -16,13 +16,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from arai import bundles, dataset, evaluation, features as F, modeling, paths, selection
+from arai import bundles, contract, dataset, evaluation, features as F, modeling, paths, selection
 from arai.evaluation import PRIMARY_FRACTION, SENSITIVITY_FRACTIONS
 from arai.dataset import load_world
 from arai.generator.world import _code_sha256 as generator_code_sha256
 from arai.settings import load_settings
 
-DEFAULT_EXPERIMENT = "EXP-20261002-01"
+DEFAULT_EXPERIMENT = contract.experiment_id()
 REFERENCES = ("volume_only_logreg", "analyst_rulebook")
 
 

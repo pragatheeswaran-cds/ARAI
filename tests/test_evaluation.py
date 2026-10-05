@@ -77,8 +77,12 @@ def _segment_world():
         "customer_truth": pd.DataFrame({"customer_id": [f"c{i}" for i in range(10)], "y_abuse": [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
                                         "household_id": [None, None, None, None, "H1", "H1", "H2", "H2", None, None]}),
         # c2 requested its defective unit; c8 received a defective unit and kept it; c9's defective unit is on its line 2, not returned
-        "unit_truth": pd.DataFrame({"order_id": ["O2", "O8", "O9"], "order_line_no": [1, 1, 2], "unit_index": [1, 1, 1],
-                                    "received_defective_unit": [True, True, True]}),
+        # c3 had two units genuinely fail and c7 one; c1, the abuser, also had two
+        "unit_truth": pd.DataFrame({"order_id": ["O2", "O8", "O9", "O3", "O3", "O7", "O1", "O1"],
+                                    "order_line_no": [1, 1, 2, 2, 3, 1, 1, 2], "unit_index": [1] * 8,
+                                    "received_defective_unit": [True, True, True, False, False, False, False, False],
+                                    "genuine_fulfilment_cause": [None, None, None, "item_not_received", "wrong_item_sent", "empty_package",
+                                                                 "missing_parts", "missing_parts"]}),
         "unit_allocation": pd.DataFrame({"order_id": ["O2", "O9"], "order_line_no": [1, 1], "unit_index": [1, 1],
                                          "reservation_kind": ["honest_request", "honest_request"]}),
     }
@@ -100,6 +104,8 @@ def test_benign_segments_follow_the_definitions():
     assert segments.index[segments["defective_product_buyer"]].tolist() == ["c2"]
     # household members who never used a shared identifier (c6, c7) are not in the household segment
     assert segments.index[segments["benign_household"]].tolist() == ["c4", "c5"]
+    # two genuinely failed units make an honest repeat claimant (c3); one does not (c7); an abuser never is one (c1)
+    assert segments.index[segments["repeat_genuine_claimant"]].tolist() == ["c3"]
     assert not segments.loc["c1", list(SEGMENTS)].any()
 
 
@@ -149,7 +155,7 @@ def test_error_account_splits_false_positives_and_false_negatives_with_denominat
 
 # ------------------------------------------------------------------ the gate
 BASE = {"precision": 0.20, "legit_heavy_returner_fpr": 0.40, "defective_product_buyer_fpr": 0.06, "benign_household_fpr": 0.04,
-        **{s + "_size": 500 for s in SEGMENTS}}
+        "repeat_genuine_claimant_fpr": 0.07, **{s + "_size": 500 for s in SEGMENTS}}
 
 
 def _result(**changes):
@@ -162,6 +168,11 @@ def test_gate_needs_strictly_higher_precision_and_no_worse_segment_rate():
     assert not passed and reasons == ["benign_household false-positive rate above the baseline"]
     passed, reasons = selection.gate(_result(precision=0.20, legit_heavy_returner_fpr=0.0), BASE)        # equal precision fails
     assert not passed and reasons == ["precision not above the baseline"]
+    # the fourth leg (experiment contract 2.0): honest repeat claimants may not be reviewed more often than under the rule
+    assert SEGMENTS == ("legit_heavy_returner", "defective_product_buyer", "benign_household", "repeat_genuine_claimant")
+    passed, reasons = selection.gate(_result(precision=0.9, repeat_genuine_claimant_fpr=0.071), BASE)
+    assert not passed and reasons == ["repeat_genuine_claimant false-positive rate above the baseline"]
+    assert selection.gate(_result(precision=0.9, repeat_genuine_claimant_fpr=0.05), BASE) == (True, [])
 
 
 def test_gate_refuses_thin_or_empty_segments():

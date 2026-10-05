@@ -20,6 +20,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
+DEMO_WORLD = sys.argv[2] if len(sys.argv) > 2 else "W3401"          # the demonstration world of the current experiment
 OUT = Path(__file__).resolve().parents[2] / "reports" / "ui" / date.today().isoformat()
 OUT.mkdir(parents=True, exist_ok=True)
 TRUTH_WORDS = ("y_abuse", "abused returns in the simulation", "really abusers", "deceptive", "temporary use return", "persona")
@@ -69,7 +70,7 @@ with sync_playwright() as pw:
     page.get_by_role("link", name="Datasets & runs").click()
     settle(page)
     text = main_text(page)
-    check("datasets page lists the dataset, its hash and the run", "W2401" in text and "succeeded" in text and "Manifest hash" in text)
+    check("datasets page lists the dataset, its hash and the run", DEMO_WORLD in text and "succeeded" in text and "Manifest hash" in text)
     controls = " ".join(page.locator("main button, main a.button").all_inner_texts()).lower()
     check("no training, refund, block or delete control exists", not any(w in controls for w in ("train", "refund", "block", "delete", "suspend")), controls[:120])
     check("upload refuses a wrong file set before sending", True)

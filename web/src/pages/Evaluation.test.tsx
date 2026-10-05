@@ -88,6 +88,8 @@ describe("evaluation page", () => {
     const group = screen.getByRole("row", { name: /Two or more genuinely failed deliveries/ });
     expect(within(group).getByText("model reviews this group more often than the rule")).toBeInTheDocument();
     expect(within(screen.getByRole("row", { name: /Household members \(gate group\)/ })).queryByText(/more often/)).toBeNull();
+    expect(screen.getByRole("row", { name: /Two or more genuinely failed deliveries/ })).not.toHaveTextContent("(gate group)");
+    expect(screen.queryByRole("columnheader", { name: /Repeat genuine claimants reviewed/ })).toBeNull(); // not a gate group here
     const stress = screen.getByRole("row", { name: /W2505: per-account action rate x0.5/ });
     expect(within(stress).getByText("52.3%")).toBeInTheDocument();
     expect(within(stress).getByText("passed")).toBeInTheDocument();
@@ -97,6 +99,28 @@ describe("evaluation page", () => {
     await show({ ...report, reference_metrics: report.reference_metrics.filter((m) => m.slice === "validation" || m.slice === "calibration") });
     expect(screen.getAllByText(/Not measured for this experiment yet/)).toHaveLength(2);
     expect(screen.getByText("Without timing features")).toBeInTheDocument();
+  });
+});
+
+describe("evaluation page, experiment with a gate leg for repeat genuine claimants", () => {
+  const gated: Experiment = {
+    ...report,
+    baseline_metrics: [...report.baseline_metrics, metric("review_rate.repeat_genuine_claimant", 0.067, "raw_return_rate", "validation")],
+    candidates: [{ ...report.candidates[0], candidate_id: "hgb_leaf15_w6",
+      metrics: [...ranking("hgb_leaf15_w6", "validation", 0.75, 0.017), metric("review_rate.repeat_genuine_claimant", 0.049, "hgb_leaf15_w6", "validation")] }],
+    summary: { ...report.summary, selected_candidate_id: "hgb_leaf15_w6" },
+    reference_metrics: report.reference_metrics.map((m) =>
+      m.code === "group_review_rate.repeat_genuine_claimant" && m.ranking !== "raw_return_rate" ? { ...m, value: 0.049, ranking: "hgb_leaf15_w6" } : m),
+  };
+  it("shows the fourth leg in the scorecard and says the group is gated and weighted", async () => {
+    await show(gated);
+    expect(screen.getByRole("columnheader", { name: /Repeat genuine claimants reviewed/ })).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: /repeat claimants weighted x6.*Candidate model/ });
+    expect(within(row).getByText("4.9%")).toBeInTheDocument();
+    const caveat = screen.getByText("Read this first.").parentElement!;
+    expect(caveat).toHaveTextContent("are a gate group: the model sends 4.9% of them for review against 6.7% for the rule");
+    expect(caveat).toHaveTextContent("simulation truth that real data would not have");
+    expect(screen.getByRole("row", { name: /Two or more genuinely failed deliveries/ })).toHaveTextContent("(gate group)");
   });
 });
 

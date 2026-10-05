@@ -45,6 +45,9 @@ LATE_FROM, LATE_TO = 0.75, 1.0
 WARDROBING_POINTS = {"repeat_late_returns": 50, "late_return": 25, "late_occasion_return": 15, "late_return_share": 10}
 WARDROBING_ELEVATED, WARDROBING_POSSIBLE = 75, 35
 WARDROBING_SUPPORT = ["item_return_lines", "late_return_lines", "late_occasion_return_lines"]
+NONRECEIPT_CODE = "item_not_received"
+FORTNIGHT_DAYS = 14             # a claim day and the 14 days after it
+MID_FROM = 0.5                  # an item return from half of its window onwards is mid-late; from LATE_FROM it is late
 
 
 def _contract(spec_root=None) -> dict:
@@ -190,6 +193,99 @@ def linked_claims(requests: pd.DataFrame, neighbours: dict) -> pd.DataFrame:
     return claims
 
 
+# ------------------------------------------------------------------ claims and timing in context (feature contract 2.0)
+def _densest_fortnight(days: pd.Series) -> int:
+    """Most claim lines requested on one day and the FORTNIGHT_DAYS after it."""
+    d = np.sort(days.to_numpy().astype("datetime64[D]").astype(int))
+    return int(max(np.searchsorted(d, start + FORTNIGHT_DAYS, side="right") - i for i, start in enumerate(d)))
+
+
+def claim_context(delivered: pd.DataFrame, claims: pd.DataFrame, customers: pd.Index) -> pd.DataFrame:
+    """Claims in proportion to what was bought, the shape of claimed orders, and the styles claimed on.
+
+    A share of requested units cannot tell two claims in sixty deliveries from two claims in four. These measures
+    can: how often, on how much of an order, how spread in time, and whether other customers claim on the same
+    styles. The customer is excluded from every peer statistic. Operational tables only.
+    """
+    out = pd.DataFrame(index=customers)
+    by = claims.groupby("customer_id")
+    order_units = delivered.groupby(["customer_id", "order_id"])["quantity"].sum()
+    # explicit floats: a snapshot without any claim has empty, untyped columns
+    orders = order_units.groupby("customer_id").size().reindex(customers, fill_value=0).astype(float)
+    units = order_units.groupby("customer_id").sum().reindex(customers, fill_value=0).astype(float)
+    claim_units = by["quantity_returned"].sum().reindex(customers, fill_value=0).astype(float)
+    out["claim_lines"] = by.size().reindex(customers, fill_value=0).astype(int)
+    out["claim_order_count"] = by["order_id"].nunique().reindex(customers, fill_value=0).astype(int)
+    out["claim_order_rate"] = _share(out["claim_order_count"], orders)
+    out["claim_unit_rate"] = _share(claim_units, units)
+    others_units = units.sum() - units
+    expected = ((claim_units.sum() - claim_units) / others_units.where(others_units > 0) * units).astype(float)
+    out["claim_excess_z"] = (claim_units - expected) / np.sqrt(expected.where(expected > 0))
+
+    claimed = claims.groupby(["customer_id", "order_id"]).agg(units=("quantity_returned", "sum"), lines=("reason_code", "size"),
+                                                              codes=("reason_code", "nunique"))
+    claimed = claimed.join(order_units.rename("order_units"), how="inner")
+    g = claimed.groupby("customer_id")
+    mean_units = order_units.groupby("customer_id").mean()
+    out["claimed_share_of_claim_orders"] = (g["units"].sum() / g["order_units"].sum()).reindex(customers).astype(float)
+    out["whole_order_claim_share"] = (claimed["units"] >= claimed["order_units"]).groupby("customer_id").mean().reindex(customers).astype(float)
+    if len(claims):
+        days = by["request_day"]
+        out["claim_day_span"] = (days.max() - days.min()).dt.days.reindex(customers).astype(float)
+        out["claim_distinct_days"] = days.nunique().reindex(customers, fill_value=0).astype(int)
+        out["claims_in_densest_fortnight"] = days.agg(_densest_fortnight).reindex(customers, fill_value=0).astype(int)
+    else:
+        out["claim_day_span"], out["claim_distinct_days"], out["claims_in_densest_fortnight"] = np.nan, 0, 0
+    out["nonreceipt_share_of_claims"] = (claims["reason_code"] == NONRECEIPT_CODE).groupby(claims["customer_id"]).mean() \
+        .reindex(customers).astype(float)
+    out["multi_code_claim_orders"] = (claimed["codes"] >= 2).groupby("customer_id").sum().reindex(customers, fill_value=0).astype(int)
+    out["multi_code_claim_share"] = (claimed["codes"] >= 2).groupby("customer_id").mean().reindex(customers).astype(float)
+    out["max_claim_lines_per_order"] = g["lines"].max().reindex(customers, fill_value=0).astype(int)
+    out["claimed_order_size_ratio"] = (g["order_units"].mean() / mean_units).reindex(customers).astype(float)
+    out["units_per_order"] = mean_units.reindex(customers).astype(float)
+
+    # the styles claimed on: how often every other customer claims on them, against the snapshot's own claim rate
+    by_line = delivered[["customer_id", "style_id", *LINE_KEY, "quantity"]].merge(
+        claims.groupby(LINE_KEY)["quantity_returned"].sum().rename("claimed"), on=LINE_KEY, how="left").fillna({"claimed": 0})
+    own = by_line.groupby(["style_id", "customer_id"])[["quantity", "claimed"]].sum()
+    style = own.groupby("style_id").sum().rename(columns={"quantity": "N", "claimed": "C"})
+    own = own.join(style, on="style_id")
+    others = own["N"] - own["quantity"]
+    relative = (own["C"] - own["claimed"]) / others.where(others > 0) / (style["C"].sum() / style["N"].sum() if style["C"].sum() else np.nan)
+    relative = relative[own["claimed"] > 0]
+    out["claim_style_others_rate_mean"] = relative.groupby("customer_id").mean().reindex(customers).astype(float)
+    out["claim_style_others_rate_max"] = relative.groupby("customer_id").max().reindex(customers).astype(float)
+
+    value = delivered.assign(v=delivered["net_unit_value"] * delivered["quantity"]).groupby("customer_id")[["v", "quantity"]].sum()
+    claim_value = claims.assign(v=claims["net_unit_value"] * claims["quantity_returned"]).groupby("customer_id")[["v", "quantity_returned"]].sum()
+    out["claim_value_ratio"] = ((claim_value["v"] / claim_value["quantity_returned"]) / (value["v"] / value["quantity"])) \
+        .reindex(customers).astype(float)
+    return out
+
+
+def timing_grain(requests: pd.DataFrame, customers: pd.Index) -> pd.DataFrame:
+    """Where in the return window item returns fall, in finer grain than late or not late.
+
+    A count of returns in the last quarter misses the single return made at 60% or 70% of the window. Item-return
+    lines only (never claims), requested inside their window.
+    """
+    out = pd.DataFrame(index=customers)
+    item = requests[~requests["is_claim"] & (requests["days"] >= 0) & (requests["days"] <= requests["return_window_days"])]
+    ratio = (item["days"] / item["return_window_days"]).astype(float)
+    count = lambda mask: mask.groupby(item["customer_id"]).sum().reindex(customers, fill_value=0).astype(int)  # noqa: E731
+    if len(item):
+        g = ratio.groupby(item["customer_id"])
+        out["item_ratio_max"] = g.max().reindex(customers)
+        out["item_ratio_second"] = g.agg(lambda s: np.sort(s.to_numpy())[-2] if len(s) > 1 else np.nan).reindex(customers)
+        out["item_ratio_mean"] = g.mean().reindex(customers)
+    else:
+        out["item_ratio_max"] = out["item_ratio_second"] = out["item_ratio_mean"] = np.nan
+    out["mid_late_lines"] = count((ratio >= MID_FROM) & (ratio < LATE_FROM))
+    out["mid_or_late_occasion_lines"] = count((ratio >= MID_FROM) & (item["is_occasion_wear"] == 1))
+    out["item_in_window_lines"] = count(ratio >= 0)
+    return out
+
+
 # ------------------------------------------------------------------ customer features
 def _expected(lines: pd.DataFrame, reference: Reference | None) -> tuple:
     """Two-level, self-excluded expected return probability for every mature sale line."""
@@ -296,6 +392,7 @@ def compute_features(tables: dict, cutoff, reference: Reference | None = None) -
         .reindex(out.index, fill_value=0).astype(int)
     claims = linked_claims(requests, graph.neighbours)
     out["coordinated_claim_share"] = claims.groupby("customer_id")["linked"].mean().reindex(out.index)
+    out = out.join(claim_context(delivered, claims, out.index)).join(timing_grain(requests, out.index))
 
     chosen = feature_order() + evidence_features()
     features = out[chosen].copy()                                     # model features first, then evidence-only link measures
@@ -306,7 +403,7 @@ def compute_features(tables: dict, cutoff, reference: Reference | None = None) -
     features["mature_purchased_units"] = N.reindex(out.index, fill_value=0).astype(int)
     features["mature_requested_units"] = R.reindex(out.index, fill_value=0).astype(int)
     features["all_requested_units"] = units.astype(int)
-    features["claim_lines"] = claims.groupby("customer_id").size().reindex(out.index, fill_value=0).astype(int)
+    features["claim_lines"] = out["claim_lines"]
     features["timed_return_lines"] = timed.groupby("customer_id").size().reindex(out.index, fill_value=0).astype(int)
     features["expected_units"] = E.reindex(out.index)
     features = features.reset_index()

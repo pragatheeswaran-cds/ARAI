@@ -755,7 +755,9 @@ def test_health_is_not_ready_when_the_in_process_worker_has_stopped(env):
 REAL_EXPERIMENT = None
 try:
     from arai import paths as _paths
-    _candidate = _paths.ARTIFACT_ROOT / "experiments" / "EXP-20261002-01"
+    from arai import contract as _contract
+    EXPERIMENT_ID = _contract.experiment_id()
+    _candidate = _paths.ARTIFACT_ROOT / "experiments" / EXPERIMENT_ID
     if (_candidate / "reports" / "test.json").is_file() and (_candidate / "published" / "truth.parquet").is_file():
         REAL_EXPERIMENT = _candidate
 except Exception:                                                           # noqa: BLE001
@@ -779,30 +781,33 @@ def test_the_published_experiment_matches_the_contract_and_the_offline_reports(e
             assert metric["name"].endswith("(count)") or metric["value"] is None or metric["numerator"] is None
     names = [m["name"] for m in report["reference_metrics"]]
     assert any("without any timing feature" in n for n in names) and any("difficulty target check" in n for n in names)
-    assert not report["difficulty_calibration"]["calibrated"] and report["summary"]["final_test_status"] == "passed"
+    recorded = json.loads((REAL_EXPERIMENT / "selection.json").read_text())
+    assert report["summary"]["final_test_status"] == recorded["final_test_status"]
+    assert report["summary"]["selected_candidate_id"] == recorded["selected_model_id"]
+    assert "review_rate.repeat_genuine_claimant" in {m["code"] for m in report["baseline_metrics"]}      # the fourth gate leg
 
-    published = env["root"] / "experiments" / "EXP-20261002-01" / "published"
+    published = env["root"] / "experiments" / EXPERIMENT_ID / "published"
     published.mkdir(parents=True)
     (published / "experiment.json").write_text(json.dumps(report))
     shutil.copyfile(REAL_EXPERIMENT / "published" / "truth.parquet", published / "truth.parquet")
     store = Store(env["config"].database_url)
     with TestClient(create_app(env["config"])) as served:
         assert served.get(f"{API}/experiments").json()["items"] == []       # published files are not served until they are loaded
-        assert ingest.sync_published(env["config"], store) == ["EXP-20261002-01"]      # the worker does this at startup
+        assert ingest.sync_published(env["config"], store) == [EXPERIMENT_ID]           # the worker does this at startup
         listing = served.get(f"{API}/experiments").json()
         conforms("ExperimentSummaryPage", listing)
-        assert "EXP-20261002-01" in [e["experiment_id"] for e in listing["items"]]
-        conforms("Experiment", served.get(f"{API}/experiments/EXP-20261002-01").json())
-        truth = served.get(f"{API}/experiments/EXP-20261002-01/truth", params={"limit": 100}).json()
+        assert EXPERIMENT_ID in [e["experiment_id"] for e in listing["items"]]
+        conforms("Experiment", served.get(f"{API}/experiments/{EXPERIMENT_ID}").json())
+        truth = served.get(f"{API}/experiments/{EXPERIMENT_ID}/truth", params={"limit": 100}).json()
         conforms("TruthPage", truth)
-        assert truth["synthetic_only"] and truth["world_id"] == "W2401" and truth["next_cursor"]
+        assert truth["synthetic_only"] and truth["world_id"] == f"W{_contract._load('experiment.yaml')['demo_seeds'][0]}" and truth["next_cursor"]
         assert all(e["y_abuse"] == 1 for e in truth["items"])               # abusers first
-        second = served.get(f"{API}/experiments/EXP-20261002-01/truth", params={"limit": 100, "cursor": truth["next_cursor"]}).json()
+        second = served.get(f"{API}/experiments/{EXPERIMENT_ID}/truth", params={"limit": 100, "cursor": truth["next_cursor"]}).json()
         assert not {e["customer_id"] for e in truth["items"]} & {e["customer_id"] for e in second["items"]}
         assert served.get(f"{API}/experiments/EXP-TEST/truth").status_code == 404     # trained here but never published
         (published / "truth.parquet").unlink()                              # published without a truth export: an empty page
         ingest.sync_published(env["config"], store)
-        empty = served.get(f"{API}/experiments/EXP-20261002-01/truth").json()
+        empty = served.get(f"{API}/experiments/{EXPERIMENT_ID}/truth").json()
         conforms("TruthPage", empty)
         assert empty["items"] == [] and empty["world_id"] is None and empty["next_cursor"] is None
 
