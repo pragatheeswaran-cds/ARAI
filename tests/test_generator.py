@@ -348,3 +348,78 @@ def test_dormant_accounts_never_order(world):
     persona = world.truth["customer_profile"].set_index("customer_id")["persona"]
     buyers = set(world.tables["sales_order"]["customer_id"])
     assert not buyers & set(persona[persona == "Dormant"].index)
+
+
+# ------------------------------------------------------------------ generator-config 3.0: a less generous simulator (AM-49)
+def _item_returns_with_truth(world):
+    """Visible item-return lines (never claims) with their point in the window and whether an abusive action placed them."""
+    t = world.tables
+    lines = t["return_order_line"].merge(t["sales_order_line"][["order_id", "order_line_no", "delivered_date", "return_window_days"]],
+                                         on=["order_id", "order_line_no"])
+    lines = lines.merge(t["return_order"][["return_order_id", "customer_id"]], on="return_order_id")
+    actions = world.truth["action_truth"]
+    placed = actions[actions["completed_action"]][["return_order_id", "return_line_no", "action_type"]]
+    lines = lines.merge(placed, on=["return_order_id", "return_line_no"], how="left")
+    lines["ratio"] = (lines["requested_at"].dt.normalize() - lines["delivered_date"]).dt.days / lines["return_window_days"]
+    return lines[~lines["reason_code"].isin(["item_not_received", "wrong_item_sent", "missing_parts", "empty_package"])]
+
+
+def test_honest_customers_return_late_often_enough_that_a_late_return_is_not_a_tell(world):
+    settings = world.context.s.realism["honest_return_timing"]
+    profile = world.truth["customer_profile"]
+    active = profile["persona"] != "Dormant"
+    assert not profile.loc[~active, "late_returner"].any()
+    assert abs(profile.loc[active, "late_returner"].mean() - settings["late_returner_share"]) < 0.04
+    assert abs(profile.loc[profile["late_returner"], "claim_propensity"].mean() - profile.loc[active, "claim_propensity"].mean()) < 0.04
+    item = _item_returns_with_truth(world)
+    honest = item[item["action_type"].isna() & (item["ratio"] <= 1)]
+    habit = honest["customer_id"].map(profile.set_index("customer_id")["late_returner"])
+    last_quarter = honest["ratio"] >= 0.75
+    assert 0.03 < last_quarter.mean() < 0.09                          # about one honest return in twenty (one in two hundred before)
+    assert last_quarter[habit].mean() > 4 * last_quarter[~habit].mean()      # the habit is what makes them repeat
+    late = item[(item["ratio"] >= 0.75) & (item["ratio"] <= 1)]
+    assert late["action_type"].isna().mean() > 0.85                   # most late returns are honest now
+
+
+def test_some_temporary_use_returns_come_back_as_early_as_honest_ones():
+    """Enough temporary-use actions to measure: three fixture seeds pooled."""
+    ratios = []
+    for seed in (2001, 2002, 2003):
+        item = _item_returns_with_truth(generate_world(seed))
+        ratios.append(item.loc[item["action_type"] == "temporary_use_return", "ratio"])
+    ratios = pd.concat(ratios)
+    assert len(ratios) > 30
+    assert 0.2 < (ratios < 0.5).mean() < 0.55                         # Beta(5,2) alone would put 11% before half of the window
+    assert (ratios >= 0.75).mean() > 0.2                              # and it still returns late more often than an honest customer
+
+
+def test_action_rates_follow_the_configured_law_and_stress_seeds_of_experiment_three_keep_their_meaning():
+    from arai.settings import STRESS_OVERRIDES, beta_law, load_settings
+    settings = load_settings()
+    a, b = beta_law(settings.realism["action_rate"]["distribution"])
+    assert (a, b) == (1.2, 7.2) and a / (a + b) == pytest.approx(settings.realism["action_rate"]["mean"], abs=0.001)
+    assert STRESS_OVERRIDES[4505] == STRESS_OVERRIDES[2505] == {"action_rate_scale": 0.5}
+    assert set(settings.experiment["stress_seeds"]) == set(range(4501, 4508)) and settings.purpose_of(4505) == "stress"
+    profiles = pd.concat([generate_world(seed).truth["customer_profile"] for seed in (2001, 2002, 2003)])
+    rates = pd.concat([profiles.loc[profiles["claim_propensity"], "claim_action_rate"],
+                       profiles.loc[profiles["temporary_use_propensity"], "temporary_use_action_rate"]])
+    assert abs(rates.mean() - 0.143) < 0.03
+
+
+def test_generate_refuses_to_overwrite_a_world_of_another_simulator(tmp_path, capsys):
+    """Worlds of earlier experiments are records: the command leaves them alone unless told otherwise."""
+    import json
+
+    from arai import cli
+    roots = ["--artifact-root", str(tmp_path / "artifacts"), "--private-root", str(tmp_path / "private")]
+    assert cli.main(["generate", "--seed", "2003", "--customers", "150", *roots]) == 0
+    manifest = tmp_path / "artifacts" / "worlds" / "W2003N150" / "operational" / "manifest.json"
+    assert cli.main(["generate", "--seed", "2003", "--customers", "150", *roots]) == 0        # the same simulator: reproducible, allowed
+    earlier = json.loads(manifest.read_text())
+    earlier["generator"]["config_sha256"] = "0" * 64                                         # as an earlier contract left it
+    manifest.write_text(json.dumps(earlier))
+    kept = manifest.read_bytes()
+    assert cli.main(["generate", "--seed", "2003", "--customers", "150", *roots]) == 1
+    assert "left untouched" in capsys.readouterr().out and manifest.read_bytes() == kept
+    assert cli.main(["generate", "--seed", "2003", "--customers", "150", "--overwrite", *roots]) == 0
+    assert json.loads(manifest.read_text())["generator"]["config_sha256"] != "0" * 64

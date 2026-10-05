@@ -8,6 +8,7 @@ leaves open; they are listed in records/2026-10-02-generator-implementation.md.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -50,6 +51,13 @@ STRESS_OVERRIDES = {
     2506: {"action_rate_scale": 2.0},
     2507: {"actionable_multipliers_all_one": True},
 }
+STRESS_OVERRIDES.update({seed + 2000: override for seed, override in list(STRESS_OVERRIDES.items())})    # 4501-4507: experiment 3
+
+
+def beta_law(text: str) -> tuple:
+    """(a, b) of a law written 'Beta(a, b) ...' in the configuration."""
+    a, b = re.search(r"Beta\(([\d.]+),\s*([\d.]+)\)", text).groups()
+    return float(a), float(b)
 
 
 def _load(path: Path) -> dict:
@@ -69,6 +77,7 @@ class Settings:
     amendment: dict         # generator-config.yaml amendment_1_1
     amendment3: dict        # generator-config.yaml amendment_1_3
     amendment4: dict        # generator-config.yaml amendment_1_4
+    realism: dict           # generator-config.yaml amendment_3_0: honest and temporary-use return timing, action rate
     policy: dict            # generator-policy.yaml
     profiles: dict          # assets/profile-config.yaml
     festive_windows: list   # assets/festive-windows.yaml
@@ -122,6 +131,7 @@ def load_settings(seed: int | None = None, spec_root: Path | None = None, overri
         amendment=config["amendment_1_1"],
         amendment3=config["amendment_1_3"],
         amendment4=config["amendment_1_4"],
+        realism=config["amendment_3_0"],
         policy=_load(root / "contracts" / "generator-policy.yaml"),
         profiles=_load(root / "assets" / "profile-config.yaml"),
         festive_windows=_load(root / "assets" / "festive-windows.yaml")["windows"],

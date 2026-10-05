@@ -1,4 +1,4 @@
-version: '1.3'
+version: '3.0'
 status: engineering defaults; tune on development only before validation; record changes
 snapshot: '2026-09-09T23:59:59+05:30'
 history_start: '2025-09-10'
@@ -295,3 +295,27 @@ amendment_1_4:
   - 365
   new_growth_tenure_basis: a 160-day cap doubled signups per month from April 2026;
     with the cap at the length of the history window signups are flat
+amendment_3_0:
+  note: Added 2026-10-05 (AM-49). A less generous simulator for experiment 3. The two behaviours a model leans on,
+    return timing and claim frequency, are blurred toward what real customers plausibly do. These are simulation
+    assumptions, not market statistics. Supersedes request_latency.honest, request_latency.temporary_use and
+    amendment_1_1 action_rate for worlds generated under this version.
+  honest_return_timing:
+    late_returner_share: 0.12
+    late_returner_probability: 0.5
+    background_probability: 0.05
+    late_law: Beta(5, 2)
+    rule: an active account is a late returner with probability late_returner_share (private trait, independent of
+      abuse). An honest item-return request (never a transaction claim) is requested at round(late_law * window)
+      with probability late_returner_probability for a late returner and background_probability otherwise;
+      otherwise at round(Beta(2,5) * window) as before. The late law is the temporary-use law, so the timing of one
+      late return cannot reveal intent. The capped share of out-of-window requests is applied afterwards, unchanged.
+  temporary_use_timing:
+    early_probability: 0.3
+    early_law: Beta(2, 5)
+    rule: a temporary-use return is requested at round(early_law * window), the honest law, with probability
+      early_probability; otherwise at round(Beta(5,2) * window) as before.
+  action_rate:
+    distribution: Beta(1.2, 7.2) per positive-propensity account and enabled family
+    mean: 0.143
+    applies_to: solo opportunities per relevant base-layer delivered order

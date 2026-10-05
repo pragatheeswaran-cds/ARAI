@@ -92,3 +92,8 @@ Limits are unchanged: nothing is built or measured. The thresholds and distribut
 
 - The package verifier passes after the rebuild; 112 acceptance criteria (FEAT-AC-09, TRAIN-AC-06 and SEL-AC-07 added).
 - The 26 new features equal the exploration's definitions value for value on a first-experiment training world, and the first 17 features of that world are unchanged. No world of experiment 2 existed when this contract was recorded.
+
+## Amendment 3.0 checks (2026-10-05)
+
+- The package verifier passes after the rebuild; 112 acceptance criteria, none changed.
+- All data of the two earlier experiments was copied aside before any change; the generate command refuses to overwrite a world of another simulator or contract. No world of experiment 3 existed when this contract was recorded.

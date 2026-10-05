@@ -16,6 +16,7 @@ from arai.generator.relationships import Relationships
 from arai.generator.returns import DISCRETIONARY_CODES, FIT_CODES, claim_delay, settle
 from arai.generator.sales import _pick, apply_fulfilment, draw_basket
 from arai.rng import stream, token
+from arai.settings import beta_law
 
 NONRECEIPT, CONTENTS, TEMPORARY = "deceptive_nonreceipt_claim", "deceptive_contents_claim", "temporary_use_return"
 FALSE_QUALITY_CODES = ("poor_quality", "not_as_described")
@@ -255,6 +256,8 @@ def run_solo_actions(ctx: Context, profiles: pd.DataFrame, orders: pd.DataFrame,
     latency_law = s.amendment3["claim_latency"]
     whole_parcel = s.amendment4["deceptive_claims"]["whole_parcel_claim_probability"]
     fit_share = s.accepted["temp_reason_mix"]["fit_or_discretionary"]
+    early = s.realism["temporary_use_timing"]
+    early_a, early_b = beta_law(early["early_law"])
     rates = {"claim": profiles["claim_action_rate"].to_numpy(), "temporary_use": profiles["temporary_use_action_rate"].to_numpy()}
     capable = {"claim": profiles["claim_propensity"].to_numpy(), "temporary_use": profiles["temporary_use_propensity"].to_numpy()}
     unit_rows = units.groupby("order_id", sort=False).indices
@@ -277,6 +280,10 @@ def run_solo_actions(ctx: Context, profiles: pd.DataFrame, orders: pd.DataFrame,
             rng = stream(seed, cid, "solo:" + family)
             u = rng.random((len(relevant), 9))
             beta = rng.beta(5.0, 2.0, len(relevant))                         # request_latency.temporary_use
+            if family == "temporary_use":                                    # amendment_3_0: some come back as early as honest returns
+                extra = stream(seed, cid, "solo:temporary_use:timing")       # its own stream: no existing draw moves
+                on_early_law = extra.random(len(relevant)) < early["early_probability"]
+                beta = np.where(on_early_law, extra.beta(early_a, early_b, len(relevant)), beta)
             gamma = rng.gamma(latency_law["shape"], latency_law["scale_days"], len(relevant))
             for k, order_id in enumerate(relevant):
                 rows = unit_rows[order_id]

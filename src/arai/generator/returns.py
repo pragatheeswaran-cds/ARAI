@@ -10,6 +10,7 @@ import pandas as pd
 
 from arai.generator.context import DAY, Context
 from arai.rng import keyed_uniform, stream
+from arai.settings import beta_law
 
 CLAIM_CODES = ("item_not_received", "wrong_item_sent", "missing_parts", "empty_package")
 DEFECT_CODES = ("defective", "poor_quality", "not_as_described")
@@ -156,7 +157,18 @@ def build_honest_events(ctx: Context, profiles: pd.DataFrame, units: pd.DataFram
                        [fulfilment_code[first], "damaged", defect_code, fit_code], default=discretionary_code).astype(object)
 
     e_window = window[first]
-    latency = np.where(e_cause == FULFILMENT, claim_delay(ctx, gamma[first]), np.rint(beta[first] * e_window).astype(int))
+    # amendment_3_0: an honest item return follows the late law with a probability that depends on the account's habit
+    timing = s.realism["honest_return_timing"]
+    late_a, late_b = beta_law(timing["late_law"])
+    u_late, beta_late = np.empty(n), np.empty(n)
+    for c, rows in units.groupby("cust", sort=True).indices.items():
+        extra = stream(seed, ctx.customer_ids[c], purpose + ":return_timing")       # its own stream: no existing draw moves
+        u_late[rows] = extra.random(len(rows))
+        beta_late[rows] = extra.beta(late_a, late_b, len(rows))
+    habit = profiles["late_returner"].to_numpy()[cust[first]]
+    by_late_law = u_late[first] < np.where(habit, timing["late_returner_probability"], timing["background_probability"])
+    fraction = np.where(by_late_law, beta_late[first], beta[first])
+    latency = np.where(e_cause == FULFILMENT, claim_delay(ctx, gamma[first]), np.rint(fraction * e_window).astype(int))
     # a capped share of honest item returns arrives after the window and is rejected (max_late_request_share)
     item_return = np.flatnonzero(e_cause != FULFILMENT)
     late = np.zeros(len(first), dtype=bool)

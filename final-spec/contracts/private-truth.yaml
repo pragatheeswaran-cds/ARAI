@@ -16,6 +16,7 @@ tables:
     - claim_action_rate
     - temporary_use_action_rate
     - heavy_return_overlay
+    - late_returner
   unit_truth:
     key:
     - world_id

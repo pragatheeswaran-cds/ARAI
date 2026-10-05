@@ -177,7 +177,7 @@ with sync_playwright() as pw:
           and any(phrase in text for phrase in ("are a gate group", "the gate has no check for them", "the gate checks this group")))
     check("evaluation shows honest-group review rates and the stress worlds",
           "Two or more genuinely failed deliveries" in text and "Reviewed by the model" in text
-          and "W2505: per-account action rate x0.5" in text and "W2506: per-account action rate x2" in text)
+          and "per-account action rate x0.5" in text and "per-account action rate x2" in text)
     check("the scorecard shows every gate group of the experiment",
           all(heading in text for heading in ("Heavy returners reviewed", "Household members reviewed", "Repeat genuine claimants reviewed")))
     check("truth is hidden until asked for", "Reveal simulated truth" in text and "abused returns in the simulation" not in text)

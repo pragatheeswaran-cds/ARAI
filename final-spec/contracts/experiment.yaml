@@ -1,35 +1,77 @@
-version: '2.0'
+version: '3.0'
 status: IMPLEMENTATION BASELINE
-experiment_id: EXP-20261005-02
+experiment_id: EXP-20261005-03
+purpose: 'robustness: the features, candidates and gate of EXP-20261005-02, unchanged, on
+  worlds from generator-config 3.0, where honest customers return late more often and abusers
+  act less often (AM-49)'
 supersedes:
-  experiment_id: EXP-20261002-01
-  retired_seeds:
-    train_seeds:
-    - 2101
-    - 2102
-    - 2103
-    - 2104
-    - 2105
-    - 2106
-    - 2107
-    - 2108
-    - 2109
-    - 2110
-    validation_seeds:
-    - 2201
-    - 2202
-    - 2203
-    - 2204
-    - 2205
-    test_seeds:
-    - 2301
-    - 2302
-    - 2303
-    - 2304
-    - 2305
-    demo_seeds:
-    - 2401
-  note: retired seeds are never generated, scored or reused for this experiment
+  experiments:
+  - experiment_id: EXP-20261002-01
+    retired_seeds:
+      train_seeds:
+      - 2101
+      - 2102
+      - 2103
+      - 2104
+      - 2105
+      - 2106
+      - 2107
+      - 2108
+      - 2109
+      - 2110
+      validation_seeds:
+      - 2201
+      - 2202
+      - 2203
+      - 2204
+      - 2205
+      test_seeds:
+      - 2301
+      - 2302
+      - 2303
+      - 2304
+      - 2305
+      demo_seeds:
+      - 2401
+    generator_config: '1.3'
+  - experiment_id: EXP-20261005-02
+    generator_config: '1.3'
+    retired_seeds:
+      train_seeds:
+      - 3101
+      - 3102
+      - 3103
+      - 3104
+      - 3105
+      - 3106
+      - 3107
+      - 3108
+      - 3109
+      - 3110
+      validation_seeds:
+      - 3201
+      - 3202
+      - 3203
+      - 3204
+      - 3205
+      test_seeds:
+      - 3301
+      - 3302
+      - 3303
+      - 3304
+      - 3305
+      demo_seeds:
+      - 3401
+      stress_seeds:
+      - 2501
+      - 2502
+      - 2503
+      - 2504
+      - 2505
+      - 2506
+      - 2507
+  note: retired seeds are never generated, scored or reused for this experiment; their worlds
+    stay on disk as the records of the earlier experiments
 honest_group_weights: training-only sample weight on honest members of a gate segment (private
   truth, as the label is); never used to score
 snapshot_date: '2026-09-09'
@@ -41,30 +83,30 @@ history_calendar_months: 12
 currency: INR
 seed_namespace: return-abuse-v02
 train_seeds:
-- 3101
-- 3102
-- 3103
-- 3104
-- 3105
-- 3106
-- 3107
-- 3108
-- 3109
-- 3110
+- 4101
+- 4102
+- 4103
+- 4104
+- 4105
+- 4106
+- 4107
+- 4108
+- 4109
+- 4110
 validation_seeds:
-- 3201
-- 3202
-- 3203
-- 3204
-- 3205
+- 4201
+- 4202
+- 4203
+- 4204
+- 4205
 test_seeds:
-- 3301
-- 3302
-- 3303
-- 3304
-- 3305
+- 4301
+- 4302
+- 4303
+- 4304
+- 4305
 demo_seeds:
-- 3401
+- 4401
 test_reuse: prohibited after any model/config/generator change prompted by test results
 eligibility:
   min_mature_sale_lines: 3
@@ -192,13 +234,13 @@ fixture_seeds:
 - 2003
 fixture_customers: 1000
 stress_seeds:
-  2501: ordinary propensity x1.2
-  2502: ordinary propensity x0.8
-  2503: defect incidence x2
-  2504: household share x2
-  2505: per-account action rate x0.5
-  2506: per-account action rate x2
-  2507: actionable persona multipliers all 1
+  4501: ordinary propensity x1.2
+  4502: ordinary propensity x0.8
+  4503: defect incidence x2
+  4504: household share x2
+  4505: per-account action rate x0.5
+  4506: per-account action rate x2
+  4507: actionable persona multipliers all 1
 risk_reference:
   supervised: 5-fold grouped by world; fold-local preprocessing; the category fallback is
     fitted on all training worlds and training fails if a training world uses it

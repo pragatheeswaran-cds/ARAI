@@ -49,7 +49,8 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
     read = lambda name: json.loads((out / name).read_text(encoding="utf-8"))  # noqa: E731
 
     # ---- training: records the code that fitted the models, the cutoff and the training quantiles
-    small["generate"](config["train_seeds"] + [2505])
+    halved = next(seed for seed, text in config["stress_seeds"].items() if "action rate x0.5" in text)
+    small["generate"](config["train_seeds"] + [halved])
     with monkeypatch.context() as patched:                                     # a training world that needs the all-worlds fallback
         build = dataset.build_features
         patched.setattr(dataset, "build_features", lambda *a, **k: type("R", (), {"fallback_uses": 3})() if build(*a, **k) else None)
@@ -80,7 +81,7 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
     assert sum(g["model_selected"] for g in by_failures) == false_positives["model"]["false_positives"]   # the three split the honest
     assert false_positives["model"]["repeat_genuine_claimants"] == groups["repeat_genuine_claimant"]["model_selected"]
     stress = experiment.stress(EXPERIMENT, **roots)
-    assert [w["world_id"] for w in stress["worlds"]] == ["W2505"] and "action rate" in stress["worlds"][0]["mechanism"]
+    assert [w["world_id"] for w in stress["worlds"]] == [f"W{halved}"] and "action rate" in stress["worlds"][0]["mechanism"]
     assert {r["ranking"] for r in stress["worlds"][0]["rankings"]} >= {"raw_return_rate", "hgb_leaf15", "analyst_rulebook"}
 
     # ---- validation: worlds from another generator are refused; then selection is frozen
@@ -145,7 +146,7 @@ def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small,
     conforms("Experiment", report)
     assert report["difficulty_calibration"] == {"calibrated": True, "levers": ["genuine claim rates"], "record_ref": "records/calibration.md"}
     slices = {m["slice"] for m in report["reference_metrics"]}
-    assert {"ablation", "honest_groups", "calibration", "stress:W2505"} <= slices
+    assert {"ablation", "honest_groups", "calibration", f"stress:W{halved}"} <= slices
     every = [m for key in ("baseline_metrics", "per_world_metrics", "sensitivity_metrics", "reference_metrics", "error_account",
                            "style_metrics", "wardrobing_metrics") for m in report[key]] + [m for c in report["candidates"] for m in c["metrics"]]
     assert all(m["code"] for m in every)                                       # every published number can be found without its wording

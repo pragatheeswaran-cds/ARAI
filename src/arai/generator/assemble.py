@@ -212,7 +212,7 @@ def build_truth(ctx: Context, profiles, rel, orders, lines, unit_facts, campaign
 
     profile_columns = ["persona", "annual_order_target", "target_order_count", "target_return_propensity", "target_festive_share",
                        "target_days_per_order", "claim_propensity", "temporary_use_propensity", "claim_action_rate",
-                       "temporary_use_action_rate", "heavy_return_overlay", "power_user", "bracketer", "tenure_days"]
+                       "temporary_use_action_rate", "heavy_return_overlay", "power_user", "bracketer", "late_returner", "tenure_days"]
     truth = {
         "customer_profile": profiles[["customer_id"] + profile_columns].assign(world_id=world),
         "unit_truth": unit_truth,

@@ -1,10 +1,10 @@
 # Training dataset, model fitting and validation
 
-Version 2.0 (amended 2026-10-05) | Implementation baseline | Component TRAIN
+Version 3.0 (amended 2026-10-05) | Implementation baseline | Component TRAIN
 
 ## Requirements and boundary
 
-World seeds of experiment 2 (EXP-20261005-02): train3101-3110, validation3201-3205, test3301-3305, demo3401. The seeds of the first experiment (train2101-2110, validation2201-2205, test2301-2305, demo2401) are retired: their worlds stay on disk as the record of EXP-20261002-01 and are never generated, scored or reused for experiment 2. Fixtures2001-2003 have1000 customers; stress2501-2507 are ordinary propensity x1.2/x.8, defect x2, household share x2, per-account action rate x.5/x2, all-1 actionable multipliers. Sets disjoint. Scalar stress probabilities clip to valid range; invalid joint overlay fails. Demo normally generated plus documented injected cases; never selection/scorecard input.
+World seeds of experiment 3 (EXP-20261005-03, generator-config 3.0): train4101-4110, validation4201-4205, test4301-4305, demo4401, stress4501-4507; fixtures 2001-2003 are regenerated in memory by the tests. Experiment 2 (EXP-20261005-02) used train3101-3110, validation3201-3205, test3301-3305, demo3401 and stress2501-2507; all are retired with those of the first experiment. The seeds of the first experiment (train2101-2110, validation2201-2205, test2301-2305, demo2401) are retired: their worlds stay on disk as the record of EXP-20261002-01 and are never generated, scored or reused for experiment 2. Fixtures2001-2003 have1000 customers; stress2501-2507 are ordinary propensity x1.2/x.8, defect x2, household share x2, per-account action rate x.5/x2, all-1 actionable multipliers. Sets disjoint. Scalar stress probabilities clip to valid range; invalid joint overlay fails. Demo normally generated plus documented injected cases; never selection/scorecard input.
 
 Candidates share eligible rows and ordered features. Labels join supervised assembly only after features freeze. Isolation Forest uses mixed unlabeled training, not truth-filtered benign rows. All learned medians/scalers/fallbacks fit training only.
 

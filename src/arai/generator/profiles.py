@@ -1,13 +1,12 @@
 """Customer profiles and abuse propensities. Both are private generation targets, never model inputs."""
 from __future__ import annotations
 
-import re
-
 import numpy as np
 import pandas as pd
 
 from arai.generator.context import DAY, Context
 from arai.rng import stream
+from arai.settings import beta_law
 
 
 def _draw_orders(rng, segment: dict, n: int, impl: dict) -> np.ndarray:
@@ -82,6 +81,9 @@ def build_profiles(ctx: Context) -> pd.DataFrame:
     returns = np.where(heavy, rng.uniform(*accepted["heavy_return_range"], n), returns)
     returns = np.clip(returns * s.overrides.get("ordinary_propensity_scale", 1.0), 0.0, 1.0)
     bracketer = active & (rng.random(n) < impl["bracketer_share"])
+    # a private habit, independent of abuse: accounts that tend to return near the deadline (amendment_3_0). Its own
+    # stream, so no other draw moves.
+    late_returner = active & (stream(ctx.seed, "world", "late_returners").random(n) < s.realism["honest_return_timing"]["late_returner_share"])
 
     signup = ctx.snapshot - tenure * DAY
     eligible_start = np.maximum(signup, ctx.history_start)
@@ -112,6 +114,7 @@ def build_profiles(ctx: Context) -> pd.DataFrame:
         "heavy_return_overlay": heavy,
         "power_user": power_user,
         "bracketer": bracketer,
+        "late_returner": late_returner,
     })
 
 
@@ -143,7 +146,7 @@ def allocate_abuse(ctx: Context, profiles: pd.DataFrame) -> pd.DataFrame:
     claim = np.isin(category, ["claim_only", "both"])
     temporary = np.isin(category, ["temporary_use_only", "both"])
 
-    a, b = map(float, re.search(r"Beta\(([\d.]+),\s*([\d.]+)\)", s.amendment["action_rate"]["distribution"]).groups())
+    a, b = beta_law(s.realism["action_rate"]["distribution"])
     scale = s.overrides.get("action_rate_scale", 1.0)
     rates = stream(ctx.seed, "world", "action_rates")
     claim_rate = np.where(claim, np.clip(rates.beta(a, b, n) * scale, 0.0, 1.0), 0.0)

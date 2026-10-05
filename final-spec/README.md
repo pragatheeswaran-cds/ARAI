@@ -1,6 +1,6 @@
 # ARAI - portable development specification
 
-Version **2.0** - Consolidated 2026-09-26, amended 2026-10-05 - **Implementation baseline**
+Version **3.0** - Consolidated 2026-09-26, amended 2026-10-05 - **Implementation baseline**
 
 Each component has its own specification and acceptance criteria. This folder is the authoritative development package; no previous version, original laptop path or sibling archive is required.
 
@@ -25,6 +25,8 @@ Amendment 1.8 (2026-10-05) follows a principal-ML review of the specification an
 Amendment 1.9 (2026-10-05) records two owner decisions: the 0.75-0.85 development target stays open until it is reached (the closure in 1.8 is withdrawn), and a new experiment on fresh seeds will add a gate leg for honest repeat claimants.
 
 Amendment 2.0 (2026-10-05) is the contract of that experiment, EXP-20261005-02: fresh seeds, 43 features (the first 17 unchanged), six candidates of which three weight honest repeat claimants in training, and a four-leg gate. The simulator is unchanged.
+
+Amendment 3.0 (2026-10-05) records that experiment 2 passed its final test and sets up experiment 3, EXP-20261005-03: the same features, candidates and gate on a less generous simulator (honest customers return late more often, abusers act less often), to test how much of the result survives. Earlier worlds are never overwritten.
 
 ## Start on any system
 
