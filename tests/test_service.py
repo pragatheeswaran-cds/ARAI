@@ -890,7 +890,8 @@ def test_a_database_dump_restores_to_another_database_and_artifact_root(client, 
     name = "restored_" + uuid.uuid4().hex[:12]
     with psycopg.connect(postgres, autocommit=True) as connection:
         connection.execute(f'CREATE DATABASE "{name}"')
-    restored_url = postgres.rsplit("/", 1)[0] + "/" + name
+    base, _, query = postgres.partition("?")                      # the host may be a socket directory: keep the query untouched
+    restored_url = base.rsplit("/", 1)[0] + "/" + name + ("?" + query if query else "")
     subprocess.run([tool("pg_restore"), "--no-owner", "--dbname", restored_url, str(dump)], check=True, capture_output=True)
     relocated = tmp_path / "restored somewhere else" / "artifacts"
     shutil.copytree(env["root"], relocated)
@@ -904,3 +905,116 @@ def test_a_database_dump_restores_to_another_database_and_artifact_root(client, 
         again = restored.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "after-restore"})
         assert again.status_code == 202 and worker.process_one(config, Store(restored_url)) == again.json()["run_id"]
         assert restored.get(f"{API}/runs/{again.json()['run_id']}").json()["status"] == "succeeded"
+
+
+# ------------------------------------------------------------------ WP0: what was already computed is served (contract 1.4.0)
+def test_a_run_reports_its_queue_edge_and_the_eligible_population(client, env, written):
+    run = scored_run(client, env, written)
+    conforms("Run", run)
+    queue = all_pages(client, f"{API}/runs/{run['run_id']}/customers", {"review_only": "false"})
+    eligible = [c for c in queue if c["eligibility_status"] == "eligible"]
+    selected = [c for c in queue if c["selected_for_review"]]
+    assert run["review_budget"] == run["selected_count"] == len(selected)
+    assert run["threshold_score"] == min(c["risk_score"] for c in selected)                   # the last customer inside the budget
+    assert all(c["risk_score"] >= run["threshold_score"] for c in selected)
+    assert all(c["risk_score"] <= run["threshold_score"] for c in eligible if not c["selected_for_review"])
+    requested = sum(c["support_counts"]["mature_requested_units"] for c in eligible)
+    purchased = sum(c["support_counts"]["mature_purchased_units"] for c in eligible)
+    assert (run["eligible_requested_units"], run["eligible_purchased_units"]) == (requested, purchased)
+    assert run["mean_return_rate"] == pytest.approx(requested / purchased)                   # a rate with its counts
+    scores = sorted(c["risk_score"] for c in eligible)
+    assert run["median_score"] == pytest.approx(pd.Series(scores).median()) and 0 <= run["median_score"] <= 100
+    assert isinstance(run["graph_edges"], int) and run["graph_edges"] >= 0
+    # a run that has not succeeded has none of these yet
+    dataset = client.get(f"{API}/datasets/{run['dataset_id']}").json()
+    queued = client.post(f"{API}/runs", json={"dataset_id": dataset["dataset_id"], "idempotency_key": "later"}).json()
+    conforms("Run", queued)
+    assert all(queued[field] is None for field in ("review_budget", "threshold_score", "median_score", "mean_return_rate",
+                                                   "eligible_requested_units", "eligible_purchased_units", "graph_edges"))
+
+
+def test_the_timeline_carries_its_facts_as_fields_not_only_as_a_sentence(client, env, written, world):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    with_returns = next(c for c in client.get(url, params={"limit": 20}).json()["items"] if c["support_counts"]["all_requested_units"])
+    case = client.get(f"{url}/{with_returns['customer_id']}").json()
+    conforms("Case", case)
+    purchases = [e for e in case["timeline"] if e["event_type"] == "purchase"]
+    returns = [e for e in case["timeline"] if e["event_type"] != "purchase"]
+    assert purchases and returns
+    codes = set(world.tables["reason_code"]["reason_code"]) if "reason_code" in world.tables else set(scoring.REASON_GROUPS)
+    for event in purchases:
+        assert event["source_ref"] == f"sales_order_line:{event['order_id']}/{event['order_line_no']}"
+        assert event["quantity"] >= 1 and event["size"] and event["line_status"] and event["window_days"] >= 0
+        assert event["reason_code"] is None and event["reason_group"] is None and event["day_in_window"] is None
+        assert event["item_received"] is None and event["linked_claim"] is None
+    ordered = {(e["order_id"], e["order_line_no"]) for e in purchases}
+    for event in returns:
+        assert (event["order_id"], event["order_line_no"]) in ordered                      # every return points at a purchase shown
+        assert event["reason_code"] in codes and event["reason_group"] == scoring.REASON_GROUPS[event["reason_code"]]
+        assert (event["event_type"] == "transaction_claim") == (event["reason_group"] == "transaction_claim")
+        assert event["quantity"] >= 1 and event["size"] and event["line_status"] and isinstance(event["day_in_window"], int)
+        assert isinstance(event["linked_claim"], bool)
+        assert event["item_received"] is None or isinstance(event["item_received"], bool)
+        assert f"day {event['day_in_window']} of a {event['window_days']}-day window" in event["description"]   # the sentence agrees
+    no_item = {e["reason_code"] for e in returns if e["item_received"] is None}
+    assert no_item <= {"item_not_received", "empty_package"}                                # null exactly when nothing comes back
+    text = json.dumps(case["timeline"]).lower()
+    assert "reason_text" not in text                                                        # the customer's free text never travels
+
+
+def test_neighbours_carry_their_own_result_in_the_run(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    linked = all_pages(client, url, {"review_only": "false", "evidence": "supported_links"})
+    assert linked, "the fixture world has supported relationships"
+    case = client.get(f"{url}/{linked[0]['customer_id']}").json()
+    conforms("Case", case)
+    assert case["neighbors"]
+    for neighbor in case["neighbors"]:
+        own = client.get(f"{url}/{neighbor['customer_id']}").json()["customer"]
+        assert (neighbor["risk_score"], neighbor["rank"], neighbor["selected_for_review"], neighbor["evidence_tags"]) == \
+               (own["risk_score"], own["rank"], own["selected_for_review"], own["evidence_tags"])
+
+
+def test_the_queue_filters_on_the_wardrobing_band(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    everyone = all_pages(client, url, {"review_only": "false"})
+    seen = 0
+    for band in ("elevated", "possible", "no_elevated_signal", "insufficient_evidence", "incomplete"):
+        part = all_pages(client, url, {"review_only": "false", "wardrobing": band})
+        assert all(c["wardrobing_status"] == band for c in part)
+        assert len(part) == sum(c["wardrobing_status"] == band for c in everyone)
+        seen += len(part)
+    assert seen == len(everyone)                                                             # the bands partition the customers
+    assert client.get(url, params={"wardrobing": "worn"}).status_code == 422
+    # a cursor issued under one band is refused under another
+    first = client.get(url, params={"review_only": "false", "wardrobing": "no_elevated_signal", "limit": 1}).json()
+    if first["next_cursor"]:
+        assert client.get(url, params={"review_only": "false", "wardrobing": "possible", "cursor": first["next_cursor"]}).status_code == 422
+
+
+def test_the_score_distribution_counts_the_queue_at_every_threshold(client, env, written):
+    run = scored_run(client, env, written)
+    response = client.get(f"{API}/runs/{run['run_id']}/score-distribution")
+    assert response.status_code == 200, response.text
+    distribution = response.json()
+    conforms("ScoreDistribution", distribution)
+    bins = distribution["bins"]
+    assert len(bins) == 20 and distribution["bin_width"] == 5 and bins[0]["lower"] == 0 and bins[-1]["upper"] == 100
+    assert all(b["upper"] - b["lower"] == 5 for b in bins) and all(bins[i]["upper"] == bins[i + 1]["lower"] for i in range(19))
+    assert distribution["eligible_count"] == sum(b["count"] for b in bins) == run["eligible_count"]
+    assert sum(b["selected_count"] for b in bins) == run["selected_count"]
+    assert distribution["review_budget"] == run["review_budget"] and distribution["threshold_score"] == run["threshold_score"]
+    assert bins[0]["at_or_above"] == run["eligible_count"]                                   # a threshold of zero reviews everyone
+    for i in range(19):
+        assert bins[i]["at_or_above"] == bins[i]["count"] + bins[i + 1]["at_or_above"]        # a running sum from the top bin down
+    cut = next(b for b in bins if b["lower"] <= run["threshold_score"] < b["upper"] or (b["upper"] == 100 and run["threshold_score"] == 100))
+    assert cut["at_or_above"] >= run["review_budget"] and cut["selected_count"] >= 1          # the budget cut falls inside its bin
+    eligible = all_pages(client, f"{API}/runs/{run['run_id']}/customers", {"review_only": "false", "eligibility": "eligible"})
+    for b in bins:
+        assert b["at_or_above"] == sum(c["risk_score"] >= b["lower"] for c in eligible)      # the same count the UI would make
+    queued = client.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "pending"}).json()
+    assert client.get(f"{API}/runs/{queued['run_id']}/score-distribution").status_code == 409
+    assert client.get(f"{API}/runs/run-unknown/score-distribution").status_code == 404

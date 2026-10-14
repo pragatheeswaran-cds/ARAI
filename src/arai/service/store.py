@@ -330,6 +330,9 @@ class Store:
         if filters["evidence"]:
             clauses.append("%s = ANY (c.evidence_tags)")
             values.append(filters["evidence"])
+        if filters.get("wardrobing", "all") != "all":
+            clauses.append("c.wardrobing_status = %s")
+            values.append(filters["wardrobing"])
         comparison = {"model_only": "c.selected_for_review AND NOT c.baseline_selected",
                       "baseline_only": "c.baseline_selected AND NOT c.selected_for_review",
                       "both": "c.selected_for_review AND c.baseline_selected"}.get(filters["comparison"])
@@ -363,9 +366,25 @@ class Store:
                               (run_id, customer_id)).fetchall()
 
     def run_neighbors(self, run_id: str, customer_id: str) -> list:
+        """The customer's supported edges, each with the neighbour's own result in this run (score, rank, selection, tags)."""
         with self.transaction() as db:
-            return db.execute('SELECT * FROM run_neighbors WHERE run_id = %s AND customer_id = %s ORDER BY neighbor_id COLLATE "C"',
+            return db.execute("""SELECT e.*, n.risk_score AS neighbor_risk_score, n.rank AS neighbor_rank,
+                                        n.selected_for_review AS neighbor_selected_for_review, n.evidence_tags AS neighbor_evidence_tags
+                                 FROM run_neighbors e
+                                 LEFT JOIN run_customers n ON n.run_id = e.run_id AND n.customer_id = e.neighbor_id
+                                 WHERE e.run_id = %s AND e.customer_id = %s ORDER BY e.neighbor_id COLLATE "C" """,
                               (run_id, customer_id)).fetchall()
+
+    def score_distribution(self, run_id: str, bins: int, top: float) -> list:
+        """Eligible customers of a run counted into equal-width score bins over [0, top]; a score of `top` falls in the last bin.
+
+        Rows: {bin (1-based), count, selected_count}, only for bins that hold a customer.
+        """
+        with self.transaction() as db:
+            return db.execute("""SELECT least(width_bucket(risk_score, 0, %s, %s), %s) AS bin, count(*) AS count,
+                                        count(*) FILTER (WHERE selected_for_review) AS selected_count
+                                 FROM run_customers WHERE run_id = %s AND eligibility_status = 'eligible' AND risk_score IS NOT NULL
+                                 GROUP BY bin ORDER BY bin""", (top, bins, bins, run_id)).fetchall()
 
     def run_customer_styles(self, run_id: str, customer_id: str, limit: int) -> list:
         """The styles a customer returned or claimed on, linked claims first, with each style's evidence."""

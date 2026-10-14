@@ -68,7 +68,15 @@ def dataset_body(row: dict) -> dict:
             "purpose": row["purpose"], "validation_status": "accepted", "customer_count": row["customer_count"]}
 
 
-def run_body(row: dict, warnings: list | None = None) -> dict:
+RUN_SUMMARY_FIELDS = {                             # Run field -> key of the summary scoring recorded; null until the run succeeded
+    "review_budget": "review_budget_k", "threshold_score": "threshold_score", "median_score": "median_score",
+    "mean_return_rate": "mean_return_rate", "eligible_requested_units": "eligible_requested_units",
+    "eligible_purchased_units": "eligible_purchased_units", "graph_edges": "graph_edges"}
+
+
+def run_body(row: dict, summary: dict | None = None) -> dict:
+    """A run as the contract shows it. `summary` is what scoring recorded, given only for a succeeded run."""
+    summary = summary or {}
     error = None
     if row["error_code"]:
         error = {"error_code": row["error_code"], "message": row["error_message"] or "", "request_id": row["error_request_id"] or row["id"],
@@ -78,7 +86,8 @@ def run_body(row: dict, warnings: list | None = None) -> dict:
             "cutoff": _iso(row["cutoff"]), "created_at": _iso(row["created_at"]), "completed_at": _iso(row["completed_at"]),
             "error": error, "eligible_count": row["eligible_count"], "excluded_count": row["excluded_count"],
             "selected_count": row["selected_count"], "model_only_count": row["model_only_count"],
-            "baseline_only_count": row["baseline_only_count"], "warnings": warnings or []}
+            "baseline_only_count": row["baseline_only_count"], "warnings": summary.get("warnings") or [],
+            **{field: summary.get(key) for field, key in RUN_SUMMARY_FIELDS.items()}}
 
 
 def review_body(row: dict) -> dict:
@@ -133,7 +142,7 @@ class Service:
 
     def run_body(self, row: dict) -> dict:
         """A run as the contract shows it, with the warnings recorded when it was scored."""
-        return run_body(row, (row["summary"] or {}).get("warnings", []) if row["status"] == "succeeded" else None)
+        return run_body(row, row["summary"] if row["status"] == "succeeded" else None)
 
     def succeeded_run(self, run_id: str) -> dict:
         """The run, if its results can be read. Results exist exactly for succeeded runs: both are one transaction."""
@@ -169,7 +178,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if stop:
             stop.set()
 
-    app = FastAPI(title="ARAI development API", version="1.3.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title="ARAI development API", version="1.4.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(CORSMiddleware, allow_origins=list(config.ui_origins), allow_methods=["GET", "POST"],
                        allow_headers=["content-type"], allow_credentials=False)
@@ -342,17 +351,23 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                        eligibility: Literal["all", "eligible", "insufficient_history"] = "all", search: str | None = None,
                        evidence: str | None = None,
                        disposition: Literal["all", "unreviewed", "needs_investigation", "likely_legitimate", "unresolved"] = "all",
-                       comparison: Literal["all", "model_only", "baseline_only", "both"] = "all"):
+                       comparison: Literal["all", "model_only", "baseline_only", "both"] = "all",
+                       wardrobing: Literal["all", "elevated", "possible", "no_elevated_signal", "insufficient_evidence", "incomplete"] = "all"):
         run = service.succeeded_run(run_id)
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
                            [{"rule_id": "request.evidence", "table": None, "row_key": evidence, "count": 1}])
         filters = {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
-                   "evidence": evidence, "disposition": disposition, "comparison": comparison}
+                   "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing}
         context = {"list": "customers", "run_id": run_id, **filters}
         after = views.decode_cursor(cursor, context, "int")
         items, following = views.customer_queue(service.store, run, filters, after, limit)
         return {"items": items, "next_cursor": views.encode_cursor(context, following) if following is not None else None}
+
+    @api.get("/runs/{run_id}/score-distribution")
+    def get_score_distribution(run_id: str):
+        """How the eligible customers' scores spread and how large the queue is at any threshold (counts, nothing recomputed)."""
+        return views.score_distribution(service.store, service.succeeded_run(run_id))
 
     def _case_customer(run_id: str, customer_id: str) -> tuple:
         run = service.succeeded_run(run_id)

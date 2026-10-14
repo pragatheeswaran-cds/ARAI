@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/score-distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getScoreDistribution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{run_id}/styles": {
         parameters: {
             query?: never;
@@ -283,6 +299,20 @@ export interface components {
             model_only_count: number | null;
             baseline_only_count: number | null;
             warnings: string[];
+            /** @description The review budget k of this run (the primary budget fraction of the eligible customers, at least one). selected_count equals it whenever there are at least k eligible customers. Null until the run succeeded. */
+            review_budget: number | null;
+            /** @description The risk score of the customer at rank k, the last inside the budget; the queue is every eligible customer scoring at or above it. Null until the run succeeded or when the budget is zero. */
+            threshold_score: number | null;
+            /** @description Median risk score of the eligible customers. The score is a training reference percentile, so a snapshot like the training worlds has a median near 50. Null until the run succeeded. */
+            median_score: number | null;
+            /** @description Pooled return rate of the eligible customers on mature sale lines, eligible_requested_units over eligible_purchased_units; the run-wide figure a customer's or a group's rate is read against. Null until the run succeeded or when no mature unit was purchased. */
+            mean_return_rate: number | null;
+            /** @description Sum of mature_requested_units over the eligible customers (the numerator of mean_return_rate). */
+            eligible_requested_units: number | null;
+            /** @description Sum of mature_purchased_units over the eligible customers (the denominator of mean_return_rate). */
+            eligible_purchased_units: number | null;
+            /** @description Supported relationship edges found in the snapshot (two or more shared identifier types). Null until the run succeeded. */
+            graph_edges: number | null;
         };
         Support: {
             mature_sale_lines: number;
@@ -335,6 +365,7 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        /** @description One source transaction of the customer. The sentence in description is built from the fact fields that follow it; read the fields, not the sentence. A fact that does not apply to the event kind is null, and every fact is null for a run scored before contract 1.4.0 (results are written once). The customer's free-text reason is never carried. */
         TimelineEvent: {
             source_ref: string;
             event_type: string;
@@ -343,6 +374,29 @@ export interface components {
             amount_inr: number | null;
             style_id: string | null;
             sku: string | null;
+            /** @description The sale order of the line, for a purchase and for a return of that line alike; groups the sizes of one style ordered together. */
+            order_id: string | null;
+            order_line_no: number | null;
+            /** @description Units ordered for a purchase; units requested for return for a return event. */
+            quantity: number | null;
+            size: string | null;
+            /** @description Return events only; a code of the reason codebook. */
+            reason_code: string | null;
+            /**
+             * @description Return events only; the four groups partition the codebook (reason-groups.yaml).
+             * @enum {string|null}
+             */
+            reason_group: "transaction_claim" | "item_complaint" | "fit" | "discretionary" | null;
+            /** @description Return events only; days after delivery at which the request was made. */
+            day_in_window: number | null;
+            /** @description The line's return window in days. */
+            window_days: number | null;
+            /** @description The sale line's status for a purchase; the return line's status for a return event. */
+            line_status: string | null;
+            /** @description Return events only; whether the returned item was received. Null when the reason needs no item back. */
+            item_received: boolean | null;
+            /** @description Return events only; a linked account claimed on the same style within 7 days. */
+            linked_claim: boolean | null;
         };
         Neighbor: {
             customer_id: string;
@@ -351,6 +405,11 @@ export interface components {
             supported: boolean;
             max_value_fanout: number;
             coordinated_claim_matches: number;
+            /** @description The neighbour's own risk score in this run (null if the neighbour is not eligible). A link is evidence about the relationship; this score says nothing about the customer whose case is shown. */
+            risk_score: number | null;
+            rank: number | null;
+            selected_for_review: boolean;
+            evidence_tags: string[];
         };
         Wardrobing: {
             /** @enum {string} */
@@ -489,6 +548,25 @@ export interface components {
         RunPage: {
             items: components["schemas"]["Run"][];
             next_cursor: string | null;
+        };
+        ScoreBin: {
+            lower: number;
+            upper: number;
+            /** @description Eligible customers whose risk score is in [lower, upper); the last bin includes 100. */
+            count: number;
+            /** @description Of those, the customers selected for review. */
+            selected_count: number;
+            /** @description Eligible customers scoring at or above lower, which is the queue a threshold at lower would produce. */
+            at_or_above: number;
+        };
+        /** @description How the eligible customers' risk scores spread, in twenty five-point bins from 0 to 100, with the queue size at any threshold. Every number is a count over the run's stored rows; nothing is recomputed and no threshold here changes the run's selection, which stays at threshold_score. */
+        ScoreDistribution: {
+            run_id: string;
+            eligible_count: number;
+            review_budget: number | null;
+            threshold_score: number | null;
+            bin_width: number;
+            bins: components["schemas"]["ScoreBin"][];
         };
         CustomerPage: {
             items: components["schemas"]["Customer"][];
@@ -1021,6 +1099,8 @@ export interface operations {
                 evidence?: string;
                 disposition?: "all" | "unreviewed" | "needs_investigation" | "likely_legitimate" | "unresolved";
                 comparison?: "all" | "model_only" | "baseline_only" | "both";
+                /** @description Show only customers whose independent wardrobing indicator is in this band. A filter chooses what is shown; it changes no score or selection. */
+                wardrobing?: "all" | "elevated" | "possible" | "no_elevated_signal" | "insufficient_evidence" | "incomplete";
             };
             header?: never;
             path: {
@@ -1275,6 +1355,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Review"];
+                };
+            };
+            /** @description VM authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getScoreDistribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreDistribution"];
                 };
             };
             /** @description VM authentication required */

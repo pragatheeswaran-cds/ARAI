@@ -86,6 +86,8 @@ per package is the screen that consumes it.
 
 No pipeline change; `store.py`, `views.py`, `api.py`, `openapi.yaml`, one migration.
 
+**Status: done on branch `frontend-implementation` (contract 1.4.0, schema version 4, AM-55).** Two names differ from the table below: the pooled rate ships with its counts as `eligible_requested_units` and `eligible_purchased_units`, and the `Neighbor` fields are `risk_score`, `rank`, `selected_for_review`, `evidence_tags`. The new timeline columns are null for runs scored before the upgrade; submit a new run on the demo world to see them.
+
 | Field | Where it comes from |
 |---|---|
 | `Run.review_budget` | `runs.summary->>'review_budget_k'` |

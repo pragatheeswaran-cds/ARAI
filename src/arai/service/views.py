@@ -27,6 +27,9 @@ WARDROBING_SIGNALS = {
 }
 OCCASION_EXPECTED = ("occasion_expected_units", "Occasion-wear returns this customer's other returns predict", "units")
 CASE_STYLES, STYLE_CUSTOMERS, SOURCE_REFS = 12, 50, 20
+SCORE_BINS, SCORE_TOP = 20, 100.0                 # the risk score is a percentile: twenty bins of five points
+TIMELINE_FACTS = ("order_id", "order_line_no", "quantity", "size", "reason_code", "reason_group", "day_in_window", "window_days",
+                  "line_status", "item_received", "linked_claim")
 
 
 class BadCursor(Exception):
@@ -82,6 +85,10 @@ def _number(value):
 
 def _integer(value):
     return None if value is None else int(value)
+
+
+def _boolean(value):
+    return None if value is None else bool(value)
 
 
 def customer_item(row: dict, latest_disposition: str | None) -> dict:
@@ -169,17 +176,51 @@ def customer_case(store: Store, run_id: str, customer: dict) -> dict:
             wardrobing_signals.append(_signal(code, label, row.get(code), None, unit))
     return {
         "signals": signals,
-        "timeline": [{"source_ref": e["source_ref"], "event_type": e["event_type"], "observed_at": e["observed_at"],
-                      "description": e["description"], "amount_inr": _number(e["amount_inr"]), "style_id": e["style_id"],
-                      "sku": e["sku"]} for e in events],
+        "timeline": [_timeline_event(e) for e in events],
         "neighbors": [{"customer_id": n["neighbor_id"], "shared_types": list(n["shared_types"]),
                        "shared_value_count": int(n["shared_value_count"]), "supported": bool(n["supported"]),
-                       "max_value_fanout": int(n["max_value_fanout"]), "coordinated_claim_matches": int(n["coordinated_claim_matches"])}
+                       "max_value_fanout": int(n["max_value_fanout"]), "coordinated_claim_matches": int(n["coordinated_claim_matches"]),
+                       # the neighbour's own result in this run; a link is evidence, the score is the neighbour's, not this customer's
+                       "risk_score": _number(n["neighbor_risk_score"]), "rank": _integer(n["neighbor_rank"]),
+                       "selected_for_review": bool(n["neighbor_selected_for_review"]),
+                       "evidence_tags": list(n["neighbor_evidence_tags"] or [])}
                       for n in store.run_neighbors(run_id, customer_id)],
         "styles": [_style_item(style) for style in store.run_customer_styles(run_id, customer_id, CASE_STYLES)],
         "wardrobing": {"status": row["wardrobing_status"], "indicator_score": _integer(row["indicator_score"]),
                        "signals": wardrobing_signals, "limitation": WARDROBING_LIMITATION},
     }
+
+
+def _timeline_event(e: dict) -> dict:
+    """One timeline row as the contract's TimelineEvent: the sentence plus every fact behind it (null where it does not apply)."""
+    casts = {"order_line_no": _integer, "quantity": _integer, "day_in_window": _integer, "window_days": _integer,
+             "item_received": _boolean, "linked_claim": _boolean}
+    event = {"source_ref": e["source_ref"], "event_type": e["event_type"], "observed_at": e["observed_at"],
+             "description": e["description"], "amount_inr": _number(e["amount_inr"]), "style_id": e["style_id"], "sku": e["sku"]}
+    for name in TIMELINE_FACTS:
+        event[name] = casts.get(name, lambda value: value)(e.get(name))
+    return event
+
+
+def score_distribution(store: Store, run: dict) -> dict:
+    """Eligible customers of a run in twenty five-point score bins, with the queue size at or above each bin's lower edge.
+
+    `at_or_above` is how many eligible customers score at or above the bin's lower edge, which is the queue a
+    threshold at that edge would produce; the budget cut itself is `threshold_score`. Nothing here is recomputed:
+    every number is a count over the stored result rows.
+    """
+    width = SCORE_TOP / SCORE_BINS
+    held = {int(row["bin"]): row for row in store.score_distribution(run["id"], SCORE_BINS, SCORE_TOP)}
+    bins, above = [], 0
+    for index in range(SCORE_BINS, 0, -1):                          # from the top bin down, so the cumulative count is a running sum
+        row = held.get(index)
+        count = int(row["count"]) if row else 0
+        above += count
+        bins.append({"lower": (index - 1) * width, "upper": index * width, "count": count,
+                     "selected_count": int(row["selected_count"]) if row else 0, "at_or_above": above})
+    summary = run["summary"] or {}
+    return {"run_id": run["id"], "eligible_count": above, "review_budget": _integer(summary.get("review_budget_k")),
+            "threshold_score": _number(summary.get("threshold_score")), "bin_width": width, "bins": bins[::-1]}
 
 
 def style_queue(store: Store, run_id: str, state: str, after: str | None, limit: int) -> tuple:

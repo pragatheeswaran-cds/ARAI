@@ -78,4 +78,5 @@ def database_url(postgres):
     name = "t_" + uuid.uuid4().hex[:16]
     with psycopg.connect(postgres, autocommit=True) as connection:
         connection.execute(f'CREATE DATABASE "{name}"')
-    return postgres.rsplit("/", 1)[0] + "/" + name
+    base, _, query = postgres.partition("?")                      # the host may be a socket directory: keep the query untouched
+    return base.rsplit("/", 1)[0] + "/" + name + ("?" + query if query else "")

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.3.0
+  version: 1.4.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -466,6 +466,21 @@ paths:
           - model_only
           - baseline_only
           - both
+      - name: wardrobing
+        in: query
+        required: false
+        description: Show only customers whose independent wardrobing indicator is in this band. A filter chooses
+          what is shown; it changes no score or selection.
+        schema:
+          type: string
+          default: all
+          enum:
+          - all
+          - elevated
+          - possible
+          - no_elevated_signal
+          - insufficient_evidence
+          - incomplete
   /runs/{run_id}/customers/{customer_id}:
     get:
       operationId: getCustomerCase
@@ -626,6 +641,57 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ReviewRequest'
+  /runs/{run_id}/score-distribution:
+    get:
+      operationId: getScoreDistribution
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreDistribution'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema: *id001
   /runs/{run_id}/styles:
     get:
       operationId: listStyles
@@ -1058,6 +1124,13 @@ components:
       - model_only_count
       - baseline_only_count
       - warnings
+      - review_budget
+      - threshold_score
+      - median_score
+      - mean_return_rate
+      - eligible_requested_units
+      - eligible_purchased_units
+      - graph_edges
       properties:
         run_id: *id001
         dataset_id: *id001
@@ -1122,6 +1195,49 @@ components:
           type: array
           items:
             type: string
+        review_budget:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: The review budget k of this run (the primary budget fraction of the eligible customers, at least
+            one). selected_count equals it whenever there are at least k eligible customers. Null until the run succeeded.
+        threshold_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: The risk score of the customer at rank k, the last inside the budget; the queue is every eligible
+            customer scoring at or above it. Null until the run succeeded or when the budget is zero.
+        median_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Median risk score of the eligible customers. The score is a training reference percentile, so a
+            snapshot like the training worlds has a median near 50. Null until the run succeeded.
+        mean_return_rate:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Pooled return rate of the eligible customers on mature sale lines, eligible_requested_units over
+            eligible_purchased_units; the run-wide figure a customer's or a group's rate is read against. Null until
+            the run succeeded or when no mature unit was purchased.
+        eligible_requested_units:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Sum of mature_requested_units over the eligible customers (the numerator of mean_return_rate).
+        eligible_purchased_units:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Sum of mature_purchased_units over the eligible customers (the denominator of mean_return_rate).
+        graph_edges:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Supported relationship edges found in the snapshot (two or more shared identifier types). Null
+            until the run succeeded.
     Support:
       type: object
       additionalProperties: false
@@ -1290,6 +1406,21 @@ components:
       - amount_inr
       - style_id
       - sku
+      - order_id
+      - order_line_no
+      - quantity
+      - size
+      - reason_code
+      - reason_group
+      - day_in_window
+      - window_days
+      - line_status
+      - item_received
+      - linked_claim
+      description: One source transaction of the customer. The sentence in description is built from the fact fields
+        that follow it; read the fields, not the sentence. A fact that does not apply to the event kind is null, and
+        every fact is null for a run scored before contract 1.4.0 (results are written once). The customer's free-text
+        reason is never carried.
       properties:
         source_ref: *id001
         event_type: *id001
@@ -1304,6 +1435,58 @@ components:
         sku:
           type: string
           nullable: true
+        order_id:
+          type: string
+          nullable: true
+          description: The sale order of the line, for a purchase and for a return of that line alike; groups the
+            sizes of one style ordered together.
+        order_line_no:
+          type: integer
+          minimum: 1
+          nullable: true
+        quantity:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Units ordered for a purchase; units requested for return for a return event.
+        size:
+          type: string
+          nullable: true
+        reason_code:
+          type: string
+          nullable: true
+          description: Return events only; a code of the reason codebook.
+        reason_group:
+          type: string
+          nullable: true
+          enum:
+          - transaction_claim
+          - item_complaint
+          - fit
+          - discretionary
+          - null
+          description: Return events only; the four groups partition the codebook (reason-groups.yaml).
+        day_in_window:
+          type: integer
+          nullable: true
+          description: Return events only; days after delivery at which the request was made.
+        window_days:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: The line's return window in days.
+        line_status:
+          type: string
+          nullable: true
+          description: The sale line's status for a purchase; the return line's status for a return event.
+        item_received:
+          type: boolean
+          nullable: true
+          description: Return events only; whether the returned item was received. Null when the reason needs no item back.
+        linked_claim:
+          type: boolean
+          nullable: true
+          description: Return events only; a linked account claimed on the same style within 7 days.
     Neighbor:
       type: object
       additionalProperties: false
@@ -1314,6 +1497,10 @@ components:
       - supported
       - max_value_fanout
       - coordinated_claim_matches
+      - risk_score
+      - rank
+      - selected_for_review
+      - evidence_tags
       properties:
         customer_id: *id001
         shared_types:
@@ -1328,6 +1515,22 @@ components:
         supported: *id011
         max_value_fanout: *id008
         coordinated_claim_matches: *id008
+        risk_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: The neighbour's own risk score in this run (null if the neighbour is not eligible). A link is
+            evidence about the relationship; this score says nothing about the customer whose case is shown.
+        rank:
+          type: integer
+          minimum: 1
+          nullable: true
+        selected_for_review: *id011
+        evidence_tags:
+          type: array
+          items:
+            type: string
     Wardrobing:
       type: object
       additionalProperties: false
@@ -1770,6 +1973,69 @@ components:
         next_cursor:
           type: string
           nullable: true
+    ScoreBin:
+      type: object
+      additionalProperties: false
+      required:
+      - lower
+      - upper
+      - count
+      - selected_count
+      - at_or_above
+      properties:
+        lower:
+          type: number
+          minimum: 0
+          maximum: 100
+        upper:
+          type: number
+          minimum: 0
+          maximum: 100
+        count:
+          type: integer
+          minimum: 0
+          description: Eligible customers whose risk score is in [lower, upper); the last bin includes 100.
+        selected_count:
+          type: integer
+          minimum: 0
+          description: Of those, the customers selected for review.
+        at_or_above:
+          type: integer
+          minimum: 0
+          description: Eligible customers scoring at or above lower, which is the queue a threshold at lower would produce.
+    ScoreDistribution:
+      type: object
+      additionalProperties: false
+      required:
+      - run_id
+      - eligible_count
+      - review_budget
+      - threshold_score
+      - bin_width
+      - bins
+      description: How the eligible customers' risk scores spread, in twenty five-point bins from 0 to 100, with the
+        queue size at any threshold. Every number is a count over the run's stored rows; nothing is recomputed and no
+        threshold here changes the run's selection, which stays at threshold_score.
+      properties:
+        run_id: *id001
+        eligible_count:
+          type: integer
+          minimum: 0
+        review_budget:
+          type: integer
+          minimum: 0
+          nullable: true
+        threshold_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+        bin_width:
+          type: number
+        bins:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScoreBin'
     CustomerPage:
       type: object
       additionalProperties: false

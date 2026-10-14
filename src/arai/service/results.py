@@ -24,7 +24,11 @@ SKUS = (("sku", "text"), ("style_id", "text"), ("size", "text"), ("colour", "tex
 NEIGHBORS = (("customer_id", "text"), ("neighbor_id", "text"), ("shared_value_count", "int"), ("supported", "bool"),
              ("max_value_fanout", "int"), ("coordinated_claim_matches", "int"))
 TIMELINE = (("customer_id", "text"), ("source_ref", "text"), ("event_type", "text"), ("observed_at", "text"),
-            ("description", "text"), ("amount_inr", "float"), ("style_id", "text"), ("sku", "text"))
+            ("description", "text"), ("amount_inr", "float"), ("style_id", "text"), ("sku", "text"),
+            # the facts of the event as columns (migration 0004); a column that does not apply to an event kind is null
+            ("order_id", "text"), ("order_line_no", "int"), ("quantity", "int"), ("size", "text"), ("reason_code", "text"),
+            ("reason_group", "text"), ("day_in_window", "int"), ("window_days", "int"), ("line_status", "text"),
+            ("item_received", "bool"), ("linked_claim", "bool"))
 CUSTOMER_STYLES = (("customer_id", "text"), ("style_id", "text"), ("requested_units", "int"), ("claim_lines", "int"),
                    ("linked_claim_lines", "int"))
 CASTS = {"int": int, "float": float, "bool": bool, "text": str}
@@ -38,7 +42,11 @@ def _values(series: pd.Series, kind: str | None = None) -> list:
 
 
 def _rows(frame: pd.DataFrame, spec: tuple) -> list:
-    return list(zip(*[_values(frame[name], kind) for name, kind in spec])) if len(frame) else []
+    """Rows in the spec's column order. A column the frame lacks (a run scored before it existed) is null throughout."""
+    if not len(frame):
+        return []
+    absent = pd.Series([None] * len(frame), index=frame.index, dtype=object)
+    return list(zip(*[_values(frame[name] if name in frame else absent, kind) for name, kind in spec]))
 
 
 def _split(series: pd.Series) -> list:

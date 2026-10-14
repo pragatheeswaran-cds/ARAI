@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from arai import bundles, ranking
+from arai import bundles, contract, ranking
 from arai import features as F
 from arai.operational import cutoff_date
 
@@ -20,6 +20,10 @@ DRIFT_MIN_ELIGIBLE = 200         # below this the shares are too noisy to compar
 DRIFT_P95_BAND = (0.025, 0.10)   # share scoring above the training 95th percentile that raises no warning (0.05 expected)
 SUPPORT = ["mature_sale_lines", "mature_purchased_units", "mature_requested_units", "all_requested_units"]
 TAGS = ("repeat_claims", "linked_claims", "late_returns", "returns_above_expected", "supported_links")
+# reason code -> the group the timeline shows beside it; the four groups partition the sixteen codes of the codebook
+REASON_GROUPS = {code: group for group, name in (("transaction_claim", "transaction_claim"), ("item_complaint", "item_complaint_customer"),
+                                                  ("fit", "fit"), ("discretionary", "discretionary"))
+                 for code in contract.reason_group(name)}
 
 
 @dataclass
@@ -76,7 +80,13 @@ def _neighbors(result: F.FeatureResult) -> pd.DataFrame:
 
 
 def _timeline(tables: dict, result: F.FeatureResult) -> pd.DataFrame:
-    """Source transactions per customer: every sale line and every return request, with their own keys."""
+    """Source transactions per customer: every sale line and every return request, with their own keys.
+
+    Every event carries its facts as columns (order and line, quantity, size, reason code and group, day in the
+    return window, item received, linked claim) beside the sentence built from them, so a reader never has to
+    parse the sentence. A column that does not apply to an event kind is missing. The customer's free-text reason
+    is evidence_only in the data contract and is never read here.
+    """
     sku = tables["sku_master"].set_index("sku")
     lines = result.lines
     delivered = lines["delivered_date"].dt.strftime("%Y-%m-%d").fillna("not delivered")
@@ -85,14 +95,18 @@ def _timeline(tables: dict, result: F.FeatureResult) -> pd.DataFrame:
         "event_type": "purchase", "observed_at": lines["order_date"].dt.strftime("%Y-%m-%d"),
         "description": ("Ordered " + lines["quantity"].astype(str) + " x " + lines["category"] + " size " + lines["size"].astype(str)
                         + "; " + lines["line_status"].str.replace("_", " ") + "; delivered " + delivered),
-        "amount_inr": lines["line_total"].astype(float), "style_id": lines["style_id"], "sku": lines["sku"], "sort_at": lines["order_date"]})
+        "amount_inr": lines["line_total"].astype(float), "style_id": lines["style_id"], "sku": lines["sku"], "sort_at": lines["order_date"],
+        "order_id": lines["order_id"], "order_line_no": lines["order_line_no"].astype(int), "quantity": lines["quantity"].astype(int),
+        "size": lines["size"].astype(str), "window_days": lines["return_window_days"].astype(int), "line_status": lines["line_status"]})
     returns = tables["return_order_line"].merge(
-        lines[["order_id", "order_line_no", "customer_id", "style_id", "delivered_date", "return_window_days"]], on=["order_id", "order_line_no"])
+        lines[["order_id", "order_line_no", "customer_id", "style_id", "size", "delivered_date", "return_window_days"]],
+        on=["order_id", "order_line_no"])
     linked = result.requests.set_index(["return_order_id", "return_line_no"])["linked"]
     key = pd.MultiIndex.from_frame(returns[["return_order_id", "return_line_no"]])
     is_linked = linked.reindex(key).fillna(False).to_numpy(dtype=bool)
     days = (returns["requested_at"].dt.normalize() - returns["delivered_date"]).dt.days
     claim = returns["reason_code"].isin(F.CLAIM_CODES)
+    received = pd.to_numeric(returns["return_received_flag"], errors="coerce")       # empty exactly when no item comes back
     requests = pd.DataFrame({
         "customer_id": returns["customer_id"],
         "source_ref": "return_order_line:" + returns["return_order_id"].astype(str) + "/" + returns["return_line_no"].astype(str),
@@ -103,7 +117,13 @@ def _timeline(tables: dict, result: F.FeatureResult) -> pd.DataFrame:
                         + returns["line_status"].astype(str)
                         + pd.Series(np.where(is_linked, "; a linked account claimed on this style within 7 days", ""), index=returns.index)),
         "amount_inr": returns["refund_amount"].astype(float), "style_id": returns["style_id"], "sku": returns["sku"],
-        "sort_at": returns["requested_at"]})
+        "sort_at": returns["requested_at"],
+        "order_id": returns["order_id"], "order_line_no": returns["order_line_no"].astype(int),
+        "quantity": returns["quantity_returned"].astype(int), "size": returns["size"].astype(str),
+        "reason_code": returns["reason_code"].astype(str), "reason_group": returns["reason_code"].map(REASON_GROUPS),
+        "day_in_window": days.astype("Int64"), "window_days": returns["return_window_days"].astype(int),
+        "line_status": returns["line_status"].astype(str), "item_received": (received == 1).where(received.notna(), None),
+        "linked_claim": is_linked})
     timeline = pd.concat([purchases, requests], ignore_index=True)
     timeline["sku"] = timeline["sku"].where(timeline["sku"].isin(sku.index))
     return timeline.sort_values(["customer_id", "sort_at", "source_ref"]).drop(columns="sort_at").reset_index(drop=True)
@@ -199,6 +219,10 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         pd.DataFrame(columns=["customer_id", "style_id", "requested_units", "claim_lines", "linked_claim_lines"])
 
     selected, baseline_selected = customers["selected_for_review"], customers["baseline_selected"]
+    at_budget = (customers["rank"] == k).fillna(False).astype(bool)                 # the last customer inside the budget
+    threshold = float(customers.loc[at_budget, "risk_score"].iloc[0]) if k and at_budget.any() else None
+    requested = int(customers.loc[eligible, "mature_requested_units"].sum())
+    purchased = int(customers.loc[eligible, "mature_purchased_units"].sum())
     warnings = []
     if n < SMALL_POPULATION:
         warnings.append(f"Only {n} eligible customers: peer comparisons are unstable in a snapshot this small.")
@@ -218,6 +242,11 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         "both_count": int((selected & baseline_selected).sum()),
         "graph_edges": int(len(result.graph.edges)), "identifier_values_dropped": int(result.graph.dropped_values),
         "category_fallback_uses": int(result.fallback_uses), "warnings": warnings, "drift": drift_report,
+        # the queue's edge and the eligible population it is cut from, for the queue header and the threshold slider
+        "threshold_score": threshold,
+        "median_score": float(np.median(customers.loc[eligible, "risk_score"].to_numpy(dtype=float))) if n else None,
+        "eligible_requested_units": requested, "eligible_purchased_units": purchased,
+        "mean_return_rate": requested / purchased if purchased else None,
         "score_label": bundle.manifest["score_label"], "feature_order": bundle.feature_order,
     }
     return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=_neighbors(result),
