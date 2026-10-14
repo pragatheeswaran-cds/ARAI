@@ -91,8 +91,21 @@ def _boolean(value):
     return None if value is None else bool(value)
 
 
+def basket_expectation(row: dict) -> dict | None:
+    """Actual against expected units with the normal band, for the queue's cleared rows and the case; None without mature lines."""
+    measures = row.get("measures") or {}
+    expected = measures.get("expected_units")
+    if expected is None or not row["mature_purchased_units"]:
+        return None
+    return {"actual_units": int(row["mature_requested_units"]), "purchased_units": int(row["mature_purchased_units"]),
+            "expected_units": float(expected), "sd": _number(measures.get("expected_sd")),
+            "band_low": _number(measures.get("expected_band_low")), "band_high": _number(measures.get("expected_band_high")),
+            "z": _number(measures.get("residual_z"))}
+
+
 def customer_item(row: dict, latest_disposition: str | None) -> dict:
     return {
+        "basket_expectation": basket_expectation(row), "cleared_reason": (row.get("measures") or {}).get("cleared_reason"),
         "customer_id": row["customer_id"], "eligibility_status": row["eligibility_status"],
         "raw_score": _number(row["raw_score"]), "risk_score": _number(row["risk_score"]), "rank": _integer(row["rank"]),
         "selected_for_review": bool(row["selected_for_review"]), "baseline_rank": _integer(row["baseline_rank"]),
@@ -146,6 +159,16 @@ def customer_case(store: Store, run_id: str, customer: dict) -> dict:
         _signal("expected_return_rate", "Expected return rate for the products bought", row["expected_return_rate"], None, "share"),
         _signal("residual_z", "Requested above expected, scaled by volume (heuristic, not a significance test)", row["residual_z"],
                 None, "score"),
+        _signal("expected_band_low", "Low edge of the normal band: expected units less two standard deviations",
+                row.get("expected_band_low"), row["mature_purchased_units"], "units of mature purchased units"),
+        _signal("expected_band_high", "High edge of the normal band: expected units plus two standard deviations",
+                row.get("expected_band_high"), row["mature_purchased_units"], "units of mature purchased units"),
+        _signal("bracketing_units", "Units bought as two or more sizes of one style in one order (size bracketing)",
+                row.get("bracket_units_ordered"), row["mature_purchased_units"], "units of mature purchased units"),
+        _signal("bracketing_kept_units", "Of the bracketed units, the ones kept", row.get("bracket_units_kept"),
+                row.get("bracket_units_ordered"), "units of bracketed units"),
+        _signal("median_return_day", "Median day after delivery at which this customer's return requests were made",
+                row.get("median_return_day"), None, "days"),
         _signal("claim_lines", "Transaction-claim lines (not received, wrong item, missing parts, empty package)", row["claim_lines"],
                 row["timed_return_lines"], "of return lines", claims[:SOURCE_REFS]),          # withdrawn requests are not counted, as everywhere
         _signal("claim_share", "Share of requested units that are transaction claims", row["claim_share"], row["all_requested_units"],

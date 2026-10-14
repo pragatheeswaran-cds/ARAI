@@ -995,6 +995,51 @@ def test_the_queue_filters_on_the_wardrobing_band(client, env, written):
         assert client.get(url, params={"review_only": "false", "wardrobing": "possible", "cursor": first["next_cursor"]}).status_code == 422
 
 
+def test_the_basket_expectation_band_and_the_cleared_reason_follow_the_stated_rules(client, env, written):
+    run = scored_run(client, env, written)
+    conforms("Run", run)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    everyone = all_pages(client, url, {"review_only": "false"})
+    eligible = [c for c in everyone if c["eligibility_status"] == "eligible"]
+    rates = pd.Series([c["support_counts"]["mature_requested_units"] / c["support_counts"]["mature_purchased_units"] for c in eligible])
+    assert run["heavy_returner_cutoff"] == pytest.approx(rates.quantile(0.9, interpolation="linear"))   # the gate's own definition
+    heavy_cleared = [c for c in eligible if not c["selected_for_review"]
+                     and c["basket_expectation"]["actual_units"] / c["basket_expectation"]["purchased_units"] >= run["heavy_returner_cutoff"]]
+    assert heavy_cleared, "the rule reviews a different set than the raw rate does"
+    for c in everyone:
+        basket = c["basket_expectation"]
+        if c["support_counts"]["mature_purchased_units"] == 0:
+            assert basket is None
+            continue
+        assert basket["actual_units"] == c["support_counts"]["mature_requested_units"]
+        assert basket["purchased_units"] == c["support_counts"]["mature_purchased_units"]
+        if basket["sd"] is not None:
+            assert basket["band_low"] == pytest.approx(max(0.0, basket["expected_units"] - 2 * basket["sd"]))
+            assert basket["band_high"] == pytest.approx(basket["expected_units"] + 2 * basket["sd"])
+            assert basket["z"] == pytest.approx((basket["actual_units"] - basket["expected_units"]) / basket["sd"])   # the model's own z
+        if c["eligibility_status"] != "eligible" or c["selected_for_review"]:
+            assert c["cleared_reason"] is None
+        else:
+            assert c["cleared_reason"] in ("size_bracketing", "high_return_styles", "as_basket_predicts", "below_threshold")
+    assert sum(c["basket_expectation"]["sd"] is not None for c in eligible) > len(eligible) * 0.9
+    assert {c["cleared_reason"] for c in eligible if not c["selected_for_review"]} >= {"as_basket_predicts", "below_threshold"}
+    # the reason is the first rule that holds, read off the case's own signals
+    for c in [x for x in eligible if not x["selected_for_review"]][:25]:
+        case = client.get(f"{url}/{c['customer_id']}").json()
+        conforms("Case", case)
+        codes = {s["code"]: s for s in case["signals"]}
+        assert codes["expected_requested_units"]["value"] == c["basket_expectation"]["expected_units"]
+        assert codes["expected_band_low"]["value"] == c["basket_expectation"]["band_low"]
+        assert codes["bracketing_kept_units"]["denominator"] == codes["bracketing_units"]["value"]
+        bracketing = (codes["bracketing_units"]["value"] or 0) / codes["bracketing_units"]["denominator"]
+        expected_rate, z = codes["expected_return_rate"]["value"], codes["residual_z"]["value"]
+        rule = ("size_bracketing" if bracketing >= 0.5 else "high_return_styles" if expected_rate >= 0.35
+                else "as_basket_predicts" if z is not None and z < 1 else "below_threshold")
+        assert c["cleared_reason"] == rule
+        if codes["median_return_day"]["value"] is not None:
+            assert codes["median_return_day"]["value"] >= 0
+
+
 def test_the_score_distribution_counts_the_queue_at_every_threshold(client, env, written):
     run = scored_run(client, env, written)
     response = client.get(f"{API}/runs/{run['run_id']}/score-distribution")

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.4.0
+  version: 1.5.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -1131,6 +1131,7 @@ components:
       - eligible_requested_units
       - eligible_purchased_units
       - graph_edges
+      - heavy_returner_cutoff
       properties:
         run_id: *id001
         dataset_id: *id001
@@ -1238,6 +1239,13 @@ components:
           nullable: true
           description: Supported relationship edges found in the snapshot (two or more shared identifier types). Null
             until the run succeeded.
+        heavy_returner_cutoff:
+          type: number
+          minimum: 0
+          nullable: true
+          description: The raw return rate at the 90th percentile of this run's eligible customers (linear interpolation),
+            the gate's own definition of a heavy returner. A customer at or above it who is not selected for review is a
+            cleared heavy returner. Null until the run succeeded.
     Support:
       type: object
       additionalProperties: false
@@ -1290,6 +1298,8 @@ components:
       - evidence_tags
       - wardrobing_status
       - latest_disposition
+      - basket_expectation
+      - cleared_reason
       properties:
         customer_id: *id001
         eligibility_status:
@@ -1338,6 +1348,58 @@ components:
           - unresolved
           - null
           nullable: true
+        basket_expectation:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - actual_units
+          - purchased_units
+          - expected_units
+          - sd
+          - band_low
+          - band_high
+          - z
+          description: Units requested for return on mature sale lines against the units a customer buying the same products
+            would be expected to request, with the normal band expected +/- 2 sd, sd = sqrt(d * sum q p (1 - p)) over the
+            lines with d the mean lines per order and style clipped to [1, 4]. The same quantities the model's expected
+            return rate and residual z are built from; nothing is recomputed. sd, the band and z are null when every line's
+            expected probability is 0 or 1, and for runs scored before contract 1.5.0.
+          properties:
+            actual_units: *id008
+            purchased_units: *id008
+            expected_units:
+              type: number
+              minimum: 0
+            sd:
+              type: number
+              minimum: 0
+              nullable: true
+            band_low:
+              type: number
+              minimum: 0
+              nullable: true
+            band_high:
+              type: number
+              minimum: 0
+              nullable: true
+            z:
+              type: number
+              nullable: true
+        cleared_reason:
+          type: string
+          nullable: true
+          enum:
+          - size_bracketing
+          - high_return_styles
+          - as_basket_predicts
+          - below_threshold
+          - null
+          description: Why an eligible customer outside the review queue is not in it, as a template key the UI renders
+            in one line; the first rule that holds of size_bracketing (half or more of mature units bought as several
+            sizes of one style), high_return_styles (expected return rate of the basket .35 or more), as_basket_predicts
+            (residual z below 1), else below_threshold. Null for customers in the queue and for unranked customers. A
+            template, never generated text.
     ReviewRequest:
       type: object
       additionalProperties: false

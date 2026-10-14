@@ -71,7 +71,8 @@ def dataset_body(row: dict) -> dict:
 RUN_SUMMARY_FIELDS = {                             # Run field -> key of the summary scoring recorded; null until the run succeeded
     "review_budget": "review_budget_k", "threshold_score": "threshold_score", "median_score": "median_score",
     "mean_return_rate": "mean_return_rate", "eligible_requested_units": "eligible_requested_units",
-    "eligible_purchased_units": "eligible_purchased_units", "graph_edges": "graph_edges"}
+    "eligible_purchased_units": "eligible_purchased_units", "graph_edges": "graph_edges",
+    "heavy_returner_cutoff": "heavy_returner_cutoff"}
 
 
 def run_body(row: dict, summary: dict | None = None) -> dict:
@@ -178,7 +179,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if stop:
             stop.set()
 
-    app = FastAPI(title="ARAI development API", version="1.4.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title="ARAI development API", version="1.5.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(CORSMiddleware, allow_origins=list(config.ui_origins), allow_methods=["GET", "POST"],
                        allow_headers=["content-type"], allow_credentials=False)

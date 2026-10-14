@@ -168,6 +168,8 @@ No pipeline change; `store.py`, `views.py`, `api.py`, `openapi.yaml`, one migrat
 
 `scoring.py` only (uses `result.lines` which carries `p_expected` per mature line).
 
+**Status: done on branch `frontend-implementation` (contract 1.5.0, AM-56).** `Customer.basket_expectation` carries `actual_units`, `purchased_units`, `expected_units`, `sd`, `band_low`, `band_high`, `z`; `Customer.cleared_reason` is the template key; `Run.heavy_returner_cutoff` is the 90th percentile. The bracketing facts and the median return day are signals on the case (`bracketing_units`, `bracketing_kept_units`, `median_return_day`).
+
 - `basket_expectation {actual_units, purchased_units, expected_units, sd, band_low, band_high, z}` with
   `sd = sqrt(d × Σ q·p·(1−p))` recomputed from `result.lines` exactly as `compute_features` does, and
   `band = expected ± 2·sd`. Serve as a `Signal` group on `Case` and as three numbers on `Customer` for the

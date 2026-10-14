@@ -313,6 +313,8 @@ export interface components {
             eligible_purchased_units: number | null;
             /** @description Supported relationship edges found in the snapshot (two or more shared identifier types). Null until the run succeeded. */
             graph_edges: number | null;
+            /** @description The raw return rate at the 90th percentile of this run's eligible customers (linear interpolation), the gate's own definition of a heavy returner. A customer at or above it who is not selected for review is a cleared heavy returner. Null until the run succeeded. */
+            heavy_returner_cutoff: number | null;
         };
         Support: {
             mature_sale_lines: number;
@@ -344,6 +346,21 @@ export interface components {
             wardrobing_status: "elevated" | "possible" | "no_elevated_signal" | "insufficient_evidence" | "incomplete";
             /** @enum {string|null} */
             latest_disposition: "needs_investigation" | "likely_legitimate" | "unresolved" | null;
+            /** @description Units requested for return on mature sale lines against the units a customer buying the same products would be expected to request, with the normal band expected +/- 2 sd, sd = sqrt(d * sum q p (1 - p)) over the lines with d the mean lines per order and style clipped to [1, 4]. The same quantities the model's expected return rate and residual z are built from; nothing is recomputed. sd, the band and z are null when every line's expected probability is 0 or 1, and for runs scored before contract 1.5.0. */
+            basket_expectation: {
+                actual_units: number;
+                purchased_units: number;
+                expected_units: number;
+                sd: number | null;
+                band_low: number | null;
+                band_high: number | null;
+                z: number | null;
+            } | null;
+            /**
+             * @description Why an eligible customer outside the review queue is not in it, as a template key the UI renders in one line; the first rule that holds of size_bracketing (half or more of mature units bought as several sizes of one style), high_return_styles (expected return rate of the basket .35 or more), as_basket_predicts (residual z below 1), else below_threshold. Null for customers in the queue and for unranked customers. A template, never generated text.
+             * @enum {string|null}
+             */
+            cleared_reason: "size_bracketing" | "high_return_styles" | "as_basket_predicts" | "below_threshold" | null;
         };
         ReviewRequest: {
             reviewer_name: string;

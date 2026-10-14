@@ -20,6 +20,13 @@ DRIFT_MIN_ELIGIBLE = 200         # below this the shares are too noisy to compar
 DRIFT_P95_BAND = (0.025, 0.10)   # share scoring above the training 95th percentile that raises no warning (0.05 expected)
 SUPPORT = ["mature_sale_lines", "mature_purchased_units", "mature_requested_units", "all_requested_units"]
 TAGS = ("repeat_claims", "linked_claims", "late_returns", "returns_above_expected", "supported_links")
+BAND_SD = 2                      # the normal band around the expected units is expected +/- BAND_SD standard deviations
+HEAVY_RETURNER_QUANTILE = 0.9    # the gate's own definition of a heavy returner: raw rate at or above this quantile of eligible customers
+# the one-line reason a customer outside the queue is shown with, as a template key the UI renders; the first rule that holds
+CLEARED_REASONS = (("size_bracketing", lambda c: c["bracketing_share"] >= 0.5),
+                   ("high_return_styles", lambda c: c["expected_return_rate"] >= 0.35),
+                   ("as_basket_predicts", lambda c: c["residual_z"] < 1),
+                   ("below_threshold", lambda c: pd.Series(True, index=c.index)))
 # reason code -> the group the timeline shows beside it; the four groups partition the sixteen codes of the codebook
 REASON_GROUPS = {code: group for group, name in (("transaction_claim", "transaction_claim"), ("item_complaint", "item_complaint_customer"),
                                                   ("fit", "fit"), ("discretionary", "discretionary"))
@@ -52,6 +59,45 @@ def _tags(features: pd.DataFrame) -> pd.Series:
         "supported_links": features["supported_neighbor_count"] >= 1,
     })
     return fired.apply(lambda row: "|".join(name for name in TAGS if row[name]), axis=1)
+
+
+def _basket(result: F.FeatureResult, index: pd.Index) -> pd.DataFrame:
+    """The normal band of the basket expectation and the facts behind it, per customer, from the same lines the features use.
+
+    sd = sqrt(d * sum(q * p * (1 - p))) over the customer's mature lines with d the mean lines per order-and-style
+    group clipped to [1, 4], exactly as compute_features scales residual_z; the band is expected +/- 2 sd.
+    Bracketing: units bought as two or more sizes of one style in one order, and how many of them were kept.
+    Nothing is refit; these are sums over stored lines.
+    """
+    lines = result.lines
+    mature = lines[lines["mature"]].copy()
+    group = ["customer_id", "order_id", "style_id"]
+    variance = (mature["quantity"] * mature["p_expected"] * (1 - mature["p_expected"])).groupby(mature["customer_id"]).sum()
+    d = mature.groupby(group).size().groupby("customer_id").mean().clip(1, F.OVERDISPERSION_CAP)
+    expected = (mature["quantity"] * mature["p_expected"]).groupby(mature["customer_id"]).sum()
+    sd = np.sqrt(d * variance.where(variance > 0))
+    sizes = mature.groupby(group)["size"].transform("nunique")
+    bracketed = mature[sizes >= 2]
+    out = pd.DataFrame(index=index)
+    out["expected_sd"] = sd.reindex(index)
+    out["expected_band_low"] = (expected - BAND_SD * sd).clip(lower=0).reindex(index)
+    out["expected_band_high"] = (expected + BAND_SD * sd).reindex(index)
+    out["bracket_groups"] = bracketed.drop_duplicates(group).groupby("customer_id").size().reindex(index, fill_value=0).astype(int)
+    out["bracket_units_ordered"] = bracketed.groupby("customer_id")["quantity"].sum().reindex(index, fill_value=0).astype(int)
+    out["bracket_units_kept"] = (bracketed["quantity"] - bracketed["requested_units"]).groupby(bracketed["customer_id"]).sum() \
+        .reindex(index, fill_value=0).astype(int)
+    timed = result.requests[result.requests["days"] >= 0]
+    out["median_return_day"] = timed.groupby("customer_id")["days"].median().reindex(index)
+    return out
+
+
+def _cleared_reason(customers: pd.DataFrame) -> pd.Series:
+    """Template key for every eligible customer outside the queue; None for the queue and for unranked customers."""
+    reason = pd.Series(None, index=customers.index, dtype=object)
+    cleared = (customers["eligibility_status"] == "eligible") & ~customers["selected_for_review"]
+    for key, rule in reversed(CLEARED_REASONS):                   # the first rule in CLEARED_REASONS wins
+        reason[cleared & rule(customers).fillna(False).astype(bool)] = key
+    return reason
 
 
 def _neighbors(result: F.FeatureResult) -> pd.DataFrame:
@@ -208,6 +254,10 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         if name not in customers:
             customers[name] = customers["customer_id"].map(wardrobing[name])
     customers["evidence_tags"] = _tags(customers)
+    basket = _basket(result, pd.Index(customers["customer_id"]))
+    for name in basket.columns:
+        customers[name] = basket[name].to_numpy()
+    customers["cleared_reason"] = _cleared_reason(customers)
 
     styles = result.styles.sort_values("style_id").reset_index(drop=True)
     skus = result.skus.merge(tables["sku_master"][["sku", "size", "colour", "unit_price"]], on="sku", how="left") \
@@ -223,6 +273,8 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
     threshold = float(customers.loc[at_budget, "risk_score"].iloc[0]) if k and at_budget.any() else None
     requested = int(customers.loc[eligible, "mature_requested_units"].sum())
     purchased = int(customers.loc[eligible, "mature_purchased_units"].sum())
+    rates = customers.loc[eligible, "raw_return_rate"].dropna()
+    heavy_cutoff = float(rates.quantile(HEAVY_RETURNER_QUANTILE, interpolation="linear")) if len(rates) else None
     warnings = []
     if n < SMALL_POPULATION:
         warnings.append(f"Only {n} eligible customers: peer comparisons are unstable in a snapshot this small.")
@@ -247,6 +299,7 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         "median_score": float(np.median(customers.loc[eligible, "risk_score"].to_numpy(dtype=float))) if n else None,
         "eligible_requested_units": requested, "eligible_purchased_units": purchased,
         "mean_return_rate": requested / purchased if purchased else None,
+        "heavy_returner_cutoff": heavy_cutoff,
         "score_label": bundle.manifest["score_label"], "feature_order": bundle.feature_order,
     }
     return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=_neighbors(result),
