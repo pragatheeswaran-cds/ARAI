@@ -1,0 +1,18 @@
+<section id="workflow" data-transition="fade" style="background:#1B2A41;color:#F6F4EE;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;line-height:1.1">The rule lives in the server, not in the button</h2>
+<div style="display:flex;gap:40px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#243650;padding:40px;border-radius:16px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#E0A458">Refusal</p>
+<p style="font-size:28px;line-height:1.4;color:#D9E2EC">The reviewer who opened the case writes a note and presses Approve. The server answers, and the page shows its words:</p>
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:36px;line-height:1.3;font-style:italic">“You opened this case. A different reviewer must approve or reject it.”</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#243650;padding:40px;border-radius:16px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#7FCFC8">Approval</p>
+<p style="font-size:28px;line-height:1.4;color:#D9E2EC">A second reviewer types their name, writes a note and presses Approve. The status tile turns to Approved with both names and times.</p>
+<p style="font-size:28px;line-height:1.4;color:#D9E2EC">Notes are append only and each one says which run it was written on.</p>
+</div>
+</div>
+<p style="font-size:28px;line-height:1.4;color:#9FB1C4">Also on the page: “If the threshold moved”, a slider that shows how many customers the queue would hold at any score. It changes nothing on the server.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#9FB1C4">11 / 19 · Screen: Customer case, Notes tab and Decision panel</p>
+<aside>The top case is already in review, opened by "Walkthrough reviewer". First type that name into the header, write a note and press Approve to show the refusal. Then change the name to the second reviewer and approve. Reviewer names are free text in this build, not an authenticated identity; say so if asked.</aside>
+</section>

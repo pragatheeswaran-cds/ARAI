@@ -1,6 +1,7 @@
 # Demo script: the ARAI workbench on world W5401
 
-A story and a click-by-click flow for a 20 to 25 minute demonstration of the return-abuse workbench. Every number
+A story and a click-by-click flow for a 20 to 25 minute demonstration of the return-abuse workbench. The slide deck
+built from it is in `docs/demo-deck/`. Every number
 below is what the screens show for the demonstration world W5401 scored on experiment 4 (run
 `run-ed95a0e2fd3e49a69d4d`, 15 Oct 2026). Screenshots of each scene are in `reports/ui/2026-10-15/`.
 

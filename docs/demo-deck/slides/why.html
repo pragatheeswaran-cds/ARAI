@@ -1,0 +1,17 @@
+<section id="why" data-transition="fade" style="background:#F6F4EE;color:#1B2A41;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;line-height:1.1">Why this score: the score without each family</h2>
+<table style="font-size:28px;font-variant-numeric:tabular-nums;background:#FFFFFF;border:1px solid #DDD8CC">
+<tr style="background:#1B2A41;color:#F6F4EE"><th style="width:34%;text-align:left">Family removed</th><th style="width:22%;text-align:right">Score without it</th><th style="width:22%;text-align:right">Change in points</th><th style="width:22%;text-align:left">Still in the queue?</th></tr>
+<tr><td>Transaction claims</td><td style="text-align:right">99.99</td><td style="text-align:right">0.0</td><td>Yes, High</td></tr>
+<tr style="background:#FBEFD9"><td><b>Return timing</b></td><td style="text-align:right"><b>51.7</b></td><td style="text-align:right"><b>-48.3</b></td><td><b>No, Low</b></td></tr>
+<tr><td>Returns against the basket’s expectation</td><td style="text-align:right">99.81</td><td style="text-align:right">-0.2</td><td>Yes, High</td></tr>
+<tr><td>What is returned</td><td style="text-align:right">99.92</td><td style="text-align:right">-0.1</td><td>Yes, High</td></tr>
+<tr><td>Volume</td><td style="text-align:right">100.0</td><td style="text-align:right">0.0</td><td>Yes, High</td></tr>
+</table>
+<div style="display:flex;gap:40px">
+<p style="flex:1;font-size:28px;line-height:1.4;color:#44505E">These are not parts that add up. Each row is the score the customer would have with that family held at its typical value. Here one family carries the case: without return timing, the customer leaves the queue.</p>
+<p style="flex:1;font-size:28px;line-height:1.4;color:#44505E">Underneath, the five legacy analyst rules and whether each would have fired. Here two fire: return rate and refund ratio above the training 90th percentile. The claim and link rules do not.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7480">9 / 19 · Screen: Customer case, “Why this score” and “Analyst rules that would have fired”</p>
+<aside>Say the sentence on the panel: these are not parts that add up. The breakdown is a what-if per family at typical training values, so a reviewer can see which evidence carries a case without being shown a false decomposition. The analyst rules are shown so that the old vocabulary stays available beside the new ranking.</aside>
+</section>

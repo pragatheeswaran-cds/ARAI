@@ -1,0 +1,23 @@
+<section id="upload" data-transition="fade" style="background:#EEF1F4;color:#1B2A41;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;line-height:1.1">How a new month gets in</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#FFFFFF;padding:36px;border:1px solid #D5DAE0;border-radius:16px">
+<p style="font-size:72px;font-weight:600;line-height:1;color:#2F7F7A">1</p>
+<h3 style="font-size:30px;font-weight:600">Register a snapshot</h3>
+<p style="font-size:26px;line-height:1.4;color:#44505E">Eight files: a manifest and seven tables. Validation against the data contract runs on upload; a snapshot that fails is rejected whole, and the page lists every broken rule.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#FFFFFF;padding:36px;border:1px solid #D5DAE0;border-radius:16px">
+<p style="font-size:72px;font-weight:600;line-height:1;color:#2F7F7A">2</p>
+<h3 style="font-size:30px;font-weight:600">Score with the active bundle</h3>
+<p style="font-size:26px;line-height:1.4;color:#44505E">The stepper shows the stages as the worker reports them: validate, features, eligibility, scoring, evidence, publish. 10,000 customers took 13 seconds. A run can be cancelled while it is in progress.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#FFFFFF;padding:36px;border:1px solid #D5DAE0;border-radius:16px">
+<p style="font-size:72px;font-weight:600;line-height:1;color:#2F7F7A">3</p>
+<h3 style="font-size:30px;font-weight:600">Scoring readiness</h3>
+<p style="font-size:26px;line-height:1.4;color:#44505E">Names the active bundle, the baseline it falls back to, and the worker’s last heartbeat. When no model passes the gate, the return-rate baseline is served and the banner says why.</p>
+</div>
+</div>
+<p style="font-size:28px;line-height:1.4;color:#44505E">Registering W5401 again answers with the existing dataset; a new run starts with a fresh idempotency key, and previous runs and notes stay.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7480">18 / 19 · Screen: Datasets &amp; runs</p>
+<aside>Show without necessarily doing it; the demo is about the queue, not the upload. If time allows, register W5401 again and start a run to show the stepper live. The baseline-fallback behaviour is demonstrated by tests/e2e/fallback_check.py if anyone asks what happens when no model passes.</aside>
+</section>
