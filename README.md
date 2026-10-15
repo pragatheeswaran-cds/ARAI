@@ -28,6 +28,7 @@ The web side is a React/Vite app under `web/`.
 uv sync                                    # create .venv from uv.lock
 cd web && npm install && npm run build     # build the UI once
 cd .. && uv run arai local                 # embedded PostgreSQL + API + worker + UI on http://127.0.0.1:8000
+uv run arai baseline-rehearsal             # optional second instance serving the return-rate rule only, http://127.0.0.1:8011
 ```
 
 `arai local` needs the artifacts of the current experiment (worlds, bundles, the published experiment). They are

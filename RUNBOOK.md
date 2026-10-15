@@ -96,6 +96,22 @@ uv run arai local
 This deletes every registered dataset, run and review note. The model bundles and the experiment report are
 not touched. Afterwards register and score the demonstration world again (section 4).
 
+### Baseline rehearsal: a second instance serving the return-rate rule only
+
+For the demo's cold open (docs\demo-script.md section 1d), a second instance shows what the product serves when
+no model has passed the gate: the return-rate ranking, the banner that says so, and no comparison views.
+
+```powershell
+uv run arai baseline-rehearsal              # http://127.0.0.1:8011
+```
+
+It keeps its own database and artifact folder under `data\EXP-20261005-04\baseline-rehearsal` (the bundles are
+copied, the published report is rewritten as if no candidate had passed, the baseline is activated), so it can run
+beside `arai local` without sharing anything. On first start it registers and scores W5401 with the rule, about
+15 seconds; later starts reuse the run. Stop it with Ctrl+C like the main instance. `--fresh` rebuilds its folder
+from the current bundles, `--port` and `--demo-world` change the defaults. The run-time check
+`tests\e2e\fallback_check.py` exercises the same mode on a temporary instance.
+
 ---
 
 ## 3. Docker Compose: start, stop

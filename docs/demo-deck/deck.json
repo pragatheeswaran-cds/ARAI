@@ -1,20 +1,68 @@
 {
   "v": 4,
-  "createdOnFiles": {"v": 1, "at": "2026-10-15T15:40:00Z"},
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-15T15:40:00Z"
+  },
   "lists": "css",
   "title": "ARAI Demo Deck",
-  "order": ["cover", "premise", "simulated", "numbers", "compare", "queue", "views", "case", "why", "indicator", "workflow", "ring", "styles", "curve", "scorecard", "finaltest", "limits", "upload", "close"],
+  "order": [
+    "cover",
+    "premise",
+    "simulated",
+    "coldopen",
+    "numbers",
+    "compare",
+    "queue",
+    "views",
+    "case",
+    "why",
+    "indicator",
+    "workflow",
+    "ring",
+    "styles",
+    "curve",
+    "scorecard",
+    "finaltest",
+    "limits",
+    "upload",
+    "close"
+  ],
   "sections": {
-    "s1": {"description": "Why return rate is the wrong queue, and what the demo world is.", "start": "cover"},
-    "s2": {"description": "The queue a reviewer sees and the three views that explain it.", "start": "queue"},
-    "s3": {"description": "One case end to end, then a ring.", "start": "case"},
-    "s4": {"description": "Products, not people: whose problem each style is.", "start": "styles"},
-    "s5": {"description": "What the numbers rest on, and their limits.", "start": "curve"},
-    "s6": {"description": "How a new month gets in, and the three takeaways.", "start": "upload"}
+    "s1": {
+      "description": "Why return rate is the wrong queue, the simulated world, and the week with the rule seen live.",
+      "start": "cover"
+    },
+    "s2": {
+      "description": "The queue a reviewer sees and the three views that explain it.",
+      "start": "queue"
+    },
+    "s3": {
+      "description": "One case end to end, then a ring.",
+      "start": "case"
+    },
+    "s4": {
+      "description": "Products, not people: whose problem each style is.",
+      "start": "styles"
+    },
+    "s5": {
+      "description": "What the numbers rest on, and their limits.",
+      "start": "curve"
+    },
+    "s6": {
+      "description": "How a new month gets in, and the three takeaways.",
+      "start": "upload"
+    }
   },
   "faces": {
-    "source-serif-4": {"family": "Source Serif 4", "href": "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600&display=swap"},
-    "ibm-plex-sans": {"family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"}
+    "source-serif-4": {
+      "family": "Source Serif 4",
+      "href": "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600&display=swap"
+    },
+    "ibm-plex-sans": {
+      "family": "IBM Plex Sans",
+      "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    }
   },
   "designSystems": []
 }

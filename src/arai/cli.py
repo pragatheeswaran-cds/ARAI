@@ -170,6 +170,84 @@ def _local(args) -> int:
     return 0
 
 
+def _baseline_rehearsal(args) -> int:
+    """A second local instance that serves the return-rate rule only: the demo's cold open (docs/demo-script.md, 1d).
+
+    It keeps its own database and artifact folder under data/<contract>/baseline-rehearsal, so it runs beside `arai local`
+    without sharing anything: the bundles are copied, the published report is rewritten as if no candidate had passed the
+    gate, and the baseline is activated. On first start the demo world is registered and scored with the rule.
+    """
+    import logging
+    import shutil
+    import threading
+    import time
+
+    import httpx
+    import uvicorn
+
+    from arai import bundles, paths
+    from arai.operational import TABLES
+    from arai.service.api import create_app
+    from arai.service.config import ServiceConfig
+    try:
+        import pgserver
+    except ImportError:
+        print("The embedded PostgreSQL is a development dependency: run `uv sync`.")
+        return 1
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    work = paths.DATA_ROOT / "baseline-rehearsal"
+    if args.fresh and work.exists():
+        shutil.rmtree(work)
+    root = work / "artifacts"
+    if not (root / "active" / "active.json").is_file():
+        shutil.copytree(paths.ARTIFACT_ROOT / "bundles", root / "bundles", dirs_exist_ok=True)
+        source = next((paths.ARTIFACT_ROOT / "experiments").glob("*/published/experiment.json"))
+        report = json.loads(source.read_text(encoding="utf-8"))
+        report["summary"].update(selection_status="no_selected_model", selected_model_id=None, selected_candidate_id=None,
+                                 final_test_status="not_run")
+        published = root / "experiments" / report["summary"]["experiment_id"] / "published"
+        published.mkdir(parents=True, exist_ok=True)
+        (published / "experiment.json").write_text(json.dumps(report), encoding="utf-8")
+        baseline_id = next(p.name for p in sorted((root / "bundles").iterdir()) if p.name.startswith("b-"))
+        bundles.activate(None, baseline_id, "no_selected_model", report["summary"]["experiment_id"],
+                         "Baseline rehearsal: the return-rate rule is served as if no candidate had passed the gate.", root)
+    server = pgserver.get_server(work / "postgres")
+    static = paths.REPO_ROOT / "web" / "dist"
+    if not (static / "index.html").is_file():
+        print("web/dist is missing: run `npm install` and `npm run build` in web/ to serve the UI; starting the API only.")
+        static = None
+    config = ServiceConfig(database_url=server.get_uri(), artifact_root=root)
+    base = f"http://{args.host}:{args.port}"
+
+    def seed():
+        """Once the API answers: register and score the demo world with the rule, unless a run already succeeded here."""
+        with httpx.Client(timeout=300) as client:
+            for _ in range(240):
+                try:
+                    if client.get(base + "/api/v1/health").status_code == 200:
+                        break
+                except httpx.HTTPError:
+                    pass
+                time.sleep(0.5)
+            else:
+                return
+            if any(r["status"] == "succeeded" for r in client.get(base + "/api/v1/runs").json()["items"]):
+                print(f"baseline rehearsal: {args.demo_world} is already scored here; open {base}")
+                return
+            world = paths.ARTIFACT_ROOT / "worlds" / args.demo_world / "operational"
+            files = {name: (f"{name}.csv", (world / f"{name}.csv").read_bytes(), "text/csv") for name in TABLES}
+            dataset = client.post(base + "/api/v1/datasets", data={"manifest": (world / "manifest.json").read_text(encoding="utf-8")},
+                                  files=files).json()
+            run = client.post(base + "/api/v1/runs", json={"dataset_id": dataset["dataset_id"],
+                                                           "idempotency_key": f"baseline-rehearsal-{dataset['dataset_id']}"}).json()
+            print(f"baseline rehearsal: scoring {args.demo_world} with the return-rate rule, run {run.get('run_id')}; open {base}")
+
+    threading.Thread(target=seed, daemon=True).start()
+    print(f"ARAI baseline rehearsal (return-rate rule only) on {base}  (database in {server.pgdata}); run `arai local` on another port")
+    uvicorn.run(create_app(config, with_worker=True, static_dir=static), host=args.host, port=args.port, log_level="info")
+    return 0
+
+
 def _worker(args) -> int:
     import logging
 
@@ -254,6 +332,14 @@ def main(argv=None) -> int:
     local.add_argument("--port", type=int, default=8000)
     local.add_argument("--pg-dir", type=Path, default=None, help="PostgreSQL data directory (default: postgres/ in the contract's data folder)")
     local.set_defaults(run=_local)
+    rehearsal = commands.add_parser("baseline-rehearsal", help="a second local instance serving the return-rate rule only (the demo's "
+                                                             "cold open): its own database and artifacts under data/<contract>/"
+                                                             "baseline-rehearsal, the demo world scored on first start")
+    rehearsal.add_argument("--host", default="127.0.0.1")
+    rehearsal.add_argument("--port", type=int, default=8011)
+    rehearsal.add_argument("--demo-world", default="W5401")
+    rehearsal.add_argument("--fresh", action="store_true", help="rebuild the rehearsal folder from the current bundles")
+    rehearsal.set_defaults(run=_baseline_rehearsal)
     register = commands.add_parser("register", help="validate and register an operational world directory as a dataset")
     register.add_argument("directory", type=Path)
     register.set_defaults(run=_register)

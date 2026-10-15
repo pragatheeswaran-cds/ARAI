@@ -95,10 +95,33 @@ what it replaced.
 | Evaluation, "Abusers caught against alerts used" | First 58 alerts: 58 abusers against 19; 0 honest heavy returners against 39 | Same budget, three times the hits |
 | Evaluation, "How often each ranking is right" | Rule 22.7 percent, analyst rulebook 32.4, model 74.3 | Four of five visits find nothing |
 
+## 1d. Optional cold open: the week with the rule, live
+
+The product can serve the return-rate rule on its own: that is what it does when no model has passed the gate. A
+second instance in that state, on the same W5401 data, lets the audience see week one instead of hearing it.
+
+```powershell
+uv run arai baseline-rehearsal          # http://127.0.0.1:8011, keeps its own database; first start scores W5401 (about 15 s)
+```
+
+Run it beside `uv run arai local` (port 8000); the two never share a folder. Open http://127.0.0.1:8011 in a
+second tab. What the room sees: the banner saying no candidate passed the gate and the return-rate ranking is
+active; 284 names ranked by a return-rate percentile with nothing else in the score column; no comparison views
+and no rule column, because there is nothing to compare against; and the first case, a high return rate with no
+pattern that explains the rank. Say the week-one lines over it, ninety seconds at most, then switch to the port
+8000 tab: "same Monday, the other list". If the second instance is not running, skip this and tell week one from
+the premise slide; nothing else in the demo depends on it.
+
+`--fresh` rebuilds the rehearsal folder (`data\EXP-20261005-04\baseline-rehearsal`) from the current bundles;
+`--port` and `--demo-world` change the defaults. The instance's notes and runs persist between starts like the
+main one's.
+
 ---
 
 ## 2. Before the audience arrives
 
+0. For the cold open (section 1d), start `uv run arai baseline-rehearsal` first and check http://127.0.0.1:8011
+   shows the baseline banner and a scored run.
 1. Start the application and wait for the health line (RUNBOOK.md section 2):
    ```powershell
    uv run arai local
@@ -122,6 +145,7 @@ what it replaced.
 
 | Minute | Scene | Screen | Point made |
 |---|---|---|---|
+| before 0 | Cold open, optional | Baseline rehearsal instance, port 8011 | The week with the rule, seen live: a queue with nothing but a return-rate percentile |
 | 0 to 2 | Why return rate is the wrong queue | Overview | 209 customers the model selects that the rule does not, and the reverse |
 | 2 to 6 | The queue a reviewer sees | Customer queue | Tiers anchored to the budget, Escalate against Hold, rings grouped, the rule's rank beside the model's |
 | 6 to 13 | One case end to end | Customer case, W5401-C03245 | Expected against actual, why the score, reason codes, notes, the second-reviewer rule |
