@@ -199,8 +199,8 @@ Go back to the queue, set **Group: by ring**, and open rank 4, W5401-C08645. Gat
   customer's other returns predict.
 
 Compare with rank 3, W5401-C05428, whose ring has 3 of 5 members in the queue and one member with insufficient
-history: the queue still shows that member inside the ring, greyed, so the reviewer knows the fifth account
-exists.
+history: the linked-accounts panel still lists that member inside the ring, unranked, so the reviewer knows the
+fifth account exists.
 
 ### 4.5 Style investigation (16 to 19 minutes)
 
@@ -234,9 +234,9 @@ Click **Evaluation**. This is Priya's page: what the queue costs and what it res
 
 - **Abusers caught against alerts used.** Two curves on this very run, drawn from the simulation's truth, which
   the server exposes only here and marks as such: for every number of alerts, how many of W5401's 341 abusers
-  each ranking catches and how many of its 440 legitimate heavy returners it drags in. The model's first 87
-  alerts catch 87 abusers and no honest heavy returner; the rule's first 87 catch about 19 and review about 39
-  honest heavy returners.
+  each ranking catches and how many of its 440 legitimate heavy returners it drags in. The model's first 58
+  alerts catch 58 abusers and no honest heavy returner; the rule's first 58 catch 19 and review 39 honest heavy
+  returners.
 - **How often each ranking is right** (validation worlds, five percent budget):
 
   | Ranking | Precision | Recall | Honest heavy returners sent for review |
