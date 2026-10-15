@@ -291,9 +291,12 @@ and mirror the server rule where one exists.
 
 ---
 
-## 5. Decisions needed before building
+## 5. Decisions
 
-| # | Decision | Recommendation |
+**All eight decided on 2026-10-15, each on the recommendation.** The table is kept as the record; the
+work packages above build to these.
+
+| # | Decision | Decided |
 |---|---|---|
 | D1 | Tier cutoffs on a training-percentile score | Anchor to the queue: HIGH = selected, MEDIUM = `risk_score ≥ 90` and not selected, LOW otherwise. The design's 45/75 would label a quarter of customers HIGH. |
 | D2 | Gate outcome rule | The rule in WP2, versioned in `openapi.yaml` as an enum with its definition in the description. It is a presentation rule, not a model output, and the UI should say so. |
