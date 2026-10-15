@@ -1408,6 +1408,37 @@ def test_a_dataset_nothing_was_scored_on_can_be_removed_and_one_with_runs_is_kep
     assert client.delete(f"{API}/datasets/{created.json()['dataset_id']}").status_code == 404
 
 
+def test_the_clean_up_removes_notes_runs_and_datasets_in_the_right_order_and_keeps_the_rest(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    first = client.get(url, params={"limit": 1}).json()["items"][0]["customer_id"]
+    assert client.post(f"{url}/{first}/reviews", json={"reviewer_name": "Asha", "disposition": "unresolved", "note": "n",
+                                                      "idempotency_key": "clean-1"}).status_code == 201
+    store = Store(env["config"].database_url)
+    before = store.counts()
+    assert before["runs"] >= 1 and before["reviews"] == 1 and before["result_rows"] > 0 and before["models"] >= 1
+    # datasets without runs: nothing goes while the run refers to the dataset
+    assert store.wipe(datasets=True)["datasets"] == [] and store.counts()["datasets"] == before["datasets"]
+    # notes only
+    assert store.wipe(notes=True)["reviews"] == 1 and store.counts()["reviews"] == 0
+    assert client.post(f"{url}/{first}/reviews", json={"reviewer_name": "Asha", "disposition": "unresolved", "note": "n",
+                                                      "idempotency_key": "clean-1"}).status_code == 201   # the key is free again
+    # runs take their results, memos and notes; the dataset, models and experiments stay
+    removed = store.wipe(runs=True)
+    assert removed["runs"] == before["runs"] and removed["result_rows"] == before["result_rows"] and removed["reviews"] == 1
+    after = store.counts()
+    assert after["runs"] == 0 and after["result_rows"] == 0 and after["reviews"] == 0 and after["run_memos"] == 0
+    assert after["datasets"] == before["datasets"] and after["models"] == before["models"] and after["experiments"] == before["experiments"]
+    assert client.get(f"{API}/runs/{run['run_id']}").status_code == 404
+    # now the dataset can go, and the files with it (the caller removes them by artifact key)
+    gone = store.wipe(datasets=True)["datasets"]
+    assert [d["id"] for d in gone] == [run["dataset_id"]] and store.counts()["datasets"] == 0
+    assert client.get(f"{API}/datasets/{run['dataset_id']}").status_code == 404
+    # scoring still works afterwards: register again and run
+    again = register(client, written)
+    assert client.post(f"{API}/runs", json={"dataset_id": again["dataset_id"], "idempotency_key": "after-clean"}).status_code == 202
+
+
 def test_responses_carry_hardening_headers_and_missing_assets_are_not_the_app_shell(client, env):
     answer = client.get(f"{API}/health")
     assert answer.headers["x-content-type-options"] == "nosniff" and answer.headers["x-frame-options"] == "DENY"

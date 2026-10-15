@@ -29,6 +29,7 @@ uv sync                                    # create .venv from uv.lock
 cd web && npm install && npm run build     # build the UI once
 cd .. && uv run arai local                 # embedded PostgreSQL + API + worker + UI on http://127.0.0.1:8000
 uv run arai baseline-rehearsal             # optional second instance serving the return-rate rule only, http://127.0.0.1:8011
+uv run arai db-clean --all --dry-run       # housekeeping for either demo database: notes, runs, datasets or a full reset
 ```
 
 `arai local` needs the artifacts of the current experiment (worlds, bundles, the published experiment). They are

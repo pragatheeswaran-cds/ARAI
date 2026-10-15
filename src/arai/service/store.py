@@ -158,6 +158,50 @@ class Store:
             db.execute("DELETE FROM datasets WHERE id = %s", (dataset_id,))
         return row
 
+    # ------------------------------------------------------------------ demo housekeeping (arai db-clean)
+    def counts(self) -> dict:
+        """How much the database holds, for the clean-up command's report: datasets, runs, result rows, reviews, memos."""
+        with self.transaction() as db:
+            out = {name: db.execute(f"SELECT count(*) AS n FROM {name}").fetchone()["n"]
+                   for name in ("datasets", "runs", "reviews", "run_memos", "models", "experiments")}
+            out["result_rows"] = sum(db.execute(f"SELECT count(*) AS n FROM {name}").fetchone()["n"] for name in RESULT_TABLES)
+            out["worlds"] = [r["world_id"] for r in db.execute("SELECT world_id FROM datasets ORDER BY world_id").fetchall()]
+        return out
+
+    def wipe(self, notes: bool = False, runs: bool = False, datasets: bool = False, world_id: str | None = None) -> dict:
+        """Remove demo state, in one transaction: review notes, runs with their results and memos, registered datasets.
+
+        Models, the active pointer, experiments and the worker heartbeat stay. `world_id` narrows every part to one world.
+        Runs cannot go without the notes written under them (a note names its origin run), so `runs` also removes those
+        notes; datasets cannot go while a run refers to them, so `datasets` without `runs` removes only datasets with no
+        run. Returns what was removed, with the artifact keys of the removed datasets so the caller can delete their files.
+        """
+        removed = {"reviews": 0, "runs": 0, "result_rows": 0, "memos": 0, "datasets": [], "idempotency": 0}
+        scope = " WHERE world_id = %s" if world_id else ""
+        values = (world_id,) if world_id else ()
+        with self.transaction() as db:
+            if notes:
+                removed["reviews"] += db.execute(f"DELETE FROM reviews{scope}", values).rowcount
+            if runs:
+                gone = [r["id"] for r in db.execute(f"SELECT id FROM runs{scope}", values).fetchall()]
+                if gone:
+                    removed["reviews"] += db.execute("DELETE FROM reviews WHERE run_id = ANY(%s)", (gone,)).rowcount
+                    removed["memos"] += db.execute("DELETE FROM run_memos WHERE run_id = ANY(%s)", (gone,)).rowcount
+                    for name in RESULT_TABLES:
+                        removed["result_rows"] += db.execute(f"DELETE FROM {name} WHERE run_id = ANY(%s)", (gone,)).rowcount
+                    db.execute("UPDATE runs SET retry_of = NULL WHERE retry_of = ANY(%s)", (gone,))
+                    removed["runs"] += db.execute("DELETE FROM runs WHERE id = ANY(%s)", (gone,)).rowcount
+            if datasets:
+                rows = db.execute(f"""SELECT id, world_id, artifact_key FROM datasets d{scope}{' AND' if scope else ' WHERE'}
+                                     NOT EXISTS (SELECT 1 FROM runs r WHERE r.dataset_id = d.id)""", values).fetchall()
+                for row in rows:
+                    db.execute("DELETE FROM datasets WHERE id = %s", (row["id"],))
+                    removed["datasets"].append({"id": row["id"], "world_id": row["world_id"], "artifact_key": row["artifact_key"]})
+            # idempotency records whose answer no longer exists
+            removed["idempotency"] = db.execute("""DELETE FROM idempotency WHERE response_ref NOT IN (SELECT id FROM runs)
+                                                   AND response_ref NOT IN (SELECT id FROM reviews)""").rowcount
+        return removed
+
     def dataset_by_world(self, world_id: str) -> dict | None:
         with self.transaction() as db:
             return db.execute("SELECT * FROM datasets WHERE world_id = %s", (world_id,)).fetchone()

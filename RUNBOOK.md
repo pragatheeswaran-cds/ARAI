@@ -77,7 +77,7 @@ uv run arai baseline-rehearsal --fresh      # rebuilds the fixture and starts th
 git status rehearsal\baseline                # commit the changed fixture if bundles/, experiments/ or active/ changed
 ```
 
-`--fresh` also empties the rehearsal's own database and registered snapshot (section 2.3); it never touches
+`--fresh` also empties the rehearsal's own database and registered snapshot (section 2.4); it never touches
 `data\`.
 
 ---
@@ -96,7 +96,7 @@ It prints `ARAI local rehearsal on http://127.0.0.1:8000` and is ready in about 
 open: the server runs until you stop it. This one process is the database, the API, the scoring worker and the
 UI. To use another port: `uv run arai local --port 8010`.
 
-On an empty database (first start on a machine, or after section 2.4) register and score the demonstration world
+On an empty database (first start on a machine, or after a clean-up in section 2.4) register and score the demonstration world
 once (section 4). Afterwards the Overview shows 5,676 eligible customers and 284 selected for world W5401.
 
 **Stop**
@@ -192,18 +192,35 @@ Start-Process -NoNewWindow uv -ArgumentList "run arai baseline-rehearsal"
 uv run arai local
 ```
 
-### 2.4 Start from an empty database (rarely needed)
+### 2.4 Clean the demo database
 
-Stop everything first, then:
+`arai db-clean` removes demo state from either embedded database and leaves the models, the active pointer and the
+experiment report alone. It does nothing without `--yes`; with `--dry-run` (or without `--yes`) it only reports what
+it would remove. It may run while the instance is up: the pages show the change on their next load.
 
 ```powershell
-# the product instance: deletes every registered dataset, run and review note; bundles and the report are kept
-Remove-Item -Recurse -Force .\data\EXP-20261005-04\postgres, .\data\EXP-20261005-04\artifacts\datasets
-uv run arai local                        # then register and score W5401 again (section 4)
-
-# the baseline rehearsal: the same, through its own flag
-uv run arai baseline-rehearsal --fresh   # rebuilds the fixture, empties its database, scores W5401 again on start
+uv run arai db-clean --notes --dry-run                 # what the product instance holds, and what --notes would remove
+uv run arai db-clean --notes --yes                     # remove every review note (the walkthrough's notes among them)
+uv run arai db-clean --runs --yes                      # remove runs with their results and memos, and the notes written under them
+uv run arai db-clean --datasets --yes                  # remove registered datasets no run refers to, with their files
+uv run arai db-clean --all --yes                       # notes, runs and datasets: the product instance as on first start
+uv run arai db-clean --all --world W5401 --yes         # the same, for one world only
+uv run arai db-clean --instance rehearsal --runs --yes # the baseline rehearsal's database instead (it re-scores on its next start)
 ```
+
+After `--runs` or `--all` on the product instance, register and score the demonstration world again (section 4); the
+rehearsal does that by itself on start.
+
+**Full reset** (the database folder and the registered snapshots are deleted; the instance must be stopped):
+
+```powershell
+uv run arai db-clean --reset --yes                      # product instance: data\EXP-20261005-04\postgres and ...\artifacts\datasets
+uv run arai db-clean --instance rehearsal --reset --yes # rehearsal: rehearsal\baseline\postgres and ...\artifacts\datasets
+uv run arai baseline-rehearsal --fresh                  # rehearsal reset plus a rebuilt fixture, in one step
+```
+
+The next start rebuilds an empty database. Nothing under `data\EXP-20261005-04\artifacts` except `datasets` is
+touched by any of these: bundles, worlds and the experiment report stay.
 
 ---
 

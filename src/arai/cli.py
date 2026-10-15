@@ -257,6 +257,95 @@ def _baseline_rehearsal(args) -> int:
     return 0
 
 
+def _db_clean(args) -> int:
+    """Housekeeping for a demo database: remove notes, runs or registered datasets, or reset the instance entirely.
+
+    Works on the embedded database of `arai local` (--instance local, under data/<contract>/postgres) or of
+    `arai baseline-rehearsal` (--instance rehearsal, under rehearsal/baseline/postgres). Models, the active pointer and
+    the experiment report always stay; --reset deletes the database folder and the registered snapshots instead, which
+    is the clean slate of the runbook. Nothing is touched without --yes, and --dry-run only reports.
+    """
+    import shutil
+
+    import httpx
+
+    from arai import paths
+    from arai.service.store import Store
+    if args.instance == "local":
+        pg_dir, artifact_root, port = paths.POSTGRES_DIR, paths.ARTIFACT_ROOT, 8000
+    else:
+        work = paths.REPO_ROOT / "rehearsal" / "baseline"
+        pg_dir, artifact_root, port = work / "postgres", work / "artifacts", 8011
+    port = args.port or port
+    try:
+        running = httpx.get(f"http://127.0.0.1:{port}/api/v1/health", timeout=2).status_code == 200
+    except httpx.HTTPError:
+        running = False
+    wants = {"notes": args.notes or args.all, "runs": args.runs or args.all, "datasets": args.datasets or args.all}
+    if not any(wants.values()) and not args.reset:
+        print("Nothing chosen: pass --notes, --runs, --datasets, --all or --reset (add --dry-run to look first).")
+        return 2
+    if args.reset:
+        if running:
+            print(f"The {args.instance} instance answers on port {port}: stop it before --reset (RUNBOOK section 2).")
+            return 1
+        targets = [pg_dir, Path(artifact_root) / "datasets"]
+        print("reset removes:", ", ".join(str(t) for t in targets if t.exists()) or "nothing (already clean)")
+        if args.dry_run or not args.yes:
+            print("Dry run; add --yes to do it." if not args.yes else "Dry run.")
+            return 0
+        for target in targets:
+            shutil.rmtree(target, ignore_errors=True)
+        print("Done. The next start rebuilds the database; register and score the demonstration world again (local), "
+              "or let the rehearsal score it on start.")
+        return 0
+    if not pg_dir.exists():
+        print(f"No database under {pg_dir}: nothing to clean.")
+        return 0
+    try:
+        import pgserver
+    except ImportError:
+        print("The embedded PostgreSQL is a development dependency: run `uv sync`.")
+        return 1
+    server = pgserver.get_server(pg_dir)
+    try:
+        store = Store(server.get_uri())
+        before = store.counts()
+        print(f"{args.instance} database in {pg_dir}" + (f" (instance running on port {port})" if running else ""))
+        print(f"  datasets {before['datasets']} {before['worlds']}, runs {before['runs']}, result rows {before['result_rows']}, "
+              f"notes {before['reviews']}, memos {before['run_memos']}; models {before['models']} and experiments {before['experiments']} stay")
+        chosen = [name for name, on in wants.items() if on]
+        print("  remove:", ", ".join(chosen) + (f" of world {args.world}" if args.world else ""))
+        if wants["runs"] and not wants["notes"]:
+            print("  (the notes written under the removed runs go with them; a note names its origin run)")
+        if wants["datasets"] and not wants["runs"]:
+            print("  (only datasets no run was scored on; add --runs to remove scored ones)")
+        if args.dry_run or not args.yes:
+            print("Dry run; add --yes to do it." if not args.yes else "Dry run.")
+            return 0
+        if running:
+            print("  the instance is running: its pages will show the change on their next load")
+        removed = store.wipe(notes=wants["notes"], runs=wants["runs"], datasets=wants["datasets"], world_id=args.world)
+        for dataset in removed["datasets"]:
+            shutil.rmtree(Path(artifact_root) / dataset["artifact_key"], ignore_errors=True)
+        after = store.counts()
+        print(f"removed: notes {removed['reviews']}, runs {removed['runs']} ({removed['result_rows']} result rows, {removed['memos']} memos), "
+              f"datasets {len(removed['datasets'])} {[d['world_id'] for d in removed['datasets']]}, stale idempotency records {removed['idempotency']}")
+        print(f"now: datasets {after['datasets']}, runs {after['runs']}, notes {after['reviews']}")
+        return 0
+    finally:
+        if not running:
+            # stop the database this command started; pgserver only stops it when no other handle is registered, and a
+            # process that died without unregistering leaves a stale handle, so ask pg_ctl directly when it is still up
+            try:
+                server.cleanup()
+                if (pg_dir / "postmaster.pid").exists():
+                    from pgserver._commands import pg_ctl
+                    pg_ctl(["-w", "-m", "fast", "stop"], pgdata=pg_dir, user=server.system_user)
+            except Exception as error:                                # noqa: BLE001
+                print(f"note: the database was left running ({error}); stop it with pg_ctl (RUNBOOK section 2)")
+
+
 def _worker(args) -> int:
     import logging
 
@@ -349,6 +438,19 @@ def main(argv=None) -> int:
     rehearsal.add_argument("--demo-world", default="W5401")
     rehearsal.add_argument("--fresh", action="store_true", help="rebuild the fixture from the current bundles and start with an empty database")
     rehearsal.set_defaults(run=_baseline_rehearsal)
+    clean = commands.add_parser("db-clean", help="housekeeping for a demo database: remove notes, runs or datasets, or reset the "
+                                                 "instance; nothing happens without --yes")
+    clean.add_argument("--instance", choices=("local", "rehearsal"), default="local", help="which embedded database (default local)")
+    clean.add_argument("--notes", action="store_true", help="remove review notes")
+    clean.add_argument("--runs", action="store_true", help="remove runs with their results, memos and the notes written under them")
+    clean.add_argument("--datasets", action="store_true", help="remove registered datasets no run refers to, with their files")
+    clean.add_argument("--all", action="store_true", help="notes, runs and datasets; models and the experiment report stay")
+    clean.add_argument("--world", default=None, help="only this world's notes, runs and dataset")
+    clean.add_argument("--reset", action="store_true", help="delete the database folder and the registered snapshots (instance stopped)")
+    clean.add_argument("--port", type=int, default=None, help="port the instance would answer on (default 8000 local, 8011 rehearsal)")
+    clean.add_argument("--dry-run", action="store_true", help="report what would be removed")
+    clean.add_argument("--yes", action="store_true", help="actually do it")
+    clean.set_defaults(run=_db_clean)
     register = commands.add_parser("register", help="validate and register an operational world directory as a dataset")
     register.add_argument("directory", type=Path)
     register.set_defaults(run=_register)
