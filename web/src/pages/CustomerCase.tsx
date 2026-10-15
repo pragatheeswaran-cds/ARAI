@@ -492,6 +492,10 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
       setError(new ApiError(422, { error_code: "note_required", message: "A note is required with every action.", request_id: "", details: [] }));
       return;
     }
+    if ((kind === "approve" || kind === "reject") && (override ?? disposition) === "unresolved") {
+      setError(new ApiError(422, { error_code: "decision_needs_reading", message: "Choose a reading (needs investigation or likely legitimate) before approving or rejecting.", request_id: "", details: [] }));
+      return;
+    }
     setBusy(kind);
     setError(null);
     setDone(null);
@@ -719,7 +723,20 @@ export function CustomerCase() {
           </div>
           <div className="grid">
             <div>
-              <div className="tabs" role="tablist" aria-label="Case sections">
+              <div
+                className="tabs"
+                role="tablist"
+                aria-label="Case sections"
+                onKeyDown={(event) => {
+                  // the tabs pattern: Left and Right move between tabs and select the one that gets focus
+                  if (event.key !== "ArrowRight" && event.key !== "ArrowLeft" && event.key !== "Home" && event.key !== "End") return;
+                  const at = TABS.indexOf(tab);
+                  const next = event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : (at + (event.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length;
+                  event.preventDefault();
+                  setParams(TABS[next] === "evidence" ? {} : { tab: TABS[next] }, { replace: true });
+                  document.getElementById(`tab-${TABS[next].replace(" ", "-")}`)?.focus();
+                }}
+              >
                 {TABS.map((name) => (
                   <button
                     key={name}
@@ -728,6 +745,7 @@ export function CustomerCase() {
                     id={`tab-${name.replace(" ", "-")}`}
                     aria-controls="case-panel"
                     aria-selected={tab === name}
+                    tabIndex={tab === name ? 0 : -1}
                     className={tab === name ? "active" : ""}
                     onClick={() => setParams(name === "evidence" ? {} : { tab: name }, { replace: true })}
                   >

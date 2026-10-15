@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
 import { allPages, api, type Dataset, type ExperimentSummary, type Health, type Run } from "./api";
-import { ist, number, shortId, useLoad } from "./components/ui";
+import { PageTitle, ist, number, shortId, useLoad } from "./components/ui";
 import { datasetName } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
 import { CustomerQueue } from "./pages/CustomerQueue";
@@ -219,7 +219,17 @@ export default function App() {
           <Route path="/runs/:runId/styles" element={<StyleQueue />} />
           <Route path="/runs/:runId/styles/:styleId" element={<StyleDetailPage />} />
           <Route path="/experiments/:experimentId" element={<Evaluation />} />
-          <Route path="*" element={<div className="empty">Unknown page. <NavLink to="/overview">Go to the overview</NavLink></div>} />
+          <Route
+            path="*"
+            element={
+              <>
+                <PageTitle title="Unknown page">There is nothing at this address.</PageTitle>
+                <div className="empty">
+                  <NavLink to="/overview">Go to the overview</NavLink>
+                </div>
+              </>
+            }
+          />
         </Routes>
       </Shell>
       </ReviewerProvider>

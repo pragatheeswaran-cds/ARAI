@@ -12,6 +12,8 @@ Config DATABASE_URL, ARTIFACT_ROOT, PRIVATE_TRUTH_ROOT (offline jobs only), APP_
 
 Local loopback,one worker,no authenticated reviewer claim. Cloud optional after local rehearsal: TLS reverse proxy,shared login/basic auth protecting UI/API,IP allowlist,private PostgreSQL. Rehearse judge IP access and local fallback. Synthetic opaque IDs need no added hash; real data requires separate privacy/keyed-hashing/auth design.
 
+Contract 1.13.0 (AM-64): every response carries X-Content-Type-Options nosniff, X-Frame-Options DENY and Referrer-Policy same-origin, and API responses Cache-Control no-store; a request carrying a NUL byte in its path, query or body is refused with 422; a missing file under assets/ or with a static suffix is a 404 rather than the app shell, so a broken build fails loudly.
+
 Monitor liveness vs scoring readiness, queue depth,duration,error codes,artifact compatibility. Drift reports compare input/score distributions to training; never auto-refit/promote or imply accuracy. Implemented as a per-run report (component 11), the queue depth and the seconds since a worker last reported in Health (the worker is a separate process in the reference runtime), and a restart policy on every Compose service. Measure target-machine P95/full-world runtime. No generation/training at server startup.
 
 Implementation commands must cover validate/generate/features/train/evaluate/select/promote/serve with project-relative paths. Seed/config changes version experiment records. Reviewing package requires no external account/API key.

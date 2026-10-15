@@ -30,7 +30,8 @@ export interface paths {
         get: operations["getDataset"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** @description Remove a dataset registered by mistake, with its stored files, while no run was scored on it. A dataset a run was scored on is kept (409 dataset_in_use), because runs, results and review notes refer to it. Runs and notes themselves have no delete. */
+        delete: operations["deleteDataset"];
         options?: never;
         head?: never;
         patch?: never;
@@ -459,7 +460,7 @@ export interface components {
         ReviewRequest: {
             reviewer_name: string;
             /**
-             * @description What the review does. note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; request_approval asks for a second person; approve and reject decide it. request_approval, approve and reject need an earlier open (409 case_not_open), and approve and reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed message the UI shows as it is. Every kind needs a note.
+             * @description What the review does. note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; request_approval asks for a second person; approve and reject decide it. The rules, checked under one lock per customer - open needs a case that is not open (409 case_already_open while it is in review or awaiting approval); request_approval, approve and reject need an open case (409 case_not_open) that is not yet decided (409 case_decided; reopen first), and approval cannot be requested twice (409 case_already_open); approve and reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed message the UI shows as it is, names compared without regard to case or spacing; the four workflow kinds apply only to a customer selected for review and feedback only to the others (409 out_of_scope). approve and reject carry a reading, needs_investigation or likely_legitimate (422 request.decision_disposition). Every kind needs a note, and no text may hold a NUL byte.
              * @default note
              * @enum {string}
              */
@@ -491,6 +492,7 @@ export interface components {
         TimelineEvent: {
             source_ref: string;
             event_type: string;
+            /** @description When the event happened - an ISO date (the order date) for a purchase, an ISO date-time with offset (the request time) for a return_request. Order the timeline by this field as text. */
             observed_at: string;
             description: string;
             amount_inr: number | null;
@@ -1087,9 +1089,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                dataset_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -1141,6 +1141,62 @@ export interface operations {
             };
             /** @description Validation error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteDataset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description VM authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1492,6 +1548,8 @@ export interface operations {
                 state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
                 /** @description Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer only the cases another person opened. */
                 exclude_reviewer?: string;
+                /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
+                cleared_heavy?: boolean;
             };
             header?: never;
             path: {

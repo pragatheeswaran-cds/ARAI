@@ -56,6 +56,12 @@ export function useLoad<T>(loader: () => Promise<T>, deps: unknown[]): Loaded<T>
 
 // ---------------------------------------------------------------- building blocks
 export function PageTitle({ title, children }: { title: string; children?: ReactNode }) {
+  useEffect(() => {
+    document.title = `${title} - ARAI`; // each screen names itself in the tab and in a screen reader's page list
+    return () => {
+      document.title = "ARAI - return abuse investigation";
+    };
+  }, [title]);
   return (
     <div className="heading">
       <div>

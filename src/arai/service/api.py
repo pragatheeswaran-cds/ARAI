@@ -10,18 +10,20 @@ import base64
 import logging
 import os
 import secrets
+import shutil
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import unquote
 
 import yaml
 from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi.responses import FileResponse, JSONResponse, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -43,11 +45,22 @@ class ApiError(Exception):
         self.status, self.code, self.message, self.details = status, code, message, details or []
 
 
+STATIC_SUFFIXES = (".js", ".css", ".map", ".png", ".svg", ".ico", ".json", ".txt", ".woff", ".woff2", ".webmanifest")
+
+
+def _no_nul(value):
+    """Text columns cannot hold a NUL byte; a body that carries one is a 422, never a 500 from the database."""
+    if isinstance(value, str) and "\x00" in value:
+        raise ValueError("must not contain a NUL byte")
+    return value
+
+
 class RunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
     dataset_id: str
     model_id: str | None = None
     idempotency_key: str = Field(min_length=1, max_length=128)
+    _clean = field_validator("dataset_id", "model_id", "idempotency_key")(_no_nul)
 
 
 class ReviewRequest(BaseModel):
@@ -57,6 +70,7 @@ class ReviewRequest(BaseModel):
     disposition: Literal["needs_investigation", "likely_legitimate", "unresolved"]
     note: str = Field(min_length=1, max_length=4000)
     idempotency_key: str = Field(min_length=1, max_length=128)
+    _clean = field_validator("reviewer_name", "note", "idempotency_key")(_no_nul)
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -195,6 +209,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request.state.request_id = uuid.uuid4().hex
+        if "\x00" in unquote(request.url.path) or "\x00" in unquote(request.url.query):
+            return error_response(422, "invalid_request", "The request carries a NUL byte.", request.state.request_id)
         if credentials and request.method != "OPTIONS":
             supplied = request.headers.get("authorization", "").encode("latin-1", errors="replace")
             expected = b"Basic " + base64.b64encode(f"{credentials[0]}:{credentials[1]}".encode())
@@ -208,6 +224,11 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
             return error_response(500, "internal_error", "Unexpected error. Quote the request id when reporting it.",
                                   request.state.request_id, headers={"x-request-id": request.state.request_id})
         response.headers["x-request-id"] = request.state.request_id
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        if request.url.path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-store")          # results and notes are never served from a cache
         return response
 
     @app.exception_handler(ApiError)
@@ -311,6 +332,13 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     def get_dataset(dataset_id: str):
         return dataset_body(service.store.get_dataset(dataset_id))
 
+    @api.delete("/datasets/{dataset_id}", status_code=204)
+    def delete_dataset(dataset_id: str):
+        """Remove a dataset registered by mistake, with its stored files, while no run was scored on it (409 dataset_in_use)."""
+        row = service.store.delete_dataset(dataset_id)
+        shutil.rmtree(Path(config.artifact_root) / row["artifact_key"], ignore_errors=True)
+        return Response(status_code=204)
+
     # ------------------------------------------------------------------ runs
     @api.post("/runs", status_code=202)
     def submit_run(body: RunRequest):
@@ -368,7 +396,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                        tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
                        gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
                        state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
-                       exclude_reviewer: str | None = Query(None, max_length=100)):
+                       exclude_reviewer: str | None = Query(None, max_length=100), cleared_heavy: bool = False):
         run = service.succeeded_run(run_id)
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
@@ -376,7 +404,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         filters = {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
                    "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing,
                    "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate,
-                   "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None}
+                   "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None, "cleared_heavy": cleared_heavy}
         context = {"list": "customers", "run_id": run_id, **filters}
         after = views.decode_cursor(cursor, context, "int")
         items, following = views.customer_queue(service.store, run, filters, after, limit)
@@ -408,7 +436,11 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
 
     @api.post("/runs/{run_id}/customers/{customer_id}/reviews", status_code=201)
     def append_review(run_id: str, customer_id: str, body: ReviewRequest):
-        run, _ = _case_customer(run_id, customer_id)
+        run, customer = _case_customer(run_id, customer_id)
+        if body.kind in ("approve", "reject") and body.disposition == "unresolved":
+            raise ApiError(422, "invalid_request", "A decision carries a reading: approve or reject with needs_investigation or "
+                                                   "likely_legitimate, not unresolved.",
+                           [{"rule_id": "request.decision_disposition", "table": None, "row_key": "disposition", "count": 1}])
         review = {"world_id": run["world_id"], "customer_id": customer_id, "run_id": run_id, "model_id": run["model_id"],
                   "reviewer_name": body.reviewer_name.strip(), "disposition": body.disposition, "note": body.note, "kind": body.kind}
         if not review["reviewer_name"]:
@@ -416,7 +448,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if not body.note.strip():
             raise ApiError(422, "invalid_request", "A note is required.")
         row, _ = service.store.append_review(review, body.idempotency_key, request_hash(
-            {"reviewer_name": body.reviewer_name, "disposition": body.disposition, "note": body.note, "kind": body.kind}))
+            {"reviewer_name": body.reviewer_name, "disposition": body.disposition, "note": body.note, "kind": body.kind}),
+            in_queue=bool(customer["selected_for_review"]))
         return review_body(row)
 
     # ------------------------------------------------------------------ styles
@@ -480,6 +513,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
             target = (root / path).resolve()
             if path and target.is_file() and root in target.parents:       # never serve anything outside the built UI
                 return FileResponse(target)
+            if path.startswith("assets/") or path.rsplit("/", 1)[-1].endswith(STATIC_SUFFIXES):
+                raise StarletteHTTPException(status_code=404)              # a missing file is a 404, not the app shell
             return FileResponse(root / "index.html")                       # client-side routes
 
     return app

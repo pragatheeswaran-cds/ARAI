@@ -95,7 +95,8 @@ function Stepper({ run }: { run: Run }) {
 }
 
 function RunRow({ run, onRetry, onCancel }: { run: Run; onRetry: (run: Run) => void; onCancel: (run: Run) => void }) {
-  const tone = run.status === "succeeded" ? "green" : run.status === "failed" || run.status === "interrupted" ? "amber" : "gray";
+  const cancelled = run.status === "interrupted" && run.error?.error_code === "cancelled"; // stopped on purpose, not a failure
+  const tone = run.status === "succeeded" ? "green" : cancelled ? "gray" : run.status === "failed" || run.status === "interrupted" ? "amber" : "gray";
   const active = run.status === "running" || run.status === "queued";
   return (
     <tr>
@@ -106,7 +107,7 @@ function RunRow({ run, onRetry, onCancel }: { run: Run; onRetry: (run: Run) => v
         </small>
       </td>
       <td>
-        <Badge text={run.status} tone={tone} />
+        <Badge text={cancelled ? "cancelled" : run.status} tone={tone} />
         <small>
           {active ? (
             <>
@@ -156,7 +157,7 @@ function RunRow({ run, onRetry, onCancel }: { run: Run; onRetry: (run: Run) => v
             View results
           </Link>
         )}
-        {(run.status === "failed" || run.status === "interrupted") && (
+        {(run.status === "failed" || run.status === "interrupted") && !cancelled && (
           <button type="button" onClick={() => onRetry(run)}>
             Retry with the same dataset and bundle
           </button>
@@ -201,6 +202,17 @@ export function Datasets() {
     }
   };
   const ready = !!health?.scoring_ready;
+  const scored = new Set(runs.map((run) => run.dataset_id)); // a dataset with a run is kept; the server refuses otherwise too
+  const remove = async (dataset: Dataset) => {
+    if (!window.confirm(`Remove the registered snapshot of world ${dataset.world_id}? Its files are deleted; nothing was scored on it.`)) return;
+    setError(null);
+    try {
+      await api.deleteDataset(dataset.dataset_id);
+      datasets.reload();
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure : new ApiError(0, null));
+    }
+  };
   const cancel = async (run: Run) => {
     setError(null);
     try {
@@ -275,6 +287,11 @@ export function Datasets() {
                         Score with the active bundle
                       </button>
                       {!ready && <small>Blocked: no valid scoring bundle.</small>}
+                      {!scored.has(dataset.dataset_id) && (
+                        <button type="button" className="quiet" onClick={() => remove(dataset)} title="Only a dataset nothing was scored on can be removed">
+                          Remove
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

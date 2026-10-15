@@ -35,6 +35,16 @@ REVIEW_KINDS = ("note", "open", "request_approval", "approve", "reject", "feedba
 WORKFLOW_KINDS = ("open", "request_approval", "approve", "reject")
 SECOND_REVIEWER_MESSAGE = "You opened this case. A different reviewer must approve or reject it."
 CASE_NOT_OPEN_MESSAGE = "Open the case first: approval, rejection and a request for approval follow an open."
+CASE_ALREADY_OPEN_MESSAGE = "This case is already open. Approve or reject it, request approval, or add a note."
+APPROVAL_ALREADY_REQUESTED_MESSAGE = "Approval was already requested for this case; a different reviewer approves or rejects it."
+CASE_DECIDED_MESSAGE = "This case was already decided. Reopen it before deciding again."
+OUT_OF_SCOPE_MESSAGE = ("Open, request approval, approve and reject apply to a customer selected for review; feedback applies to the "
+                        "customers outside the queue.")
+
+
+def same_reviewer(a: str, b: str) -> bool:
+    """Reviewer names are free text: the second-reviewer rule compares them without regard to case or spacing."""
+    return " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
 # the latest workflow event and the latest open of a customer in its world, joined to a customer row c
 WORKFLOW_JOINS = """LEFT JOIN LATERAL (SELECT w.kind, w.reviewer_name, w.created_at FROM reviews w
                                       WHERE w.world_id = %(world_id)s AND w.customer_id = c.customer_id
@@ -133,6 +143,20 @@ class Store:
                    VALUES (%(id)s, %(world_id)s, %(manifest_hash)s, %(schema_version)s, %(cutoff)s, %(history_start)s, %(purpose)s,
                            %(customer_count)s, %(artifact_key)s) RETURNING *""", row).fetchone()
             return created, True
+
+    def delete_dataset(self, dataset_id: str) -> dict:
+        """Remove a registered dataset no run was scored on; returns its row so the caller can remove its files. A dataset with
+        runs is kept (409 dataset_in_use): runs, their results and review notes refer to it."""
+        with self.transaction() as db:
+            db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("dataset-delete:" + dataset_id,))
+            row = db.execute("SELECT * FROM datasets WHERE id = %s", (dataset_id,)).fetchone()
+            if not row:
+                raise NotFound("dataset")
+            used = db.execute("SELECT count(*) AS n FROM runs WHERE dataset_id = %s", (dataset_id,)).fetchone()["n"]
+            if used:
+                raise Conflict("dataset_in_use", f"{used} run(s) were scored on this dataset; a dataset with runs is kept.")
+            db.execute("DELETE FROM datasets WHERE id = %s", (dataset_id,))
+        return row
 
     def dataset_by_world(self, world_id: str) -> dict | None:
         with self.transaction() as db:
@@ -353,10 +377,17 @@ class Store:
         return None if row["age"] is None else max(0.0, float(row["age"]))
 
     # ------------------------------------------------------------------ reviews (append only)
-    def append_review(self, review: dict, idempotency_key: str, body_hash: str) -> tuple:
-        """(review, created). Append-only. The workflow rules hold under one lock per customer of a world: an approval, a
-        rejection or a request for approval needs an earlier open, and the reviewer who made the latest open can neither
-        approve nor reject (409 second_reviewer_required, a fixed message the UI shows as it is)."""
+    def append_review(self, review: dict, idempotency_key: str, body_hash: str, in_queue: bool | None = None) -> tuple:
+        """(review, created). Append-only. The workflow rules hold under one lock per customer of a world, so concurrent
+        calls see each other's events in order:
+
+        - open needs a case that is not open (409 case_already_open while it is in review or awaiting approval);
+        - request_approval, approve and reject need an open case (409 case_not_open), one that is not yet decided
+          (409 case_decided; a reopen comes first), and approval cannot be requested twice (409 case_already_open);
+        - the reviewer who made the latest open can neither approve nor reject (409 second_reviewer_required, a fixed
+          message the UI shows as it is); names compare without regard to case or spacing;
+        - when `in_queue` is given, the four workflow kinds apply only to a customer selected for review and feedback only
+          to the others (409 out_of_scope). A note is always allowed."""
         scope = f"reviews:{review['world_id']}:{review['customer_id']}"
         with self.transaction() as db:
             db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (scope,))                # one customer's reviews at a time
@@ -365,13 +396,28 @@ class Store:
                 if seen["request_hash"] != body_hash:
                     raise Conflict("idempotency_conflict", "This idempotency key was already used with a different note.")
                 return db.execute("SELECT * FROM reviews WHERE id = %s", (seen["response_ref"],)).fetchone(), False
-            if review["kind"] in ("request_approval", "approve", "reject"):
-                opened = db.execute("""SELECT reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s AND kind = 'open'
-                                       ORDER BY created_at DESC, id DESC LIMIT 1""", (review["world_id"], review["customer_id"])).fetchone()
-                if opened is None:
-                    raise Conflict("case_not_open", CASE_NOT_OPEN_MESSAGE)
-                if review["kind"] != "request_approval" and opened["reviewer_name"] == review["reviewer_name"]:
-                    raise Conflict("second_reviewer_required", SECOND_REVIEWER_MESSAGE)
+            kind = review["kind"]
+            if in_queue is not None and ((kind in WORKFLOW_KINDS and not in_queue) or (kind == "feedback" and in_queue)):
+                raise Conflict("out_of_scope", OUT_OF_SCOPE_MESSAGE)
+            if kind in WORKFLOW_KINDS:
+                latest = db.execute("""SELECT kind, reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s
+                                         AND kind = ANY(%s) ORDER BY created_at DESC, id DESC LIMIT 1""",
+                                    (review["world_id"], review["customer_id"], list(WORKFLOW_KINDS))).fetchone()
+                state = latest["kind"] if latest else None                       # the latest workflow event is the state
+                if kind == "open":
+                    if state in ("open", "request_approval"):
+                        raise Conflict("case_already_open", CASE_ALREADY_OPEN_MESSAGE)
+                else:
+                    if state is None:
+                        raise Conflict("case_not_open", CASE_NOT_OPEN_MESSAGE)
+                    if state in ("approve", "reject"):
+                        raise Conflict("case_decided", CASE_DECIDED_MESSAGE)
+                    if kind == "request_approval" and state == "request_approval":
+                        raise Conflict("case_already_open", APPROVAL_ALREADY_REQUESTED_MESSAGE)
+                    opened = db.execute("""SELECT reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s AND kind = 'open'
+                                           ORDER BY created_at DESC, id DESC LIMIT 1""", (review["world_id"], review["customer_id"])).fetchone()
+                    if kind != "request_approval" and same_reviewer(opened["reviewer_name"], review["reviewer_name"]):
+                        raise Conflict("second_reviewer_required", SECOND_REVIEWER_MESSAGE)
             row = db.execute("""INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind)
                                 VALUES (%(id)s, %(world_id)s, %(customer_id)s, %(run_id)s, %(model_id)s, %(reviewer_name)s,
                                         %(disposition)s, %(note)s, %(kind)s) RETURNING *""", dict(review, id=new_id("rev"))).fetchone()
@@ -415,6 +461,10 @@ class Store:
                 clauses.append(re.sub(r"%\(\w+\)s", "%s", clause))
         if filters["review_only"]:
             clauses.append("c.selected_for_review")
+        if filters.get("cleared_heavy"):                      # eligible, outside the queue, at or above the run's heavy-returner cutoff
+            clauses.append("c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND %s IS NOT NULL "
+                           "AND (c.measures->>'raw_return_rate')::double precision >= %s")
+            values += [rules.get("heavy_cutoff"), rules.get("heavy_cutoff")]
         if filters["eligibility"] != "all":
             clauses.append("c.eligibility_status = %s")
             values.append(filters["eligibility"])

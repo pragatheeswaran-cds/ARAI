@@ -4,7 +4,7 @@ import { ApiError, api, type Customer, type CustomerFilters } from "../api";
 import { useReviewer, useWorkspace } from "../App";
 import { CustomerTable, SCORE_HELP, TAGS, tagLabel } from "../components/CustomerTable";
 import { Callout, ErrorBox, PageTitle, Panel, number, percent, useLoad } from "../components/ui";
-import { GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, clearedHeavyReturner } from "../derive";
+import { GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL } from "../derive";
 
 const COMPARISONS: Record<CustomerFilters["comparison"], string> = {
   all: "All",
@@ -47,6 +47,7 @@ export function CustomerQueue() {
     ...EMPTY,
     review_only: view === "review",
     eligibility: view === "insufficient" ? "insufficient_history" : view === "eligible" || view === "cleared" ? "eligible" : "all",
+    cleared_heavy: view === "cleared",
     search: params.get("search") ?? "",
     evidence: params.get("evidence") ?? "",
     disposition: (params.get("disposition") ?? "all") as CustomerFilters["disposition"],
@@ -73,7 +74,7 @@ export function CustomerQueue() {
     setError(null);
     let cancelled = false;
     const issuedFor = key; // a page that arrives after the filters changed belongs to the old list and is dropped
-    api.customers(runId, filters, after, view === "cleared" ? 100 : 50).then(
+    api.customers(runId, filters, after, 50).then(
       (page) => {
         if (cancelled || issuedFor !== current.current) return;
         setItems((previous) => (after ? [...previous, ...page.items] : page.items));
@@ -103,10 +104,9 @@ export function CustomerQueue() {
       next.delete("comparison"); // a comparison view needs every customer
       next.delete("community_id");
     }
-    setParams(next, { replace: true });
+    setParams(next); // every filter change is a history entry, so Back returns to the previous view
   };
-  // the cleared view keeps only heavy returners outside the queue; the server has no such filter, so the page filters what it loaded
-  const shown = view === "cleared" && run ? items.filter((c) => clearedHeavyReturner(c, run)) : items;
+  const shown = items; // the cleared view is filtered by the server (cleared_heavy), so every page is full
 
   return (
     <>
@@ -221,7 +221,7 @@ export function CustomerQueue() {
                     next.set("comparison", e.target.value);
                     next.set("show", "all");
                   }
-                  setParams(next, { replace: true });
+                  setParams(next);
                 }}
               >
                 {Object.entries(COMPARISONS).map(([value, text]) => (
@@ -247,15 +247,15 @@ export function CustomerQueue() {
           </p>
         )}
         <p className="small" role="status">
-          {loading && items.length === 0 ? "Loading..." : `${number(shown.length)} customer(s) shown${cursor ? ", more available" : ""}`}
-          {run ? ` / ${number(run.selected_count)} selected of ${number(run.eligible_count)} eligible in this run` : ""}
+          {loading && items.length === 0 ? "Loading..." : error ? "Nothing to show." : `${number(shown.length)} customer(s) shown${cursor ? ", more available" : ""}`}
+          {run && !error && run.run_id === runId ? ` / ${number(run.selected_count)} selected of ${number(run.eligible_count)} eligible in this run` : ""}
           {view === "cleared" && run && run.heavy_returner_cutoff !== null
             ? ` / heavy means a raw return rate at or above ${percent(run.heavy_returner_cutoff, 0)}, this run's 90th percentile`
             : ""}
         </p>
         {error && <ErrorBox error={error} retry={() => load(null)} />}
         {!error && !loading && shown.length === 0 && (
-          <div className="empty">{view === "cleared" && items.length ? "No heavy returner outside the queue on this page. Load more to keep looking." : "No customer matches. Clear the search or change a filter."}</div>
+          <div className="empty">{view === "cleared" ? "No heavy returner outside the queue in this run." : "No customer matches. Clear the search or change a filter."}</div>
         )}
         {shown.length > 0 && <CustomerTable runId={runId} customers={shown} fallback={fallback} run={run} grouped={grouped} />}
         {cursor && (

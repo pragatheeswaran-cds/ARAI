@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.12.0
+  version: 1.13.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -198,6 +198,38 @@ paths:
                 $ref: '#/components/schemas/Error'
         '422':
           description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deleteDataset
+      description: Remove a dataset registered by mistake, with its stored files, while no run was scored on it. A dataset
+        a run was scored on is kept (409 dataset_in_use), because runs, results and review notes refer to it. Runs and notes
+        themselves have no delete.
+      responses:
+        '204':
+          description: Removed
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
           content:
             application/json:
               schema:
@@ -605,6 +637,15 @@ paths:
         schema:
           type: string
           maxLength: 100
+      - name: cleared_heavy
+        in: query
+        required: false
+        description: Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review
+          set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing
+          recomputed; combine with review_only=false.
+        schema:
+          type: boolean
+          default: false
   /runs/{run_id}/customers/{customer_id}:
     get:
       operationId: getCustomerCase
@@ -1802,9 +1843,14 @@ components:
           - feedback
           description: What the review does. note (the default) and feedback record an opinion and never move the
             workflow; open takes the case into review; request_approval asks for a second person; approve and reject
-            decide it. request_approval, approve and reject need an earlier open (409 case_not_open), and approve and
-            reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed
-            message the UI shows as it is. Every kind needs a note.
+            decide it. The rules, checked under one lock per customer - open needs a case that is not open (409
+            case_already_open while it is in review or awaiting approval); request_approval, approve and reject need an
+            open case (409 case_not_open) that is not yet decided (409 case_decided; reopen first), and approval cannot be
+            requested twice (409 case_already_open); approve and reject by the reviewer who made the latest open are
+            refused (409 second_reviewer_required) with a fixed message the UI shows as it is, names compared without
+            regard to case or spacing; the four workflow kinds apply only to a customer selected for review and feedback
+            only to the others (409 out_of_scope). approve and reject carry a reading, needs_investigation or
+            likely_legitimate (422 request.decision_disposition). Every kind needs a note, and no text may hold a NUL byte.
         disposition:
           type: string
           enum:
@@ -1889,7 +1935,10 @@ components:
       properties:
         source_ref: *id001
         event_type: *id001
-        observed_at: *id001
+        observed_at:
+          type: string
+          description: When the event happened - an ISO date (the order date) for a purchase, an ISO date-time with offset
+            (the request time) for a return_request. Order the timeline by this field as text.
         description: *id001
         amount_inr:
           type: number

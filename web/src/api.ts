@@ -91,12 +91,15 @@ export type CustomerFilters = {
   gate: "all" | GateOutcome;
   state: "all" | WorkflowState;
   exclude_reviewer: string;
+  // contract 1.13.0: the cleared heavy returners view, filtered by the server rather than page by page in the browser
+  cleared_heavy?: boolean;
 };
 
 export const api = {
   health: () => request<Health>("/health"),
   datasets: (cursor?: string | null) => request<Page<Dataset>>("/datasets", undefined, { cursor, limit: 100 }),
   registerDataset: (form: FormData) => request<Dataset>("/datasets", { method: "POST", body: form }),
+  deleteDataset: (datasetId: string) => request<null>(`/datasets/${encodeURIComponent(datasetId)}`, { method: "DELETE" }),
   runs: (dataset_id?: string, cursor?: string | null) => request<Page<Run>>("/runs", undefined, { dataset_id, cursor, limit: 100 }),
   run: (runId: string) => request<Run>(`/runs/${encodeURIComponent(runId)}`),
   cancelRun: (runId: string) => request<Run>(`/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),

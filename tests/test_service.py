@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -18,6 +19,7 @@ from arai.service import datasets, ingest, scoring, worker
 from arai.service.api import create_app
 from arai.service.config import ServiceConfig
 from arai.service.store import RESULT_TABLES, Store
+from tests.conftest import FIXTURE_SEED
 
 API = "/api/v1"
 CONTRACT = yaml.safe_load((SPEC_ROOT / "contracts" / "openapi.yaml").read_text(encoding="utf-8"))
@@ -594,7 +596,7 @@ def test_the_served_contract_is_the_bundled_one_and_every_route_is_in_it(client)
     generated = client.app.openapi()["paths"]                      # what the application really routes
     implemented = {(method, path[len(API):]) for path, item in generated.items() for method in item}
     contracted = {(method, path) for path, item in CONTRACT["paths"].items() for method in item if method != "parameters"}
-    assert implemented == contracted                               # nothing missing, nothing extra (no train/refund/block/delete)
+    assert implemented == contracted                               # nothing missing, nothing extra (no train/refund/block/delete-note)
 
 
 def test_serving_does_not_import_offline_modules_or_need_private_truth():
@@ -755,8 +757,8 @@ def test_health_is_not_ready_when_the_in_process_worker_has_stopped(env):
 # ------------------------------------------------------------------ the published experiment report
 REAL_EXPERIMENT = None
 try:
-    from arai import paths as _paths
     from arai import contract as _contract
+    from arai import paths as _paths
     EXPERIMENT_ID = _contract.experiment_id()
     _candidate = _paths.ARTIFACT_ROOT / "experiments" / EXPERIMENT_ID
     if (_candidate / "reports" / "test.json").is_file() and (_candidate / "published" / "truth.parquet").is_file():
@@ -1321,6 +1323,103 @@ def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_de
     history = client.get(reviews(first)).json()["items"]
     assert [r["kind"] for r in history] == ["note", "open", "request_approval", "approve"]
     assert post(first, "k9", note=" ").status_code == 422 and post(first, "k10", kind="close").status_code == 422
+
+
+def test_workflow_rules_refuse_a_second_open_a_second_decision_and_actions_out_of_scope(client, env, written):
+    """Contract 1.13.0: the state machine is closed. One open at a time, one decision until a reopen, names compared without
+    case, the workflow kinds for the queue and feedback for the rest, a reading with every decision, no NUL byte anywhere."""
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    queue = all_pages(client, url)
+    everyone = all_pages(client, url, {"review_only": "false"})
+    first, second = queue[2]["customer_id"], queue[3]["customer_id"]
+    post = lambda customer, key, **body: client.post(f"{url}/{customer}/reviews", json={  # noqa: E731
+        "reviewer_name": "Asha", "disposition": "needs_investigation", "note": "n", "idempotency_key": key, **body})
+    assert post(first, "o1", kind="open").status_code == 201
+    twice = post(first, "o2", kind="open", reviewer_name="Ravi")                      # cannot take over an open case
+    assert twice.status_code == 409 and twice.json()["error_code"] == "case_already_open"
+    for name in ("asha", " ASHA "):                                                      # the opener, however spelled
+        refused = post(first, "a-" + name.strip(), kind="approve", reviewer_name=name)
+        assert refused.status_code == 409 and refused.json()["error_code"] == "second_reviewer_required", name
+    assert post(first, "r1", kind="request_approval").status_code == 201
+    again = post(first, "r2", kind="request_approval")
+    assert again.status_code == 409 and again.json()["error_code"] == "case_already_open"
+    unresolved = post(first, "d0", kind="approve", reviewer_name="Ravi", disposition="unresolved")
+    assert unresolved.status_code == 422 and unresolved.json()["details"][0]["rule_id"] == "request.decision_disposition"
+    assert post(first, "d1", kind="approve", reviewer_name="Ravi").status_code == 201
+    for kind in ("approve", "reject", "request_approval"):                                # decided: nothing but a reopen
+        refused = post(first, "d2-" + kind, kind=kind, reviewer_name="Meera")
+        assert refused.status_code == 409 and refused.json()["error_code"] == "case_decided", kind
+    state = client.get(f"{url}/{first}").json()["customer"]["workflow"]
+    assert state["state"] == "approved" and state["decided_by"] == "Ravi"
+    assert post(first, "n1", reviewer_name="Meera").status_code == 201                  # a note is always allowed
+    assert post(first, "o3", kind="open", reviewer_name="Meera").status_code == 201     # the way back is a reopen
+    assert client.get(f"{url}/{first}").json()["customer"]["workflow"]["state"] == "in_review"
+    # scope: the workflow kinds belong to the queue, feedback to the customers outside it
+    outside = next(c for c in everyone if c["eligibility_status"] == "eligible" and not c["selected_for_review"])["customer_id"]
+    refused = post(outside, "s1", kind="open")
+    assert refused.status_code == 409 and refused.json()["error_code"] == "out_of_scope"
+    refused = post(first, "s2", kind="feedback", disposition="likely_legitimate")
+    assert refused.status_code == 409 and refused.json()["error_code"] == "out_of_scope"
+    assert post(outside, "s3", kind="feedback", disposition="likely_legitimate").status_code == 201
+    # a NUL byte is a 422, never a database error
+    nul = post(first, "z1", note="bad\x00byte")
+    assert nul.status_code == 422 and nul.json()["error_code"] == "invalid_request"
+    assert client.get(url, params={"search": "a\x00b"}).status_code == 422
+    # concurrent decisions on one case: one lands, the others meet the decided case
+    assert post(second, "c0", kind="open").status_code == 201
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(4) as pool:
+        answers = list(pool.map(lambda i: post(second, f"c{i}", kind="approve" if i % 2 else "reject", reviewer_name=f"R{i}").status_code,
+                                range(1, 5)))
+    assert sorted(answers) == [201, 409, 409, 409]
+    decided = client.get(f"{url}/{second}").json()["customer"]["workflow"]
+    assert decided["state"] in ("approved", "rejected") and decided["decided_by"].startswith("R")
+
+
+def test_the_cleared_heavy_returner_view_is_filtered_by_the_server(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    cutoff = run["heavy_returner_cutoff"]
+    everyone = all_pages(client, url, {"review_only": "false"})
+    expected = [c["customer_id"] for c in everyone if c["eligibility_status"] == "eligible" and not c["selected_for_review"]
+                and c["support_counts"]["mature_purchased_units"] and
+                c["support_counts"]["mature_requested_units"] / c["support_counts"]["mature_purchased_units"] >= cutoff]
+    shown = all_pages(client, url, {"review_only": "false", "cleared_heavy": "true"})
+    assert expected and [c["customer_id"] for c in shown] == expected
+    assert all(c["cleared_reason"] for c in shown)                               # every one carries the reason it was left out
+    assert all_pages(client, url, {"cleared_heavy": "true"}) == []               # the review set holds no cleared customer
+
+
+def test_a_dataset_nothing_was_scored_on_can_be_removed_and_one_with_runs_is_kept(client, env, written, tmp_path):
+    from arai.generator import generate_world, write_world
+    run = scored_run(client, env, written)
+    kept = client.delete(f"{API}/datasets/{run['dataset_id']}")
+    assert kept.status_code == 409 and kept.json()["error_code"] == "dataset_in_use"
+    assert client.get(f"{API}/datasets/{run['dataset_id']}").status_code == 200
+    other = write_world(generate_world(FIXTURE_SEED + 1), artifact_root=tmp_path / "artifacts", private_root=tmp_path / "private")
+    manifest = (other["operational"] / "manifest.json").read_text(encoding="utf-8")
+    created = client.post(f"{API}/datasets", data={"manifest": manifest}, files=upload_parts(other))
+    assert created.status_code == 201, created.text
+    stored = Path(env["root"]) / "datasets" / created.json()["dataset_id"]
+    assert stored.is_dir()
+    assert client.delete(f"{API}/datasets/{created.json()['dataset_id']}").status_code == 204
+    assert client.get(f"{API}/datasets/{created.json()['dataset_id']}").status_code == 404 and not stored.exists()
+    assert client.delete(f"{API}/datasets/{created.json()['dataset_id']}").status_code == 404
+
+
+def test_responses_carry_hardening_headers_and_missing_assets_are_not_the_app_shell(client, env):
+    answer = client.get(f"{API}/health")
+    assert answer.headers["x-content-type-options"] == "nosniff" and answer.headers["x-frame-options"] == "DENY"
+    assert answer.headers["cache-control"] == "no-store"
+    dist = Path(__file__).resolve().parents[1] / "web" / "dist"
+    if not (dist / "index.html").is_file():
+        pytest.skip("the UI is not built")
+    with TestClient(create_app(env["config"], static_dir=dist)) as served:
+        assert served.get("/runs/run-x/customers").status_code == 200                       # a client-side route
+        assert served.get("/assets/does-not-exist.js").status_code == 404
+        assert served.get("/missing.png").status_code == 404
+        assert served.get("/api/v1/nope").json()["error_code"] == "not_found"
 
 
 def test_the_style_screen_extras_are_sums_over_the_same_lines_as_the_style_states(client, env, written, world):

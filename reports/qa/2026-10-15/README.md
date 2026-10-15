@@ -48,3 +48,27 @@ does not do what it says; **Low** = polish, hardening or accessibility.
 The probes created three datasets, two runs and about forty review notes in the local demo database. The three
 datasets (W9999, W9998, "bad world id") and the QA notes were removed afterwards; the cancelled run
 `run-a3bfb61d46084d59a914` and the second successful run `run-3ce00dc312af46358f76` remain in the Runs list.
+
+## Resolution (same day, API contract 1.13.0, decisions AM-64 and AM-65)
+
+| # | Status | What changed |
+|---|---|---|
+| 1 | Fixed | `append_review` is a closed state machine: approve, reject and request_approval on a decided case are 409 `case_decided`; a reopen is the only way back. Concurrent decisions resolve to one under the existing per-customer lock. |
+| 2 | Fixed | Validation rule M004: generated row identifiers that carry another world id than the manifest reject the snapshot. The manifest's world_id now has a pattern and a length limit. |
+| 3 | Fixed | A cutoff more than a day in the future is M001. |
+| 4 | Fixed | A file that cannot be read as CSV is M002 instead of a 500. |
+| 5 | Fixed | A NUL byte in a body field, the path or the query is a 422 (`invalid_request`). |
+| 6 | Fixed | New list filter `cleared_heavy=true`; the view shows full pages from the first one. |
+| 7 | Fixed | `open` on a case that is in review or awaiting approval is 409 `case_already_open`; the opener cannot be swapped. |
+| 8 | Fixed | Long unbroken text wraps (`overflow-wrap: anywhere` on notes, cells and callouts). |
+| 9 | Fixed | Reviewer names compare without regard to case or spacing. |
+| 10 | Fixed | The four workflow kinds need a customer selected for review and feedback a customer outside the queue (409 `out_of_scope`). |
+| 11 | Fixed | A missing file under `assets/` or with a static suffix is a 404; client-side routes still get the app shell. |
+| 12 | Fixed | The queue hides the summary counts when the run in the address bar cannot be loaded. |
+| 13 | Fixed | approve and reject with disposition `unresolved` are 422 (`request.decision_disposition`); the UI refuses before sending. |
+| 14 | Fixed | A run cancelled on purpose reads **cancelled** with no retry prompt (the API status stays `interrupted` with reason `cancelled`). |
+| 15 | Fixed | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` on every response; `Cache-Control: no-store` under `/api/`. |
+| 16 | Fixed | Per-page document titles, an h1 on the unknown-route page, arrow-key tabs with one tab stop, 24 px minimum on the copy button and inline links. |
+| 17 | Fixed | Filter changes push history entries. |
+| 18 | Documented | The contract now states the two formats of `observed_at` (date for purchases, date-time with offset for return requests). The values are unchanged. |
+| 19 | Fixed | `DELETE /datasets/{id}` removes a dataset no run was scored on, with its files; the Datasets page offers Remove for those. Runs and notes keep having no delete. |

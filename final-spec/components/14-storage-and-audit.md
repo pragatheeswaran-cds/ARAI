@@ -12,6 +12,8 @@ Transactional submission/activation/idempotency. An identical upload of a regist
 
 Notes append only across same immutable world/customer; correction new note, no delete/edit endpoints. No authenticated-identity claim for reviewer_name. Preserve failures/interrupted jobs and prior experiments. Logs include stage/duration/count/hash/request/error code but not raw identities/notes/truth/secrets. Migrations version schema and are applied under an advisory lock, because the API and the worker start together; back up the database (which now holds every result) together with the registered snapshots and bundles as a consistent set.
 
+Contract 1.13.0 (AM-64): the append-only rule is unchanged; what the workflow accepts is now closed (one open at a time, one decision until a reopen, the opener never decides, names compared without case or spacing), checked under the per-customer advisory lock so concurrent decisions resolve to one. A dataset no run was scored on may be deleted with its files (DELETE /datasets/{id}); a dataset with runs is kept (409 dataset_in_use).
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Dataset/job/model/experiment/review events.
