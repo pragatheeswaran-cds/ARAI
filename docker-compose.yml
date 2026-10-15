@@ -31,6 +31,8 @@ services:
       UI_ORIGINS: ${UI_ORIGINS:-http://localhost:8080}
       BASIC_AUTH_USER: ${BASIC_AUTH_USER:-}
       BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}      # worker only; without it every investigation memo is unavailable by design
+      ARAI_MEMO_MODEL: ${ARAI_MEMO_MODEL:-}
     volumes:
       - ${ARAI_ARTIFACTS:-./data/EXP-20261005-04/artifacts}:/data/artifacts
     depends_on:

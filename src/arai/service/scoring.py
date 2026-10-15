@@ -32,6 +32,8 @@ CLEARED_REASONS = (("size_bracketing", lambda c: c["bracketing_share"] >= 0.5),
                    ("as_basket_predicts", lambda c: c["residual_z"] < 1),
                    ("below_threshold", lambda c: pd.Series(True, index=c.index)))
 LOUVAIN_FROM = 13                # a connected component with this many members or more is split by Louvain (fixed seed); smaller ones stand
+STYLE_REASON_COLUMNS = ["style_id", "reason_code", "reason_group", "lines", "units"]
+LAST_DAYS = 5                    # "late in the window" for a style: a request in the last five days of the return window
 ATTRIBUTION_COLUMNS = ["customer_id", "family", "raw_score_without", "score_without", "delta_points", "in_queue_without"]
 COMMUNITY_COLUMNS = ["community_id", "kind", "method", "size", "selected_count", "requested_units", "purchased_units",
                      "coordinated_claim_matches", "edges"]
@@ -52,6 +54,7 @@ class RunOutput:
     customer_styles: pd.DataFrame
     communities: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=COMMUNITY_COLUMNS))
     attributions: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=ATTRIBUTION_COLUMNS))
+    style_reasons: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=STYLE_REASON_COLUMNS))
 
 
 def _nullable_int(values: np.ndarray, mask: np.ndarray) -> pd.Series:
@@ -201,6 +204,43 @@ def _communities(world_id: str, graph_edges: pd.DataFrame, neighbors: pd.DataFra
     return pd.DataFrame(rows, columns=COMMUNITY_COLUMNS), membership
 
 
+def _style_extras(tables: dict, result: F.FeatureResult, styles: pd.DataFrame, customers: pd.DataFrame) -> tuple:
+    """(styles with the SKU screen's extra columns, reason rows per style, customer-style rows with their extra columns).
+
+    Everything is a sum or a median over the mature lines and requests the style states were built from: the reasons
+    by code and group, the median return day, the share of timed requests in the last five days of the window, how
+    many returners are selected for review or in a ring, and the median score of the eligible returners. The name is
+    "{brand} {category}" from sku_master (no name column exists), with the style id when that pair repeats in the run.
+    """
+    requests = result.requests[result.requests["mature"]]
+    lines = result.lines[result.lines["mature"]]
+    by_customer = customers.set_index("customer_id")
+    out = styles.set_index("style_id")
+    skus = tables["sku_master"].drop_duplicates("style_id").set_index("style_id")
+    names = (skus["brand"].astype(str) + " " + skus["category"].astype(str)).reindex(out.index)
+    repeated = names.map(names.value_counts()) > 1
+    out["name"] = names.where(~repeated, names + " " + pd.Series(out.index, index=out.index)).fillna(pd.Series(out.index, index=out.index))
+    timed = requests[requests["days"] >= 0]
+    out["median_return_day"] = timed.groupby("style_id")["days"].median().reindex(out.index)
+    late = timed["days"] >= timed["return_window_days"] - LAST_DAYS
+    out["share_in_last_five_days"] = (late.groupby(timed["style_id"]).mean()).reindex(out.index)
+    returners = requests.drop_duplicates(["style_id", "customer_id"])[["style_id", "customer_id"]]
+    returners = returners.join(by_customer[["selected_for_review", "risk_score", "community_id", "eligibility_status"]], on="customer_id")
+    ring_ids = set(getattr(result, "ring_ids", set()))
+    out["flagged_returners"] = returners.groupby("style_id")["selected_for_review"].sum().reindex(out.index, fill_value=0).astype(int)
+    out["ring_returners"] = returners["community_id"].isin(ring_ids).groupby(returners["style_id"]).sum().reindex(out.index, fill_value=0).astype(int)
+    out["median_returner_score"] = returners[returners["eligibility_status"] == "eligible"].groupby("style_id")["risk_score"].median().reindex(out.index)
+    reasons = requests.groupby(["style_id", "reason_code"]).agg(lines=("reason_code", "size"), units=("quantity_returned", "sum")).reset_index()
+    reasons["reason_group"] = reasons["reason_code"].map(REASON_GROUPS)
+    reasons = reasons.sort_values(["style_id", "units", "lines", "reason_code"], ascending=[True, False, False, True]).reset_index(drop=True)
+    extras = result.requests.sort_values(["requested_at", "return_order_id", "return_line_no"]).groupby(["customer_id", "style_id"]).agg(
+        return_lines=("reason_code", "size"), last_reason_code=("reason_code", "last")).reset_index()
+    bought = lines.groupby(["customer_id", "style_id"]).size().rename("purchased_lines").reset_index()
+    extras = extras.merge(bought, on=["customer_id", "style_id"], how="left")
+    extras["purchased_lines"] = extras["purchased_lines"].fillna(0).astype(int)
+    return out.reset_index(), reasons[STYLE_REASON_COLUMNS], extras
+
+
 def _timeline(tables: dict, result: F.FeatureResult) -> pd.DataFrame:
     """Source transactions per customer: every sale line and every return request, with their own keys.
 
@@ -347,7 +387,8 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
     for name in rules.columns:
         customers[name] = rules[name].to_numpy()
 
-    styles = result.styles.sort_values("style_id").reset_index(drop=True)
+    result.ring_ids = set(communities.loc[communities["kind"] == "ring", "community_id"])     # for the style screen's ring returners
+    styles, style_reasons, style_extras = _style_extras(tables, result, result.styles.sort_values("style_id").reset_index(drop=True), customers)
     skus = result.skus.merge(tables["sku_master"][["sku", "size", "colour", "unit_price"]], on="sku", how="left") \
         .sort_values("sku").reset_index(drop=True)
     requests = result.requests
@@ -355,6 +396,7 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         requested_units=("quantity_returned", "sum"), claim_lines=("is_claim", "sum"),
         linked_claim_lines=("linked", lambda s: int(s.fillna(False).sum()))).reset_index() if len(requests) else \
         pd.DataFrame(columns=["customer_id", "style_id", "requested_units", "claim_lines", "linked_claim_lines"])
+    customer_styles = customer_styles.merge(style_extras, on=["customer_id", "style_id"], how="left")
 
     selected, baseline_selected = customers["selected_for_review"], customers["baseline_selected"]
     threshold = float(customers.loc[at_budget, "risk_score"].iloc[0]) if k and at_budget.any() else None
@@ -389,10 +431,11 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         "heavy_returner_cutoff": heavy_cutoff,
         # groups of linked accounts (connected components of the supported edges) and how many look coordinated
         "community_count": int(len(communities)), "ring_count": int((communities["kind"] == "ring").sum()),
+        "styles_with_verdict": int(styles["state"].isin(["quality", "targeting", "mixed_or_uncertain"]).sum()),
         # how the score breakdown was made: whose medians stood in for a family, and the raw score at the queue's edge
         "attribution": {"typical_from": typical_from, "threshold_raw_score": threshold_raw},
         "score_label": bundle.manifest["score_label"], "feature_order": bundle.feature_order,
     }
     return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=neighbors,
                      timeline=_timeline(tables, result), customer_styles=customer_styles, communities=communities,
-                     attributions=attributions)
+                     attributions=attributions, style_reasons=style_reasons)

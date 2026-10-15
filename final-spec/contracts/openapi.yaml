@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.8.0
+  version: 1.12.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -323,6 +323,60 @@ paths:
       responses:
         '200':
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema: *id001
+  /runs/{run_id}/cancel:
+    post:
+      operationId: cancelRun
+      description: Stop a run that has not finished. A queued run is interrupted at once; a running run is asked to
+        stop and does so at its next stage, leaving no result (results are written only when a run succeeds). A run
+        that has finished is a 409 run_finished. Nothing published is touched.
+      responses:
+        '202':
+          description: The run as it now stands (interrupted, or running with the cancel requested)
           content:
             application/json:
               schema:
@@ -1036,6 +1090,72 @@ paths:
       - *id003
       description: Synthetic evaluation-only reveal from published evaluation artifacts;
         no raw private filesystem exposure or access through inference routes.
+  /experiments/{experiment_id}/curves:
+    get:
+      operationId: getEvaluationCurves
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Curves'
+        '401':
+          description: VM authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown scoped resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict or not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Resource limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: experiment_id
+        in: path
+        required: true
+        schema: *id001
+      - name: run_id
+        in: query
+        required: true
+        description: A succeeded run scored on the experiment's demonstration world (the world of the published truth);
+          another world is a 409 world_mismatch.
+        schema: *id001
+      - name: max_points
+        in: query
+        required: false
+        description: At most this many points, thinned evenly over k, always keeping k = 1, the review budget and the last k.
+        schema:
+          type: integer
+          minimum: 2
+          maximum: 20000
+          default: 200
   /health:
     get:
       operationId: getHealth
@@ -1204,6 +1324,9 @@ components:
       - heavy_returner_cutoff
       - community_count
       - ring_count
+      - memos
+      - stage_log
+      - styles_with_verdict
       properties:
         run_id: *id001
         dataset_id: *id001
@@ -1331,6 +1454,45 @@ components:
           description: Of community_count, the groups the stated rule calls a ring (a coordinated claim match on an edge,
             two or more members selected for review, or a member with a coordinated claim share above zero). Evidence
             about the group, not a verdict on any member. Null until the run succeeded.
+        memos:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - selected
+          - ok
+          - unavailable
+          - complete
+          description: How far the run's investigation memos are. They are drafted after the run succeeded, one per selected
+            customer, so results are served while they arrive; complete when every selected customer has a decided memo
+            (ok or unavailable). Null until the run succeeded.
+          properties:
+            selected: *id008
+            ok: *id008
+            unavailable: *id008
+            complete:
+              type: boolean
+        stage_log:
+          type: array
+          description: When each stage began, in order, from validate on; the stepper derives elapsed times from consecutive
+            entries and completed_at. Empty for a queued run and for runs scored before contract 1.12.0.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - stage
+            - at
+            properties:
+              stage: *id001
+              at:
+                type: string
+                format: date-time
+        styles_with_verdict:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Styles whose state is quality, targeting or mixed_or_uncertain, for the done summary. Null until the run
+            succeeded.
     Support:
       type: object
       additionalProperties: false
@@ -1880,9 +2042,84 @@ components:
       - linked_claimers
       - quality_signal
       - targeting_signal
+      - name
+      - median_return_day
+      - share_in_last_five_days
+      - flagged_returner_share
+      - ring_returners
+      - median_returner_score
+      - reason_codes
       properties:
         style_id: *id001
         category: *id001
+        name:
+          type: string
+          description: '"{brand} {category}" from sku_master, which has no name column, with the style id appended when
+            that pair is not unique in the run; the style id alone for runs scored before contract 1.9.0.'
+        median_return_day:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Median day after delivery of the style's return requests on mature lines. Null without a timed
+            request and for runs scored before 1.9.0.
+        share_in_last_five_days:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+          description: Share of the style's timed requests made in the last five days of the return window.
+        flagged_returner_share:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - numerator
+          - denominator
+          - share
+          description: Of the customers with a request on the style's mature lines (unique_returners), how many are selected
+            for review in this run. A share of returners, not a statement about the product.
+          properties:
+            numerator: *id008
+            denominator: *id008
+            share:
+              type: number
+              minimum: 0
+              maximum: 1
+              nullable: true
+        ring_returners:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Returners whose group of linked accounts the stated rule calls a ring.
+        median_returner_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Median risk score of the eligible returners, to read against the run's median_score.
+        reason_codes:
+          type: array
+          description: The style's return requests on mature lines by reason code, most units first; the units sum to
+            requested_units. From the codebook, never the customer's free text. Empty for runs scored before 1.9.0.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - code
+            - group
+            - lines
+            - units
+            properties:
+              code: *id001
+              group:
+                type: string
+                enum:
+                - transaction_claim
+                - item_complaint
+                - fit
+                - discretionary
+              lines: *id008
+              units: *id008
         state:
           type: string
           enum:
@@ -2021,6 +2258,7 @@ components:
       - community
       - score_breakdown
       - rules_fired
+      - memo
       - reviews
       properties:
         run_id: *id001
@@ -2207,6 +2445,84 @@ components:
               fired:
                 type: boolean
                 nullable: true
+        memo:
+          type: object
+          additionalProperties: false
+          required:
+          - status
+          - summary
+          - key_evidence
+          - alternative_explanations
+          - recommended_action
+          - attempts
+          - reason
+          - model
+          - generated_at
+          description: The investigation memo drafted for a selected customer from this case alone (no free text, no private
+            truth, no other customer's identifier), after a deterministic gate in which every number it cites is a value or denominator
+            of the case, every panel exists, the action is a gate outcome, no other customer is named, the sections are short.
+            A failed draft is retried once; two failures give unavailable with the reason. The UI shows memo content only when
+            status is ok. A memo is a draft for a reviewer, never a decision; it changes no score, rank or selection.
+          properties:
+            status:
+              type: string
+              enum:
+              - ok
+              - unavailable
+              - pending
+              - not_selected
+              description: pending while the run's memos are still being drafted; not_selected for a customer outside the queue;
+                unavailable with reason no_api_key when the deployment has no key (by design, every memo is unavailable then).
+            summary:
+              type: string
+              nullable: true
+            key_evidence:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - statement
+                - panel
+                - value
+                - denominator
+                properties:
+                  statement: *id001
+                  panel:
+                    type: string
+                    enum:
+                    - expected
+                    - returns
+                    - linked
+                    - wardrobing
+                  value:
+                    type: number
+                  denominator:
+                    type: number
+                    nullable: true
+            alternative_explanations:
+              type: array
+              items: *id001
+            recommended_action:
+              type: string
+              nullable: true
+              enum:
+              - ESCALATE
+              - HOLD
+              - WARNING
+              - LOW
+              - null
+            attempts: *id008
+            reason:
+              type: string
+              nullable: true
+            model:
+              type: string
+              nullable: true
+            generated_at:
+              type: string
+              format: date-time
+              nullable: true
         reviews:
           type: array
           items:
@@ -2219,6 +2535,7 @@ components:
       - style
       - skus
       - customer_ids
+      - returners
       - signals
       properties:
         run_id: *id001
@@ -2231,6 +2548,75 @@ components:
         customer_ids:
           type: array
           items: *id001
+          description: The returners' ids in the same order as returners.
+        returners:
+          type: array
+          description: Customers with a request on the style, those with linked claims first, each with its own result in
+            the run. A customer's score is the customer's; the style's state is the style's.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - customer_id
+            - risk_score
+            - rank
+            - selected_for_review
+            - tier
+            - community
+            - requested_units
+            - claim_lines
+            - linked_claim_lines
+            - return_lines
+            - purchased_lines
+            - last_reason_code
+            properties:
+              customer_id: *id001
+              risk_score:
+                type: number
+                minimum: 0
+                maximum: 100
+                nullable: true
+              rank:
+                type: integer
+                minimum: 1
+                nullable: true
+              selected_for_review: *id011
+              tier:
+                type: string
+                nullable: true
+                enum:
+                - HIGH
+                - MEDIUM
+                - LOW
+                - null
+              community:
+                type: object
+                nullable: true
+                additionalProperties: false
+                required:
+                - id
+                - kind
+                - size
+                properties:
+                  id: *id001
+                  kind: *id012
+                  size:
+                    type: integer
+                    minimum: 2
+              requested_units: *id008
+              claim_lines: *id008
+              linked_claim_lines: *id008
+              return_lines:
+                type: integer
+                minimum: 0
+                nullable: true
+              purchased_lines:
+                type: integer
+                minimum: 0
+                nullable: true
+              last_reason_code:
+                type: string
+                nullable: true
         signals:
           type: array
           items:
@@ -2317,9 +2703,29 @@ components:
       - selected_model_id
       - selected_candidate_id
       - final_test_status
+      - git_sha
+      - train_seeds
+      - validation_seeds
+      - test_seeds
+      - demo_seeds
+      - stress_seeds
       properties:
         experiment_id: *id001
         config_hash: *id001
+        git_sha:
+          type: string
+          nullable: true
+          description: The commit of the code that published the experiment, which publishing verified still reproduces
+            the frozen training features. Null when published outside a repository or before contract 1.10.0.
+        train_seeds: &id013
+          type: array
+          description: World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0.
+          items:
+            type: integer
+        validation_seeds: *id013
+        test_seeds: *id013
+        demo_seeds: *id013
+        stress_seeds: *id013
         selection_status:
           type: string
           enum:
@@ -2610,6 +3016,59 @@ components:
         next_cursor:
           type: string
           nullable: true
+    Curves:
+      type: object
+      additionalProperties: false
+      required:
+      - synthetic_only
+      - experiment_id
+      - run_id
+      - world_id
+      - eligible_count
+      - review_budget
+      - heavy_returner_cutoff
+      - abusers
+      - legitimate_heavy_returners
+      - points
+      description: For a run on the demonstration world, how many abusers and how many legitimate heavy returners the model's
+        first k customers and the return-rate rule's first k customers contain, for k from 1 to the eligible count. Counts
+        over stored result rows and the synthetic truth export; the evaluation page only, never the queue. A legitimate heavy
+        returner is a non-abuser whose raw return rate is at or above the run's heavy_returner_cutoff.
+      properties:
+        synthetic_only: *id011
+        experiment_id: *id001
+        run_id: *id001
+        world_id: *id001
+        eligible_count: *id008
+        review_budget:
+          type: integer
+          minimum: 0
+          nullable: true
+        heavy_returner_cutoff:
+          type: number
+          minimum: 0
+          nullable: true
+        abusers: *id008
+        legitimate_heavy_returners: *id008
+        points:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - k
+            - model_abusers_caught
+            - model_legitimate_heavy_reviewed
+            - baseline_abusers_caught
+            - baseline_legitimate_heavy_reviewed
+            properties:
+              k:
+                type: integer
+                minimum: 1
+              model_abusers_caught: *id008
+              model_legitimate_heavy_reviewed: *id008
+              baseline_abusers_caught: *id008
+              baseline_legitimate_heavy_reviewed: *id008
     TruthPage:
       type: object
       additionalProperties: false

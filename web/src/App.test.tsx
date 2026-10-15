@@ -11,7 +11,7 @@ const health = (over: Partial<Health>): Health => ({
 });
 const summary = (over: Partial<ExperimentSummary>): ExperimentSummary => ({
   experiment_id: "EXP", config_hash: "h", selection_status: "selected", selected_model_id: null, selected_candidate_id: "hgb_leaf15",
-  final_test_status: "not_run", ...over,
+  final_test_status: "not_run", git_sha: null, train_seeds: [], validation_seeds: [], test_seeds: [], demo_seeds: [], stress_seeds: [], ...over,
 });
 const customer = (over: Partial<Customer>): Customer => ({
   customer_id: "W1-C1", eligibility_status: "eligible", raw_score: 1.2, risk_score: 97.3, rank: 3, selected_for_review: true, baseline_rank: 40,

@@ -235,9 +235,18 @@ def _signal(code, label, value, denominator, unit, refs=()) -> dict:
             "source_refs": list(refs)}
 
 
-def _style_item(row: dict) -> dict:
+def _style_item(row: dict, reasons: list = ()) -> dict:
+    unique = int(row["unique_returners"])
+    flagged = row.get("flagged_returners")
     return {
         "style_id": row["style_id"], "category": row["category"], "state": row["state"],
+        # the SKU screen's extras (contract 1.9.0); null for runs scored before it
+        "name": row.get("name") or row["style_id"], "median_return_day": _number(row.get("median_return_day")),
+        "share_in_last_five_days": _number(row.get("share_in_last_five_days")),
+        "flagged_returner_share": None if flagged is None else {
+            "numerator": int(flagged), "denominator": unique, "share": int(flagged) / unique if unique else None},
+        "ring_returners": _integer(row.get("ring_returners")), "median_returner_score": _number(row.get("median_returner_score")),
+        "reason_codes": [{"code": r["reason_code"], "group": r["reason_group"], "lines": int(r["lines"]), "units": int(r["units"])} for r in reasons],
         "mature_sale_lines": int(row["mature_sale_lines"]), "purchased_units": int(row["purchased_units"]),
         "requested_units": int(row["requested_units"]), "unique_returners": int(row["unique_returners"]),
         "raw_return_rate": _number(row["raw_return_rate"]), "shrunk_return_rate": _number(row["shrunk_return_rate"]),
@@ -347,12 +356,54 @@ def customer_case(store: Store, run_id: str, customer: dict) -> dict:
                        "selected_for_review": bool(n["neighbor_selected_for_review"]),
                        "evidence_tags": list(n["neighbor_evidence_tags"] or [])}
                       for n in store.run_neighbors(run_id, customer_id)],
-        "styles": [_style_item(style) for style in store.run_customer_styles(run_id, customer_id, CASE_STYLES)],
+        "styles": _style_items(store, run_id, store.run_customer_styles(run_id, customer_id, CASE_STYLES)),
         "wardrobing": {"status": row["wardrobing_status"], "indicator_score": _integer(row["indicator_score"]),
                        "signals": wardrobing_signals, "limitation": WARDROBING_LIMITATION},
         "community": community_detail(store, run_id, customer),
         "rules_fired": rules_fired(customer),
     }
+
+
+def case_body(store: Store, run: dict, customer: dict, review_body) -> dict:
+    """The Case as the contract shows it: the customer row, its evidence, the group, the breakdown, the memo and the notes."""
+    case = customer_case(store, run["id"], customer)
+    reviews = store.list_reviews(run["world_id"], customer["customer_id"])
+    latest = reviews[-1]["disposition"] if reviews else None
+    return {"run_id": run["id"], "dataset_id": run["dataset_id"], "world_id": run["world_id"], "model_id": run["model_id"],
+            "model_kind": run["model_kind"], "cutoff": _iso(run["cutoff"]),
+            "customer": customer_item(customer, latest, run["summary"]),
+            "signals": case["signals"], "timeline": case["timeline"], "neighbors": case["neighbors"], "styles": case["styles"],
+            "wardrobing": case["wardrobing"], "community": case["community"],
+            "score_breakdown": score_breakdown(store, run, customer), "rules_fired": case["rules_fired"],
+            "memo": memo_body(store, run, customer), "reviews": [review_body(r) for r in reviews]}
+
+
+def memo_body(store: Store, run: dict, customer: dict) -> dict:
+    """The customer's investigation memo as the contract shows it. A memo exists only for a customer selected for review and only
+    with status ok; pending means the run has succeeded and its memos are still being drafted; unavailable carries the reason.
+    not_selected is every customer outside the queue. The content fields are null unless the status is ok."""
+    empty = {"summary": None, "key_evidence": [], "alternative_explanations": [], "recommended_action": None,
+             "attempts": 0, "reason": None, "model": None, "generated_at": None}
+    if not customer["selected_for_review"]:
+        return {"status": "not_selected", **empty}
+    row = store.run_memo(run["id"], customer["customer_id"])
+    if row is None:
+        return {"status": "pending", **empty}
+    content = row["memo"] or {}
+    return {"status": row["status"], "summary": content.get("summary"), "key_evidence": list(content.get("key_evidence") or []),
+            "alternative_explanations": list(content.get("alternative_explanations") or []),
+            "recommended_action": content.get("recommended_action"), "attempts": int(row["attempts"]), "reason": row["reason"],
+            "model": row["model"], "generated_at": _iso(row["generated_at"])}
+
+
+def memo_progress(store: Store, run: dict) -> dict | None:
+    """How far a succeeded run's memos are: {selected, ok, unavailable, complete}; None until the run succeeded."""
+    if run["status"] != "succeeded":
+        return None
+    counts = store.memo_counts(run["id"])
+    selected = int(run["selected_count"] or 0)
+    return {"selected": selected, "ok": counts["ok"], "unavailable": counts["unavailable"],
+            "complete": counts["ok"] + counts["unavailable"] >= selected}
 
 
 def _timeline_event(e: dict) -> dict:
@@ -387,9 +438,24 @@ def score_distribution(store: Store, run: dict) -> dict:
             "threshold_score": _number(summary.get("threshold_score")), "bin_width": width, "bins": bins[::-1]}
 
 
+def _style_items(store: Store, run_id: str, rows: list) -> list:
+    """Style rows with their reason codes, fetched for the page in one query."""
+    reasons = store.run_style_reasons(run_id, [row["style_id"] for row in rows])
+    return [_style_item(row, reasons.get(row["style_id"], [])) for row in rows]
+
+
 def style_queue(store: Store, run_id: str, state: str, after: str | None, limit: int) -> tuple:
     rows = store.run_styles(run_id, state, after, limit + 1)
-    return [_style_item(row) for row in rows[:limit]], (rows[limit - 1]["style_id"] if len(rows) > limit else None)
+    return _style_items(store, run_id, rows[:limit]), (rows[limit - 1]["style_id"] if len(rows) > limit else None)
+
+
+def _returner(row: dict) -> dict:
+    """A customer with a request on the style, with its own result in the run; the score is the customer's, not the style's."""
+    return {"customer_id": row["customer_id"], "risk_score": _number(row["risk_score"]), "rank": _integer(row["rank"]),
+            "selected_for_review": bool(row["selected_for_review"]), "tier": tier(row), "community": community_summary(row),
+            "requested_units": int(row["requested_units"]), "claim_lines": int(row["claim_lines"]), "linked_claim_lines": int(row["linked_claim_lines"]),
+            "return_lines": _integer(row.get("return_lines")), "purchased_lines": _integer(row.get("purchased_lines")),
+            "last_reason_code": row.get("last_reason_code")}
 
 
 def style_detail(store: Store, run_id: str, style_id: str) -> dict:
@@ -405,12 +471,54 @@ def style_detail(store: Store, run_id: str, style_id: str) -> dict:
                 row["linked_claim_lines"], row["claim_lines"], "of claim lines"),
         _signal("linked_claimers", "Distinct customers with a linked claim on this style", row["linked_claimers"], None, "customers"),
     ]
-    return {"style": _style_item(row),
+    returners = [_returner(r) for r in store.run_style_returners(run_id, style_id, STYLE_CUSTOMERS)]
+    return {"style": _style_items(store, run_id, [row])[0],
             "skus": [{"sku": s["sku"], "style_id": s["style_id"], "size": str(s["size"]), "colour": str(s["colour"]),
                       "unit_price_inr": float(s["unit_price"]), "mature_sale_lines": int(s["mature_sale_lines"]),
                       "purchased_units": int(s["purchased_units"]), "requested_units": int(s["requested_units"]),
                       "support_status": s["support_status"]} for s in store.run_style_skus(run_id, style_id)],
-            "customer_ids": store.run_style_customers(run_id, style_id, STYLE_CUSTOMERS), "signals": signals}
+            "customer_ids": [r["customer_id"] for r in returners], "returners": returners, "signals": signals}
+
+
+# ------------------------------------------------------------------ experiments (published offline, synthetic only)
+SEED_KEYS = ("train_seeds", "validation_seeds", "test_seeds", "demo_seeds", "stress_seeds")
+CURVE_POINTS = 200
+
+
+def experiment_summary(report: dict) -> dict:
+    """The published summary as the contract shows it; a report published before contract 1.10.0 lacks the manifest fields."""
+    summary = dict(report["summary"])
+    summary.setdefault("git_sha", None)
+    for name in SEED_KEYS:
+        summary[name] = [int(seed) for seed in (summary.get(name) or [])]
+    return summary
+
+
+def curves(store: Store, experiment: dict, run: dict, max_points: int) -> dict:
+    """Abusers caught and legitimate heavy returners reviewed by the model's first k and the return-rate rule's first k, for a
+    run on the experiment's truth world (synthetic truth; the evaluation page only).
+
+    Every k from 1 to the eligible count is counted; at most `max_points` are returned, thinned evenly, always keeping
+    k = 1, the review budget and the last k. The last point carries the totals.
+    """
+    summary = run["summary"] or {}
+    rows = store.curve_points(experiment["id"], run["id"], summary.get("heavy_returner_cutoff"))
+    budget = summary.get("review_budget_k")
+    keep = set()
+    if rows:
+        step = max(1, len(rows) / max(1, max_points - 1))
+        keep = {rows[min(len(rows) - 1, int(round(i * step)))]["k"] for i in range(max_points)} | {rows[0]["k"], rows[-1]["k"]}
+        if budget:
+            keep.add(budget)
+    points = [{"k": int(r["k"]), "model_abusers_caught": int(r["model_abusers"]), "model_legitimate_heavy_reviewed": int(r["model_heavy"]),
+               "baseline_abusers_caught": int(r["baseline_abusers"]), "baseline_legitimate_heavy_reviewed": int(r["baseline_heavy"])}
+              for r in rows if r["k"] in keep]
+    last = rows[-1] if rows else None
+    return {"synthetic_only": True, "experiment_id": experiment["id"], "run_id": run["id"], "world_id": experiment["truth_world_id"],
+            "eligible_count": int(last["k"]) if last else 0, "review_budget": _integer(budget),
+            "heavy_returner_cutoff": _number(summary.get("heavy_returner_cutoff")),
+            "abusers": int(last["model_abusers"]) if last else 0, "legitimate_heavy_returners": int(last["model_heavy"]) if last else 0,
+            "points": points}
 
 
 # ------------------------------------------------------------------ experiment truth (published offline, synthetic only)

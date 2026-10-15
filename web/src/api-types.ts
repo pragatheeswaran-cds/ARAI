@@ -68,6 +68,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Stop a run that has not finished. A queued run is interrupted at once; a running run is asked to stop and does so at its next stage, leaving no result (results are written only when a run succeeds). A run that has finished is a 409 run_finished. Nothing published is touched. */
+        post: operations["cancelRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{run_id}/customers": {
         parameters: {
             query?: never;
@@ -213,6 +230,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/experiments/{experiment_id}/curves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEvaluationCurves"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -319,6 +352,21 @@ export interface components {
             community_count: number | null;
             /** @description Of community_count, the groups the stated rule calls a ring (a coordinated claim match on an edge, two or more members selected for review, or a member with a coordinated claim share above zero). Evidence about the group, not a verdict on any member. Null until the run succeeded. */
             ring_count: number | null;
+            /** @description How far the run's investigation memos are. They are drafted after the run succeeded, one per selected customer, so results are served while they arrive; complete when every selected customer has a decided memo (ok or unavailable). Null until the run succeeded. */
+            memos: {
+                selected: number;
+                ok: number;
+                unavailable: number;
+                complete: boolean;
+            } | null;
+            /** @description When each stage began, in order, from validate on; the stepper derives elapsed times from consecutive entries and completed_at. Empty for a queued run and for runs scored before contract 1.12.0. */
+            stage_log: {
+                stage: string;
+                /** Format: date-time */
+                at: string;
+            }[];
+            /** @description Styles whose state is quality, targeting or mixed_or_uncertain, for the done summary. Null until the run succeeded. */
+            styles_with_verdict: number | null;
         };
         Support: {
             mature_sale_lines: number;
@@ -495,6 +543,30 @@ export interface components {
         Style: {
             style_id: string;
             category: string;
+            /** @description "{brand} {category}" from sku_master, which has no name column, with the style id appended when that pair is not unique in the run; the style id alone for runs scored before contract 1.9.0. */
+            name: string;
+            /** @description Median day after delivery of the style's return requests on mature lines. Null without a timed request and for runs scored before 1.9.0. */
+            median_return_day: number | null;
+            /** @description Share of the style's timed requests made in the last five days of the return window. */
+            share_in_last_five_days: number | null;
+            /** @description Of the customers with a request on the style's mature lines (unique_returners), how many are selected for review in this run. A share of returners, not a statement about the product. */
+            flagged_returner_share: {
+                numerator: number;
+                denominator: number;
+                share: number | null;
+            } | null;
+            /** @description Returners whose group of linked accounts the stated rule calls a ring. */
+            ring_returners: number | null;
+            /** @description Median risk score of the eligible returners, to read against the run's median_score. */
+            median_returner_score: number | null;
+            /** @description The style's return requests on mature lines by reason code, most units first; the units sum to requested_units. From the codebook, never the customer's free text. Empty for runs scored before 1.9.0. */
+            reason_codes: {
+                code: string;
+                /** @enum {string} */
+                group: "transaction_claim" | "item_complaint" | "fit" | "discretionary";
+                lines: number;
+                units: number;
+            }[];
             /** @enum {string} */
             state: "quality" | "targeting" | "mixed_or_uncertain" | "no_elevated_signal" | "insufficient_support" | "no_return_evidence";
             mature_sale_lines: number;
@@ -613,13 +685,62 @@ export interface components {
                 label: string;
                 fired: boolean | null;
             }[];
+            /** @description The investigation memo drafted for a selected customer from this case alone (no free text, no private truth, no other customer's identifier), after a deterministic gate in which every number it cites is a value or denominator of the case, every panel exists, the action is a gate outcome, no other customer is named, the sections are short. A failed draft is retried once; two failures give unavailable with the reason. The UI shows memo content only when status is ok. A memo is a draft for a reviewer, never a decision; it changes no score, rank or selection. */
+            memo: {
+                /**
+                 * @description pending while the run's memos are still being drafted; not_selected for a customer outside the queue; unavailable with reason no_api_key when the deployment has no key (by design, every memo is unavailable then).
+                 * @enum {string}
+                 */
+                status: "ok" | "unavailable" | "pending" | "not_selected";
+                summary: string | null;
+                key_evidence: {
+                    statement: string;
+                    /** @enum {string} */
+                    panel: "expected" | "returns" | "linked" | "wardrobing";
+                    value: number;
+                    denominator: number | null;
+                }[];
+                alternative_explanations: string[];
+                /** @enum {string|null} */
+                recommended_action: "ESCALATE" | "HOLD" | "WARNING" | "LOW" | null;
+                attempts: number;
+                reason: string | null;
+                model: string | null;
+                /** Format: date-time */
+                generated_at: string | null;
+            };
             reviews: components["schemas"]["Review"][];
         };
         StyleDetail: {
             run_id: string;
             style: components["schemas"]["Style"];
             skus: components["schemas"]["Sku"][];
+            /** @description The returners' ids in the same order as returners. */
             customer_ids: string[];
+            /** @description Customers with a request on the style, those with linked claims first, each with its own result in the run. A customer's score is the customer's; the style's state is the style's. */
+            returners: {
+                customer_id: string;
+                risk_score: number | null;
+                rank: number | null;
+                selected_for_review: boolean;
+                /** @enum {string|null} */
+                tier: "HIGH" | "MEDIUM" | "LOW" | null;
+                community: {
+                    id: string;
+                    /**
+                     * @description ring when any edge of the group has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero; household otherwise. From observed evidence only.
+                     * @enum {string}
+                     */
+                    kind: "ring" | "household";
+                    size: number;
+                } | null;
+                requested_units: number;
+                claim_lines: number;
+                linked_claim_lines: number;
+                return_lines: number | null;
+                purchased_lines: number | null;
+                last_reason_code: string | null;
+            }[];
             signals: components["schemas"]["Signal"][];
         };
         Metric: {
@@ -648,6 +769,18 @@ export interface components {
         ExperimentSummary: {
             experiment_id: string;
             config_hash: string;
+            /** @description The commit of the code that published the experiment, which publishing verified still reproduces the frozen training features. Null when published outside a repository or before contract 1.10.0. */
+            git_sha: string | null;
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            train_seeds: number[];
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            validation_seeds: number[];
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            test_seeds: number[];
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            demo_seeds: number[];
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            stress_seeds: number[];
             /** @enum {string} */
             selection_status: "not_completed" | "selected" | "no_selected_model";
             selected_model_id: string | null;
@@ -734,6 +867,25 @@ export interface components {
         ExperimentSummaryPage: {
             items: components["schemas"]["ExperimentSummary"][];
             next_cursor: string | null;
+        };
+        /** @description For a run on the demonstration world, how many abusers and how many legitimate heavy returners the model's first k customers and the return-rate rule's first k customers contain, for k from 1 to the eligible count. Counts over stored result rows and the synthetic truth export; the evaluation page only, never the queue. A legitimate heavy returner is a non-abuser whose raw return rate is at or above the run's heavy_returner_cutoff. */
+        Curves: {
+            synthetic_only: boolean;
+            experiment_id: string;
+            run_id: string;
+            world_id: string;
+            eligible_count: number;
+            review_budget: number | null;
+            heavy_returner_cutoff: number | null;
+            abusers: number;
+            legitimate_heavy_returners: number;
+            points: {
+                k: number;
+                model_abusers_caught: number;
+                model_legitimate_heavy_reviewed: number;
+                baseline_abusers_caught: number;
+                baseline_legitimate_heavy_reviewed: number;
+            }[];
         };
         TruthPage: {
             synthetic_only: boolean;
@@ -1176,6 +1328,82 @@ export interface operations {
         responses: {
             /** @description Success */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description VM authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run as it now stands (interrupted, or running with the cancel requested) */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1983,6 +2211,87 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TruthPage"];
+                };
+            };
+            /** @description VM authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEvaluationCurves: {
+        parameters: {
+            query: {
+                /** @description A succeeded run scored on the experiment's demonstration world (the world of the published truth); another world is a 409 world_mismatch. */
+                run_id: string;
+                /** @description At most this many points, thinned evenly over k, always keeping k = 1, the review budget and the last k. */
+                max_points?: number;
+            };
+            header?: never;
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Curves"];
                 };
             };
             /** @description VM authentication required */

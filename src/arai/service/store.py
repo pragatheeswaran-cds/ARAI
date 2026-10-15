@@ -19,7 +19,7 @@ from psycopg.types.json import Jsonb
 MIGRATIONS = Path(__file__).with_name("migrations")
 STAGES = ("queued", "validate", "features", "eligibility", "scoring", "evidence", "publish", "done")
 RESULT_TABLES = ("run_customers", "run_styles", "run_skus", "run_neighbors", "run_timeline", "run_customer_styles", "run_communities",
-                 "run_attributions")
+                 "run_attributions", "run_style_reasons")
 
 
 COMMUNITY_FIELDS = "k.kind AS community_kind, k.size AS community_size"   # of the community a customer row belongs to
@@ -55,6 +55,10 @@ STATE_SQL = {"in_review": "wf.kind = 'open'", "awaiting_approval": "wf.kind = 'r
 GATE_SQL = {"ESCALATE": f"c.selected_for_review AND {_ESCALATE}", "HOLD": f"c.selected_for_review AND NOT {_ESCALATE}",
             "WARNING": f"c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND {_WARNING}",
             "LOW": f"c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND NOT {_WARNING}"}
+
+
+class Cancelled(Exception):
+    """The run's cancel was requested; the worker stops at the stage that saw it."""
 
 
 class Conflict(Exception):
@@ -220,14 +224,46 @@ class Store:
     def claim_next_run(self, worker_id: str) -> dict | None:
         """Atomically take the oldest queued run. Two workers can never both own one run."""
         with self.transaction() as db:
-            return db.execute("""UPDATE runs SET status = 'running', stage = 'validate', claimed_by = %s, started_at = now()
+            return db.execute("""UPDATE runs SET status = 'running', stage = 'validate', claimed_by = %s, started_at = now(),
+                                     stage_log = jsonb_build_array(jsonb_build_object('stage', 'validate', 'at', now()))
                                  WHERE id = (SELECT id FROM runs WHERE status = 'queued' ORDER BY created_at, id
                                              FOR UPDATE SKIP LOCKED LIMIT 1)
                                  RETURNING *""", (worker_id,)).fetchone()
 
     def update_stage(self, run_id: str, stage: str, progress: float) -> None:
+        """Record the stage and when it began. Raises Cancelled when a cancel was requested, so the worker stops here."""
         with self.transaction() as db:
-            db.execute("UPDATE runs SET stage = %s, progress = %s WHERE id = %s AND status = 'running'", (stage, progress, run_id))
+            row = db.execute("""UPDATE runs SET stage = %s, progress = %s,
+                                    stage_log = CASE WHEN stage = %s THEN stage_log
+                                                     ELSE stage_log || jsonb_build_object('stage', %s::text, 'at', now()) END
+                                WHERE id = %s AND status = 'running' RETURNING cancel_requested""",
+                             (stage, progress, stage, stage, run_id)).fetchone()
+        if row and row["cancel_requested"]:
+            raise Cancelled(run_id)
+
+    def request_cancel(self, run_id: str) -> dict:
+        """Cancel a run: a queued run is interrupted at once; a running run is asked to stop at its next stage. Returns the run.
+        A run that has finished raises Conflict (run_finished)."""
+        with self.transaction() as db:
+            row = db.execute("SELECT status FROM runs WHERE id = %s FOR UPDATE", (run_id,)).fetchone()
+            if row is None:
+                raise NotFound("run")
+            if row["status"] == "queued":
+                db.execute("""UPDATE runs SET status = 'interrupted', completed_at = now(), error_code = 'cancelled',
+                                  error_message = 'Cancelled before scoring started.', error_request_id = id, cancel_requested = true
+                              WHERE id = %s""", (run_id,))
+            elif row["status"] == "running":
+                db.execute("UPDATE runs SET cancel_requested = true WHERE id = %s", (run_id,))
+            else:
+                raise Conflict("run_finished", f"Run {run_id} is {row['status']}; only a queued or running run can be cancelled.")
+        return self.get_run(run_id)
+
+    def cancel_run(self, run_id: str, worker_id: str) -> None:
+        """The worker stopped a running run at a stage because its cancel was requested. No result was written."""
+        with self.transaction() as db:
+            db.execute("""UPDATE runs SET status = 'interrupted', completed_at = now(), error_code = 'cancelled',
+                              error_message = 'Cancelled while scoring. No partial result was kept.', error_request_id = id
+                          WHERE id = %s AND status = 'running' AND claimed_by = %s""", (run_id, worker_id))
 
     def _copy(self, db, table: str, key: tuple, columns: list, rows) -> None:
         """Bulk-load rows of one table; `key` is the leading (column, value) every row shares."""
@@ -238,7 +274,7 @@ class Store:
 
     def _write_results(self, db, run_id: str, tables: dict) -> None:
         if set(tables) != set(RESULT_TABLES):
-            raise ValueError("a run publishes exactly its eight result tables")
+            raise ValueError("a run publishes exactly its nine result tables")
         for table in RESULT_TABLES:
             columns, rows = tables[table]
             self._copy(db, table, ("run_id", run_id), columns, rows)
@@ -438,6 +474,35 @@ class Store:
             raise NotFound("customer in this run")
         return row
 
+    # ------------------------------------------------------------------ memos (written after the run succeeded, one row per selected customer)
+    def selected_customer_ids(self, run_id: str) -> list:
+        with self.transaction() as db:
+            rows = db.execute("SELECT customer_id FROM run_customers WHERE run_id = %s AND selected_for_review ORDER BY queue_position",
+                              (run_id,)).fetchall()
+        return [row["customer_id"] for row in rows]
+
+    def write_memo(self, run_id: str, row: dict) -> None:
+        """Store a decided memo; a second decision for the same customer replaces the first (a restart that redoes memos)."""
+        with self.transaction() as db:
+            db.execute("""INSERT INTO run_memos (run_id, customer_id, status, attempts, reason, model, generated_at, memo)
+                          VALUES (%(run_id)s, %(customer_id)s, %(status)s, %(attempts)s, %(reason)s, %(model)s, %(generated_at)s, %(memo)s)
+                          ON CONFLICT (run_id, customer_id) DO UPDATE SET status = EXCLUDED.status, attempts = EXCLUDED.attempts,
+                              reason = EXCLUDED.reason, model = EXCLUDED.model, generated_at = EXCLUDED.generated_at, memo = EXCLUDED.memo""",
+                       dict(row, run_id=run_id, memo=Jsonb(row["memo"]) if row["memo"] is not None else None))
+
+    def run_memo(self, run_id: str, customer_id: str) -> dict | None:
+        with self.transaction() as db:
+            return db.execute("SELECT * FROM run_memos WHERE run_id = %s AND customer_id = %s", (run_id, customer_id)).fetchone()
+
+    def memo_counts(self, run_id: str) -> dict:
+        """{ok, unavailable}: how many memos of a run are decided either way."""
+        with self.transaction() as db:
+            rows = db.execute("SELECT status, count(*) AS n FROM run_memos WHERE run_id = %s GROUP BY status", (run_id,)).fetchall()
+        counts = {"ok": 0, "unavailable": 0}
+        for row in rows:
+            counts[row["status"]] = int(row["n"])
+        return counts
+
     def run_attributions(self, run_id: str, customer_id: str) -> list:
         """The customer's score with each feature family at typical values, in family order; empty for an unranked customer."""
         with self.transaction() as db:
@@ -515,6 +580,31 @@ class Store:
             return db.execute('SELECT * FROM run_skus WHERE run_id = %s AND style_id = %s ORDER BY sku COLLATE "C"',
                               (run_id, style_id)).fetchall()
 
+    def run_style_reasons(self, run_id: str, style_ids: list) -> dict:
+        """style_id -> its reason rows, most units first (the order they were written in)."""
+        if not style_ids:
+            return {}
+        with self.transaction() as db:
+            rows = db.execute("""SELECT * FROM run_style_reasons WHERE run_id = %s AND style_id = ANY (%s)
+                                 ORDER BY style_id, units DESC, lines DESC, reason_code""", (run_id, list(style_ids))).fetchall()
+        out = {style_id: [] for style_id in style_ids}
+        for row in rows:
+            out[row["style_id"]].append(row)
+        return out
+
+    def run_style_returners(self, run_id: str, style_id: str, limit: int) -> list:
+        """Customers with a request on a style, those with linked claims first, each with its own result and community in the run."""
+        with self.transaction() as db:
+            return db.execute(f"""SELECT o.customer_id, o.requested_units, o.claim_lines, o.linked_claim_lines, o.return_lines, o.purchased_lines,
+                                         o.last_reason_code, c.risk_score, c.rank, c.selected_for_review, c.eligibility_status, c.community_id,
+                                         {COMMUNITY_FIELDS}
+                                  FROM run_customer_styles o
+                                  JOIN run_customers c ON c.run_id = o.run_id AND c.customer_id = o.customer_id
+                                  LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
+                                  WHERE o.run_id = %s AND o.style_id = %s
+                                  ORDER BY o.linked_claim_lines DESC, o.claim_lines DESC, o.requested_units DESC, o.customer_id COLLATE "C"
+                                  LIMIT %s""", (run_id, style_id, limit)).fetchall()
+
     def run_style_customers(self, run_id: str, style_id: str, limit: int) -> list:
         """Customers with a request on a style, those with linked claims first."""
         with self.transaction() as db:
@@ -550,6 +640,28 @@ class Store:
         if not row:
             raise NotFound("experiment")
         return row
+
+    def curve_points(self, experiment_id: str, run_id: str, heavy_cutoff: float | None) -> list:
+        """Per rank k of a run on the truth world, how many abusers and legitimate heavy returners the model's first k and the
+        return-rate rule's first k contain. Rows {k, model_abusers, model_heavy, baseline_abusers, baseline_heavy}, k ascending.
+
+        A legitimate heavy returner is a non-abuser whose raw return rate is at or above the run's heavy-returner cutoff
+        (the gate's own definition). Counts over stored rows and the synthetic truth export; nothing is recomputed.
+        """
+        with self.transaction() as db:
+            return db.execute("""WITH joined AS (
+                                     SELECT c.rank, c.baseline_rank, t.y_abuse,
+                                            CASE WHEN t.y_abuse = 0 AND %s IS NOT NULL
+                                                      AND (c.measures->>'raw_return_rate')::double precision >= %s THEN 1 ELSE 0 END AS heavy
+                                     FROM run_customers c JOIN experiment_truth t ON t.experiment_id = %s AND t.customer_id = c.customer_id
+                                     WHERE c.run_id = %s AND c.eligibility_status = 'eligible' AND c.rank IS NOT NULL),
+                                 by_model AS (SELECT rank AS k, sum(y_abuse) OVER (ORDER BY rank) AS abusers, sum(heavy) OVER (ORDER BY rank) AS heavy
+                                              FROM joined),
+                                 by_rule AS (SELECT baseline_rank AS k, sum(y_abuse) OVER (ORDER BY baseline_rank) AS abusers,
+                                                    sum(heavy) OVER (ORDER BY baseline_rank) AS heavy FROM joined)
+                                 SELECT m.k, m.abusers AS model_abusers, m.heavy AS model_heavy, r.abusers AS baseline_abusers, r.heavy AS baseline_heavy
+                                 FROM by_model m JOIN by_rule r ON r.k = m.k ORDER BY m.k""",
+                              (heavy_cutoff, heavy_cutoff, experiment_id, run_id)).fetchall()
 
     def experiment_truth(self, experiment_id: str, after: int | None, limit: int) -> list:
         with self.transaction() as db:

@@ -8,9 +8,9 @@ import time
 import uuid
 
 from arai import bundles
-from arai.service import datasets, ingest, results, scoring
+from arai.service import datasets, ingest, memo, results, scoring, views
 from arai.service.config import ServiceConfig
-from arai.service.store import Store
+from arai.service.store import Cancelled, Store
 
 log = logging.getLogger("arai.worker")
 
@@ -69,6 +69,10 @@ def process_one(config: ServiceConfig, store: Store, hook=None) -> str | None:
         else:
             log.info("run=%s stage=done duration=%.1fs eligible=%d selected=%d model=%s", run_id, time.time() - started,
                      counts["eligible_count"], counts["selected_count"], run["model_id"])
+            write_memos(config, store, run_id)                         # after success: the results are served while memos arrive
+    except Cancelled:
+        store.cancel_run(run_id, config.worker_id)
+        log.info("run=%s cancelled at stage", run_id)
     except Exception as error:                                   # noqa: BLE001  any failure fails the run, never the worker
         request_id = uuid.uuid4().hex
         code = "model_invalid" if isinstance(error, bundles.BundleError) else "scoring_failed"
@@ -77,6 +81,18 @@ def process_one(config: ServiceConfig, store: Store, hook=None) -> str | None:
         store.fail_run(run_id, code, message, request_id)
         log.exception("run=%s error_code=%s request_id=%s", run_id, code, request_id)
     return run_id
+
+
+def write_memos(config: ServiceConfig, store: Store, run_id: str) -> dict | None:
+    """Draft the investigation memos of a succeeded run from each case as the API serves it. Nothing here can fail the run."""
+    try:
+        run = store.get_run(run_id)
+        case_of = lambda customer_id: views.case_body(store, run, store.run_customer(run_id, customer_id, run["world_id"]),  # noqa: E731
+                                                      lambda r: r)
+        return memo.write_memos(config, store, run_id, case_of)
+    except Exception:                                                # noqa: BLE001  the run has succeeded; memos are a draft on top
+        log.exception("run=%s memos could not be drafted", run_id)
+        return None
 
 
 def run_forever(config: ServiceConfig, store: Store, stop: threading.Event | None = None) -> None:

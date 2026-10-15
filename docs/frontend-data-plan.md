@@ -192,6 +192,8 @@ No pipeline change; `store.py`, `views.py`, `api.py`, `openapi.yaml`, one migrat
 
 `scoring.py` (from `result.requests`, `customer_styles`), `run_styles` columns, new `run_style_reasons`.
 
+**Status: done on branch `ccr-488644ae-esclgi` (contract 1.9.0, AM-60).** `Style.name`, `median_return_day`, `share_in_last_five_days`, `flagged_returner_share {numerator, denominator, share}`, `ring_returners`, `median_returner_score`, `reason_codes[]`; `StyleDetail.returners[]` beside `customer_ids` (same ids, same order, so the UI keeps working). Schema version 8.
+
 - `reason_codes[] {code, group, lines, units}` per style (top reasons drawer and the queue column).
 - `median_return_day`, `share_in_last_five_days` per style from request timing.
 - `flagged_returner_share {numerator, denominator}` = returners selected for review / unique returners;
@@ -207,6 +209,8 @@ No pipeline change; `store.py`, `views.py`, `api.py`, `openapi.yaml`, one migrat
 ### WP5 — Evaluation page data (half a day)
 
 `publishing.py` (offline, re-run `arai publish`, no training) and one endpoint.
+
+**Status: done on branch `ccr-488644ae-esclgi` (contract 1.10.0, AM-61).** `GET /experiments/{id}/curves?run_id=&max_points=` (every k, thinned to 200 by default, budget and last k always kept; 409 `world_mismatch` for a run on another world); `ExperimentSummary.git_sha` and the five seed lists. The SHA is recorded at publish time, not train time: `modeling.py` is a hashed scoring file and stays untouched. Experiment 4 needs a verification-only republish to carry the fields; until then they read null and empty.
 
 - `GET /experiments/{id}/curves?run_id=` : from `experiment_truth` × `run_customers` of a run on the truth
   world, cumulative `abusers_caught` and `legitimate_heavy_returners_reviewed` over `rank` and over
@@ -242,6 +246,8 @@ No pipeline change; `store.py`, `views.py`, `api.py`, `openapi.yaml`, one migrat
 
 New stage after `evidence`, table `run_memos`, `Case.memo`.
 
+**Status: done on branch `ccr-488644ae-esclgi` (contract 1.11.0, AM-62).** `service/memo.py`: the case as served minus reviews, sentences and other customers' ids; `claude-opus-5-5` (`ARAI_MEMO_MODEL` overrides) with structured output and `fallbacks: "default"`; the deterministic gate; two attempts; a pool of four after `finish_run`. `Case.memo {status: ok | unavailable | pending | not_selected, ...}`; `Run.memos {selected, ok, unavailable, complete}` instead of a `Run.stage = investigation`, because a succeeded run's stage stays `done`. Without `ANTHROPIC_API_KEY` every memo is `unavailable` (`no_api_key`) and nothing is called. Table `run_memos` (schema version 9).
+
 - **Input is the Case JSON only**: signals, basket expectation, attribution, community, timeline rows,
   wardrobing. No free text, no truth, no identifiers beyond the customer id.
 - **Generation:** one call per selected customer with the Anthropic Python SDK, `claude-opus-5-5`,
@@ -261,6 +267,8 @@ New stage after `evidence`, table `run_memos`, `Case.memo`.
 - `memo.generated_at`, `model`, `attempts` feed the audit footer.
 
 ### WP8 — Upload & Score polish (half a day, plus one decision)
+
+**Status: done on branch `ccr-488644ae-esclgi` (contract 1.12.0, AM-63).** `Run.stage_log[] {stage, at}` (schema version 10), `Run.styles_with_verdict`, `POST /runs/{run_id}/cancel` (queued: interrupted at once; running: cooperative stop at the next stage, error code `cancelled`; finished: 409 `run_finished`). The checklist and the stage mapping are UI work from fields that exist; quarantine stays blocking (D5).
 
 - Checklist of seven files: build client-side from `data-schema.yaml` table names; on 422 map
   `upload.missing_part` rows onto it.

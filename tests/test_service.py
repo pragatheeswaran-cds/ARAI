@@ -1321,3 +1321,238 @@ def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_de
     history = client.get(reviews(first)).json()["items"]
     assert [r["kind"] for r in history] == ["note", "open", "request_approval", "approve"]
     assert post(first, "k9", note=" ").status_code == 422 and post(first, "k10", kind="close").status_code == 422
+
+
+def test_the_style_screen_extras_are_sums_over_the_same_lines_as_the_style_states(client, env, written, world):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/styles"
+    styles = all_pages(client, url)
+    conforms("StylePage", {"items": styles, "next_cursor": None})
+    customers = {c["customer_id"]: c for c in all_pages(client, f"{API}/runs/{run['run_id']}/customers", {"review_only": "false"})}
+    skus = world.tables["sku_master"].drop_duplicates("style_id").set_index("style_id")
+    names = {}
+    for style in styles:
+        assert style["name"].startswith(f"{skus.loc[style['style_id'], 'brand']} {skus.loc[style['style_id'], 'category']}")
+        names.setdefault(style["name"], []).append(style["style_id"])
+        assert sum(r["units"] for r in style["reason_codes"]) == style["requested_units"]            # the same mature requests
+        assert [r["units"] for r in style["reason_codes"]] == sorted((r["units"] for r in style["reason_codes"]), reverse=True)
+        assert len({r["code"] for r in style["reason_codes"]}) == len(style["reason_codes"])
+        share = style["flagged_returner_share"]
+        assert share["denominator"] == style["unique_returners"] and 0 <= share["numerator"] <= share["denominator"]
+        assert share["share"] == (share["numerator"] / share["denominator"] if share["denominator"] else None)
+        assert style["ring_returners"] <= style["unique_returners"]
+        if style["median_return_day"] is not None:
+            assert style["median_return_day"] >= 0 and 0 <= style["share_in_last_five_days"] <= 1
+        if style["requested_units"] == 0:
+            assert style["reason_codes"] == [] and share["numerator"] == 0
+    assert all(len(ids) == 1 for ids in names.values()), "a repeated brand and category carries the style id"
+    assert any(s["flagged_returner_share"]["numerator"] > 0 for s in styles) and any(s["ring_returners"] > 0 for s in styles)
+    # the drawer: returners with their own results, the same customers and order as customer_ids, lines bought and returned
+    with_returners = next(s for s in sorted(styles, key=lambda s: -s["unique_returners"]))
+    detail = client.get(f"{url}/{with_returners['style_id']}").json()
+    conforms("StyleDetail", detail)
+    assert detail["customer_ids"] == [r["customer_id"] for r in detail["returners"]] and detail["returners"]
+    for r in detail["returners"]:
+        own = customers[r["customer_id"]]
+        assert (r["risk_score"], r["rank"], r["selected_for_review"], r["tier"], r["community"]) == \
+            (own["risk_score"], own["rank"], own["selected_for_review"], own["tier"], own["community"])
+        assert r["return_lines"] >= 1 and r["purchased_lines"] >= 0 and r["last_reason_code"]
+        assert r["requested_units"] >= 1
+    flagged = {r["customer_id"] for r in detail["returners"] if r["selected_for_review"]}
+    assert len(flagged) <= detail["style"]["flagged_returner_share"]["numerator"]
+    # the median returner score reads against the run's median
+    scored = [r["risk_score"] for r in detail["returners"] if r["risk_score"] is not None]
+    if len(detail["returners"]) < 50 and scored:
+        assert detail["style"]["median_returner_score"] == pytest.approx(pd.Series(scored).median())
+    assert run["median_score"] is not None
+
+
+def test_the_evaluation_curves_count_abusers_and_legitimate_heavy_returners_at_every_budget(client, env, written, world):
+    """Synthetic truth joined to a run on the demonstration world, for the evaluation page only; nothing about the run changes."""
+    run = scored_run(client, env, written)
+    other = scored_run(client, env, written, key="other", model_id=env["baseline_id"])
+    truth = world.truth["customer_truth"]
+    published = env["root"] / "experiments" / "EXP-TEST" / "published"
+    published.mkdir(parents=True)
+    report = {"summary": {"experiment_id": "EXP-TEST", "config_hash": "0" * 64, "selection_status": "selected", "selected_model_id": env["model_id"],
+                          "selected_candidate_id": "logreg_c1", "final_test_status": "not_run"}}        # a report from before contract 1.10.0
+    (published / "experiment.json").write_text(json.dumps(report), encoding="utf-8")
+    export = pd.DataFrame({"world_id": run["world_id"], "customer_id": truth["customer_id"], "y_abuse": truth["y_abuse"].astype(int),
+                           "action_types": ""}).sort_values(["y_abuse", "customer_id"], ascending=[False, True])
+    export.to_parquet(published / "truth.parquet", index=False)
+    store = Store(env["config"].database_url)
+    assert ingest.sync_published(env["config"], store) == ["EXP-TEST"]
+    summary = client.get(f"{API}/experiments/EXP-TEST").json()["summary"]
+    conforms("ExperimentSummary", summary)
+    assert summary["git_sha"] is None and summary["train_seeds"] == []                      # an older report reads as the contract says
+    conforms("ExperimentSummaryPage", client.get(f"{API}/experiments").json())
+
+    curves = client.get(f"{API}/experiments/EXP-TEST/curves", params={"run_id": run["run_id"], "max_points": 20000}).json()
+    conforms("Curves", curves)
+    customers = all_pages(client, f"{API}/runs/{run['run_id']}/customers", {"review_only": "false", "eligibility": "eligible"})
+    abusers = set(truth.loc[truth["y_abuse"] == 1, "customer_id"])
+    rate = lambda c: c["support_counts"]["mature_requested_units"] / c["support_counts"]["mature_purchased_units"]  # noqa: E731
+    heavy = {c["customer_id"] for c in customers if c["customer_id"] not in abusers and rate(c) >= run["heavy_returner_cutoff"]}
+    assert curves["synthetic_only"] and curves["world_id"] == run["world_id"] and curves["review_budget"] == run["review_budget"]
+    assert curves["eligible_count"] == len(customers) == len(curves["points"]) == curves["points"][-1]["k"]
+    assert curves["abusers"] == len({c["customer_id"] for c in customers} & abusers) and curves["legitimate_heavy_returners"] == len(heavy)
+    by_rank = sorted(customers, key=lambda c: c["rank"])
+    by_rule = sorted(customers, key=lambda c: c["baseline_rank"])
+    for point in curves["points"][:: max(1, len(curves["points"]) // 50)]:
+        k = point["k"]
+        assert point["model_abusers_caught"] == sum(c["customer_id"] in abusers for c in by_rank[:k])
+        assert point["model_legitimate_heavy_reviewed"] == sum(c["customer_id"] in heavy for c in by_rank[:k])
+        assert point["baseline_abusers_caught"] == sum(c["customer_id"] in abusers for c in by_rule[:k])
+        assert point["baseline_legitimate_heavy_reviewed"] == sum(c["customer_id"] in heavy for c in by_rule[:k])
+    at_budget = next(p for p in curves["points"] if p["k"] == run["review_budget"])
+    assert at_budget["model_abusers_caught"] >= 1, "the fixture world has abusers in the queue"
+    # the default thinning keeps the first point, the budget and the last point, and is monotone like the full curve
+    thinned = client.get(f"{API}/experiments/EXP-TEST/curves", params={"run_id": run["run_id"]}).json()
+    ks = [p["k"] for p in thinned["points"]]
+    assert len(ks) <= 202 and ks[0] == 1 and ks[-1] == curves["eligible_count"] and run["review_budget"] in ks and ks == sorted(ks)
+    assert all(a["model_abusers_caught"] <= b["model_abusers_caught"] for a, b in zip(thinned["points"], thinned["points"][1:]))
+    # a run on another world, a run that is not ready, and an unknown experiment are refused, never mixed
+    assert client.get(f"{API}/experiments/EXP-TEST/curves", params={"run_id": other["run_id"]}).status_code == 200    # same world, other model
+    assert client.get(f"{API}/experiments/NOPE/curves", params={"run_id": run["run_id"]}).status_code == 404
+    assert client.get(f"{API}/experiments/EXP-TEST/curves").status_code == 422
+    with store.transaction() as db:
+        db.execute("UPDATE experiments SET truth_world_id = 'W0000' WHERE id = 'EXP-TEST'")
+    refused = client.get(f"{API}/experiments/EXP-TEST/curves", params={"run_id": run["run_id"]})
+    assert refused.status_code == 409 and refused.json()["error_code"] == "world_mismatch"
+
+
+# ------------------------------------------------------------------ investigation memos
+def test_without_an_api_key_every_memo_is_unavailable_by_design_and_the_run_still_serves(client, env, written):
+    run = scored_run(client, env, written)
+    assert env["config"].anthropic_api_key is None
+    conforms("Run", run)
+    assert run["memos"] == {"selected": run["selected_count"], "ok": 0, "unavailable": run["selected_count"], "complete": True}
+    url = f"{API}/runs/{run['run_id']}/customers"
+    selected = client.get(url, params={"limit": 2}).json()["items"]
+    case = client.get(f"{url}/{selected[0]['customer_id']}").json()
+    conforms("Case", case)
+    memo = case["memo"]
+    assert memo["status"] == "unavailable" and memo["reason"] == "no_api_key" and memo["attempts"] == 0 and memo["summary"] is None
+    assert memo["model"] == "claude-opus-5-5" and memo["generated_at"]
+    cleared = client.get(url, params={"review_only": "false", "tier": "LOW", "limit": 1}).json()["items"][0]
+    assert client.get(f"{url}/{cleared['customer_id']}").json()["memo"]["status"] == "not_selected"
+    queued = client.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "later"}).json()
+    assert queued["memos"] is None                                                          # null until the run succeeded
+
+
+class _FakeClient:
+    """Stands in for the Anthropic client: returns the drafts given, in order, as the SDK would."""
+
+    def __init__(self, drafts):
+        self.drafts, self.calls = list(drafts), []
+
+        class _Messages:
+            def create(messages_self, **kwargs):
+                self.calls.append(kwargs)
+                draft = self.drafts.pop(0)
+                stop = "refusal" if draft == "refusal" else "end_turn"
+                text = "" if draft == "refusal" else (draft if isinstance(draft, str) else json.dumps(draft))
+                block = type("Block", (), {"type": "text", "text": text})()
+                return type("Response", (), {"stop_reason": stop, "content": [block]})()
+
+        self.beta = type("Beta", (), {"messages": _Messages()})()
+
+
+def test_memos_pass_a_deterministic_gate_and_retry_once_and_never_name_another_customer(client, env, written, monkeypatch):
+    from arai.service import memo as M
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    selected = [c["customer_id"] for c in client.get(url, params={"limit": 4}).json()["items"]]
+    cases = {cid: client.get(f"{url}/{cid}").json() for cid in selected}
+    # what the model sees: no reviews, no memo, no sentence, and no identifier but the case's own
+    inputs = M.case_input(cases[selected[0]])
+    text = json.dumps(inputs)
+    assert "reviews" not in inputs and "description" not in text and selected[0] in text
+    assert not ({m for m in M.CUSTOMER_ID.findall(text)} - {selected[0]})
+    numbers = M._numbers(inputs, set())
+    score = cases[selected[0]]["customer"]["risk_score"]
+    good = {"summary": "Returns well above what the basket predicts; two claims matched by a linked account.",
+            "key_evidence": [{"statement": "Risk score", "panel": "expected", "value": score, "denominator": None}],
+            "alternative_explanations": ["A household sharing one address."], "recommended_action": cases[selected[0]]["customer"]["gate_outcome"]}
+    assert M.gate(good, inputs, selected[0]) == []
+    assert any("not a number of the case" in r for r in M.gate(dict(good, key_evidence=[dict(good["key_evidence"][0], value=12345.678)]), inputs, selected[0]))
+    assert any("unknown panel" in r for r in M.gate(dict(good, key_evidence=[dict(good["key_evidence"][0], panel="truth")]), inputs, selected[0]))
+    assert any("gate outcome" in r for r in M.gate(dict(good, recommended_action="BLOCK"), inputs, selected[0]))
+    assert any("another customer" in r for r in M.gate(dict(good, summary=f"Like {selected[1]}."), inputs, selected[0]))
+    assert any("too long" in r for r in M.gate(dict(good, summary="x" * 601), inputs, selected[0]))
+    assert round(score, 6) in numbers
+    # the batch: a good draft, a draft that fails the gate then passes, a refusal twice, and bad JSON twice
+    second = dict(good, key_evidence=[{"statement": "Score", "panel": "expected", "value": cases[selected[1]]["customer"]["risk_score"], "denominator": None}],
+                  recommended_action=cases[selected[1]]["customer"]["gate_outcome"])
+    bad_then_good = [dict(second, recommended_action="BLOCK"), second]
+    store = Store(env["config"].database_url)
+    drafts = {selected[0]: [good], selected[1]: bad_then_good, selected[2]: ["refusal", "refusal"], selected[3]: ["not json", "{"]}
+    with store.transaction() as db:
+        db.execute("DELETE FROM run_memos WHERE run_id = %s", (run["run_id"],))
+    monkeypatch.setattr(M, "POOL", 1)
+    order = []
+    fake = _FakeClient([])
+    original_memo_for = M.memo_for
+
+    def memo_for(client_, model, case, attempts=M.ATTEMPTS):
+        cid = case["customer"]["customer_id"]
+        order.append(cid)
+        fake.drafts = list(drafts.get(cid, ["refusal", "refusal"]))
+        return original_memo_for(fake, model, case, attempts)
+    monkeypatch.setattr(M, "memo_for", memo_for)
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], anthropic_api_key="test-key", memo_model="claude-opus-5-5")
+    counts = worker.write_memos(config, store, run["run_id"])
+    assert set(order) == set(store.selected_customer_ids(run["run_id"])) and counts["ok"] == 2
+    assert fake.calls and fake.calls[0]["model"] == "claude-opus-5-5" and fake.calls[0]["fallbacks"] == "default"
+    assert fake.calls[0]["output_config"]["format"]["type"] == "json_schema" and M.FALLBACK_BETA in fake.calls[0]["betas"]
+    memos = {cid: client.get(f"{url}/{cid}").json()["memo"] for cid in selected}
+    assert memos[selected[0]]["status"] == "ok" and memos[selected[0]]["attempts"] == 1 and memos[selected[0]]["summary"] == good["summary"]
+    assert memos[selected[1]]["status"] == "ok" and memos[selected[1]]["attempts"] == 2
+    assert memos[selected[2]] == {**memos[selected[2]], "status": "unavailable", "attempts": 2, "reason": "declined", "summary": None}
+    assert memos[selected[3]]["status"] == "unavailable" and memos[selected[3]]["reason"] == "not_json"
+    for cid, m in memos.items():
+        conforms("Case", client.get(f"{url}/{cid}").json())
+        if m["status"] == "ok":
+            assert m["key_evidence"][0]["value"] == cases[cid]["customer"]["risk_score"] and m["model"] == "claude-opus-5-5"
+    progress = client.get(f"{API}/runs/{run['run_id']}").json()["memos"]
+    assert progress["ok"] == 2 and progress["complete"] is True and progress["selected"] == run["selected_count"]
+    # a memo never changes what the run says about anyone
+    assert client.get(url, params={"limit": 4}).json()["items"] == [cases[cid]["customer"] for cid in selected]
+
+
+# ------------------------------------------------------------------ stage log and cancel
+def test_the_stage_log_and_the_done_summary_and_a_cancel_at_either_end(client, env, written):
+    run = scored_run(client, env, written)
+    conforms("Run", run)
+    stages = [entry["stage"] for entry in run["stage_log"]]
+    assert stages == ["validate", "features", "eligibility", "scoring", "evidence", "publish"]        # each stage once, in order
+    times = [pd.Timestamp(entry["at"]) for entry in run["stage_log"]]
+    assert times == sorted(times) and times[-1] <= pd.Timestamp(run["completed_at"])
+    styles = all_pages(client, f"{API}/runs/{run['run_id']}/styles")
+    assert run["styles_with_verdict"] == sum(s["state"] in ("quality", "targeting", "mixed_or_uncertain") for s in styles)
+    # a finished run cannot be cancelled
+    refused = client.post(f"{API}/runs/{run['run_id']}/cancel")
+    assert refused.status_code == 409 and refused.json()["error_code"] == "run_finished"
+    # a queued run is interrupted at once
+    queued = client.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "q"}).json()
+    cancelled = client.post(f"{API}/runs/{queued['run_id']}/cancel")
+    assert cancelled.status_code == 202
+    conforms("Run", cancelled.json())
+    assert cancelled.json()["status"] == "interrupted" and cancelled.json()["error"]["error_code"] == "cancelled"
+    assert cancelled.json()["stage_log"] == [] and cancelled.json()["memos"] is None
+    store = Store(env["config"].database_url)
+    assert worker.process_one(env["config"], store) is None                                           # nothing left to claim
+    # a running run stops at its next stage, keeps no result, and the queue log says why
+    running = client.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "r"}).json()
+
+    def hook(stage):
+        if stage == "features":
+            assert client.post(f"{API}/runs/{running['run_id']}/cancel").status_code == 202
+            assert client.get(f"{API}/runs/{running['run_id']}").json()["status"] == "running"       # asked, not yet stopped
+    assert worker.process_one(env["config"], store, hook=hook) == running["run_id"]
+    stopped = client.get(f"{API}/runs/{running['run_id']}").json()
+    assert stopped["status"] == "interrupted" and stopped["error"]["error_code"] == "cancelled" and stopped["stage"] == "eligibility"
+    assert [e["stage"] for e in stopped["stage_log"]] == ["validate", "features", "eligibility"]
+    assert result_rows(store, running["run_id"]) == dict.fromkeys(RESULT_TABLES, 0)
+    assert client.get(f"{API}/runs/{running['run_id']}/customers").status_code == 409
+    assert client.post(f"{API}/runs/NOPE/cancel").status_code == 404

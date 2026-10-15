@@ -73,11 +73,13 @@ RUN_SUMMARY_FIELDS = {                             # Run field -> key of the sum
     "review_budget": "review_budget_k", "threshold_score": "threshold_score", "median_score": "median_score",
     "mean_return_rate": "mean_return_rate", "eligible_requested_units": "eligible_requested_units",
     "eligible_purchased_units": "eligible_purchased_units", "graph_edges": "graph_edges",
-    "heavy_returner_cutoff": "heavy_returner_cutoff", "community_count": "community_count", "ring_count": "ring_count"}
+    "heavy_returner_cutoff": "heavy_returner_cutoff", "community_count": "community_count", "ring_count": "ring_count",
+    "styles_with_verdict": "styles_with_verdict"}
 
 
-def run_body(row: dict, summary: dict | None = None) -> dict:
-    """A run as the contract shows it. `summary` is what scoring recorded, given only for a succeeded run."""
+def run_body(row: dict, summary: dict | None = None, memos: dict | None = None) -> dict:
+    """A run as the contract shows it. `summary` is what scoring recorded, given only for a succeeded run; `memos` is how far its
+    investigation memos are (null until it succeeded)."""
     summary = summary or {}
     error = None
     if row["error_code"]:
@@ -88,7 +90,8 @@ def run_body(row: dict, summary: dict | None = None) -> dict:
             "cutoff": _iso(row["cutoff"]), "created_at": _iso(row["created_at"]), "completed_at": _iso(row["completed_at"]),
             "error": error, "eligible_count": row["eligible_count"], "excluded_count": row["excluded_count"],
             "selected_count": row["selected_count"], "model_only_count": row["model_only_count"],
-            "baseline_only_count": row["baseline_only_count"], "warnings": summary.get("warnings") or [],
+            "baseline_only_count": row["baseline_only_count"], "warnings": summary.get("warnings") or [], "memos": memos,
+            "stage_log": [{"stage": entry["stage"], "at": entry["at"]} for entry in (row.get("stage_log") or [])],
             **{field: summary.get(key) for field, key in RUN_SUMMARY_FIELDS.items()}}
 
 
@@ -144,7 +147,7 @@ class Service:
 
     def run_body(self, row: dict) -> dict:
         """A run as the contract shows it, with the warnings recorded when it was scored."""
-        return run_body(row, row["summary"] if row["status"] == "succeeded" else None)
+        return run_body(row, row["summary"] if row["status"] == "succeeded" else None, views.memo_progress(self.store, row))
 
     def succeeded_run(self, run_id: str) -> dict:
         """The run, if its results can be read. Results exist exactly for succeeded runs: both are one transaction."""
@@ -180,7 +183,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if stop:
             stop.set()
 
-    app = FastAPI(title="ARAI development API", version="1.8.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title="ARAI development API", version="1.12.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(CORSMiddleware, allow_origins=list(config.ui_origins), allow_methods=["GET", "POST"],
                        allow_headers=["content-type"], allow_credentials=False)
@@ -347,6 +350,11 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     def get_run(run_id: str):
         return service.run_body(service.store.get_run(run_id))
 
+    @api.post("/runs/{run_id}/cancel", status_code=202)
+    def cancel_run(run_id: str):
+        """Stop a run that has not finished: a queued run at once, a running run at its next stage. Nothing published is touched."""
+        return service.run_body(service.store.request_cancel(run_id))
+
     # ------------------------------------------------------------------ customers
     @api.get("/runs/{run_id}/customers")
     def list_customers(run_id: str, cursor: str | None = None, limit: int = limit_query, review_only: bool = True,
@@ -386,16 +394,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     @api.get("/runs/{run_id}/customers/{customer_id}")
     def get_customer_case(run_id: str, customer_id: str):
         run, customer = _case_customer(run_id, customer_id)
-        case = views.customer_case(service.store, run_id, customer)
-        reviews = service.store.list_reviews(run["world_id"], customer_id)
-        latest = reviews[-1]["disposition"] if reviews else None
-        return {"run_id": run_id, "dataset_id": run["dataset_id"], "world_id": run["world_id"], "model_id": run["model_id"],
-                "model_kind": run["model_kind"], "cutoff": _iso(run["cutoff"]),
-                "customer": views.customer_item(customer, latest, run["summary"]),
-                "signals": case["signals"], "timeline": case["timeline"], "neighbors": case["neighbors"], "styles": case["styles"],
-                "wardrobing": case["wardrobing"], "community": case["community"],
-                "score_breakdown": views.score_breakdown(service.store, run, customer), "rules_fired": case["rules_fired"],
-                "reviews": [review_body(r) for r in reviews]}
+        return views.case_body(service.store, run, customer, review_body)
 
     @api.get("/runs/{run_id}/customers/{customer_id}/reviews")
     def list_reviews(run_id: str, customer_id: str, cursor: str | None = None, limit: int = limit_query):
@@ -442,12 +441,23 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         context = {"list": "experiments"}
         after = views.decode_cursor(cursor, context, "text")
         rows = service.store.list_experiments(after, limit + 1)
-        items = [r["report"]["summary"] for r in rows[:limit]]
+        items = [views.experiment_summary(r["report"]) for r in rows[:limit]]
         return {"items": items, "next_cursor": views.encode_cursor(context, rows[limit - 1]["id"]) if len(rows) > limit else None}
 
     @api.get("/experiments/{experiment_id}")
     def get_experiment(experiment_id: str):
-        return service.store.get_experiment(experiment_id)["report"]
+        report = service.store.get_experiment(experiment_id)["report"]
+        return {**report, "summary": views.experiment_summary(report)}
+
+    @api.get("/experiments/{experiment_id}/curves")
+    def get_evaluation_curves(experiment_id: str, run_id: str, max_points: int = Query(views.CURVE_POINTS, ge=2, le=20000)):
+        """Abusers caught and legitimate heavy returners reviewed at every budget, for a run on the experiment's truth world."""
+        experiment = service.store.get_experiment(experiment_id)
+        run = service.succeeded_run(run_id)
+        if experiment["truth_world_id"] is None or run["world_id"] != experiment["truth_world_id"]:
+            raise ApiError(409, "world_mismatch", "Curves need a run scored on the experiment's demonstration world, whose synthetic "
+                                                  "truth was published; this run is on another world or no truth was published.")
+        return views.curves(service.store, experiment, run, max_points)
 
     @api.get("/experiments/{experiment_id}/truth")
     def get_evaluation_truth(experiment_id: str, cursor: str | None = None, limit: int = limit_query):

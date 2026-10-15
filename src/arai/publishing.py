@@ -13,11 +13,12 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import pandas as pd
 
-from arai import bundles, dataset, modeling, paths
+from arai import bundles, contract, dataset, modeling, paths
 from arai import features as F
 from arai.evaluation import ACTION_TYPES, SEGMENTS
 from arai.selection import BASELINE
@@ -338,7 +339,9 @@ def build_report(experiment_dir: Path, promoted_model_id: str | None) -> dict:
                     "selection_status": selection["selection_status"] if selection else "not_completed",
                     "selected_model_id": promoted_model_id,
                     "selected_candidate_id": chosen,
-                    "final_test_status": selection["final_test_status"] if selection else "not_run"},
+                    "final_test_status": selection["final_test_status"] if selection else "not_run",
+                    # the run manifest of the evaluation page: the publishing commit and the seeds the contract fixes
+                    "git_sha": git_sha(), **experiment_seeds()},
         "synthetic_only": True,
         "baseline_metrics": _ranking_metrics(source["sensitivity"][BASELINE][PRIMARY], scope, intervals.get(BASELINE), BASELINE, main),
         "candidates": candidates, "per_world_metrics": per_world, "sensitivity_metrics": sensitivity,
@@ -389,6 +392,25 @@ def verify_feature_code(experiment_dir: Path, artifact_root: Path | None = None)
                            f"({world_id}): {first}. Restore the code, or train a new experiment.") from None
     return {"world_id": world_id, "features_sha256": config["features_sha256"][world_id], "rows": int(len(frozen)),
             "cutoff": manifest["cutoff"]}
+
+
+def git_sha() -> str | None:
+    """The commit of the code that publishes, or None outside a repository. Publishing re-verifies that this code still
+    reproduces the frozen training features, so the hash names code that is known to match the experiment."""
+    try:
+        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=paths.REPO_ROOT, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() if out.returncode == 0 and len(out.stdout.strip()) == 40 else None
+
+
+def experiment_seeds() -> dict:
+    """The world seeds experiment.yaml fixes, as the published summary lists them (training, validation, test, demo, stress)."""
+    spec = contract._load("experiment.yaml")
+    return {name: [int(seed) for seed in (spec.get(name) or [])] for name in SEED_KEYS}
+
+
+SEED_KEYS = ("train_seeds", "validation_seeds", "test_seeds", "demo_seeds", "stress_seeds")
 
 
 def publish(experiment_id: str, artifact_root: Path | None = None, private_root: Path | None = None,

@@ -18,6 +18,8 @@ class ServiceConfig:
     ui_origins: tuple = field(default=LOCAL_UI_ORIGINS)
     worker_id: str = "worker-1"
     poll_seconds: float = 2.0
+    anthropic_api_key: str | None = None            # memos are drafted only when set; without it every memo is unavailable by design
+    memo_model: str | None = None                   # the model memos are drafted with (default in memo.py)
 
     def __post_init__(self):
         if self.profile not in ("local", "vm"):
@@ -32,4 +34,5 @@ def from_env() -> ServiceConfig:
     origins = tuple(o.strip() for o in os.environ.get("UI_ORIGINS", ",".join(LOCAL_UI_ORIGINS)).split(",") if o.strip())
     return ServiceConfig(database_url=url, artifact_root=Path(os.environ.get("ARTIFACT_ROOT", paths.ARTIFACT_ROOT)),
                          profile=os.environ.get("APP_PROFILE", "local"), ui_origins=origins,
-                         worker_id=os.environ.get("WORKER_ID", "worker-1"))
+                         worker_id=os.environ.get("WORKER_ID", "worker-1"),
+                         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None, memo_model=os.environ.get("ARAI_MEMO_MODEL") or None)

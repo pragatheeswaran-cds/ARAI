@@ -20,7 +20,10 @@ STYLES = (("style_id", "text"), ("category", "text"), ("state", "text"), ("matur
           ("requested_units", "int"), ("unique_returners", "int"), ("quality_units", "int"), ("claim_units", "int"),
           ("claim_lines", "int"), ("linked_claim_lines", "int"), ("linked_claimers", "int"), ("raw_return_rate", "float"),
           ("shrunk_return_rate", "float"), ("damage_share", "float"), ("claim_share", "float"), ("linked_claim_share", "float"),
-          ("quality_signal", "bool"), ("targeting_signal", "bool"))
+          ("quality_signal", "bool"), ("targeting_signal", "bool"),
+          # the SKU screen's extras (migration 0008); null for runs scored before it
+          ("name", "text"), ("median_return_day", "float"), ("share_in_last_five_days", "float"), ("flagged_returners", "int"),
+          ("ring_returners", "int"), ("median_returner_score", "float"))
 SKUS = (("sku", "text"), ("style_id", "text"), ("size", "text"), ("colour", "text"), ("unit_price", "float"),
         ("mature_sale_lines", "int"), ("purchased_units", "int"), ("requested_units", "int"), ("support_status", "text"))
 NEIGHBORS = (("customer_id", "text"), ("neighbor_id", "text"), ("shared_value_count", "int"), ("supported", "bool"),
@@ -32,7 +35,8 @@ TIMELINE = (("customer_id", "text"), ("source_ref", "text"), ("event_type", "tex
             ("reason_group", "text"), ("day_in_window", "int"), ("window_days", "int"), ("line_status", "text"),
             ("item_received", "bool"), ("linked_claim", "bool"))
 CUSTOMER_STYLES = (("customer_id", "text"), ("style_id", "text"), ("requested_units", "int"), ("claim_lines", "int"),
-                   ("linked_claim_lines", "int"))
+                   ("linked_claim_lines", "int"), ("return_lines", "int"), ("purchased_lines", "int"), ("last_reason_code", "text"))
+STYLE_REASONS = (("style_id", "text"), ("reason_code", "text"), ("reason_group", "text"), ("lines", "int"), ("units", "int"))
 ATTRIBUTIONS = (("customer_id", "text"), ("family", "text"), ("raw_score_without", "float"), ("score_without", "float"),
                 ("delta_points", "float"), ("in_queue_without", "bool"))
 COMMUNITIES = (("community_id", "text"), ("kind", "text"), ("method", "text"), ("size", "int"), ("selected_count", "int"),
@@ -81,6 +85,7 @@ def tables(output: RunOutput) -> dict:
         "run_customer_styles": (names(CUSTOMER_STYLES), _rows(output.customer_styles, CUSTOMER_STYLES)),
         "run_communities": ([*names(COMMUNITIES), "edges"], community_rows),
         "run_attributions": (names(ATTRIBUTIONS), _rows(output.attributions, ATTRIBUTIONS)),
+        "run_style_reasons": (names(STYLE_REASONS), _rows(output.style_reasons, STYLE_REASONS)),
     }
 
 

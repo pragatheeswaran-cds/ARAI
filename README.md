@@ -94,7 +94,7 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
   batch scoring, the worker and the API (`final-spec/contracts/openapi.yaml` is the contract). Everything the API
   serves is read from PostgreSQL: a run's results are written there in the transaction that marks it succeeded
   (`run_customers`, `run_styles`, `run_skus`, `run_neighbors`, `run_timeline`, `run_customer_styles`,
-  `run_communities`, `run_attributions`), and the worker
+  `run_communities`, `run_attributions`, `run_style_reasons`, `run_memos`), and the worker
   loads the published experiment report and truth export at startup. Registered snapshots and model bundles stay files.
 - `web/` is the analyst UI.
 - `notebooks/` walk through generation, exploration and features. `records/` holds the dated development records,
