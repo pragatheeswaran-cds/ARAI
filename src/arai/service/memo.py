@@ -228,9 +228,11 @@ def write_memos(config, store, run_id: str, case_of, client=None) -> dict:
         with lock:
             counts[row["status"]] += 1
 
-    if client is None:                                                      # nothing to call: record the reason without a pool
+    if client is None:                                                      # nothing to call: record the reason, read no case
         for customer_id in customers:
-            one(customer_id)
+            store.write_memo(run_id, {"customer_id": customer_id, "status": "unavailable", "attempts": 0, "reason": "no_api_key",
+                                      "model": model, "generated_at": datetime.now(timezone.utc), "memo": None})
+            counts["unavailable"] += 1
     else:
         with ThreadPoolExecutor(max_workers=POOL) as pool:
             list(pool.map(one, customers))

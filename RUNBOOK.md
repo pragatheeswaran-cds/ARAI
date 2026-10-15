@@ -180,13 +180,13 @@ Run these in order. Each line says what a good result looks like.
 
 ```powershell
 # 1. Python tests. They start their own temporary PostgreSQL; the running server is not touched.
-uv run --no-sync pytest -q                          # "162 passed" in about 4 minutes
+uv run --no-sync pytest -q                          # "206 passed" in about 9 minutes
 
 # 2. Front-end tests and type check
-cd web; npm test; npx tsc --noEmit; cd ..            # "8 passed"; tsc prints nothing
+cd web; npm test; npx tsc --noEmit; cd ..            # "21 passed"; tsc prints nothing
 
 # 3. Browser walkthrough of the running application (needs the server up with a scored run; uses Edge, headless)
-uv run --no-sync python tests\e2e\walkthrough.py     # "44 of 44 checks passed"
+uv run --no-sync python tests\e2e\walkthrough.py     # "54 of 54 checks passed"
 
 # 4. Baseline-fallback check (starts its own temporary instance on port 8011)
 uv run --no-sync python tests\e2e\fallback_check.py  # "11 of 11 checks passed"
@@ -195,8 +195,9 @@ uv run --no-sync python tests\e2e\fallback_check.py  # "11 of 11 checks passed"
 Use `uv run --no-sync` while the server is running: plain `uv run` may try to refresh the environment and fail
 with "file is being used by another process".
 
-The walkthrough writes one review note on the top-ranked customer each time it runs. Notes are append only,
-so they accumulate; that is expected.
+The walkthrough writes one review note on the top-ranked customer each time it runs and stages the second-reviewer
+refusal, so it also opens that case. Notes are append only, so they accumulate; that is expected. The fallback check
+scores W2001 where that world exists and W5401 otherwise (or the world named on its command line).
 
 Screenshots and results from steps 3 and 4 are written to `reports\ui\<today's date>\`.
 
@@ -254,7 +255,7 @@ or 5301-5305, and never a world of an earlier experiment (the command refuses th
 | Evaluation page is empty after `arai publish` | the report is loaded into the database when the worker starts | restart (local), or `docker compose restart worker` |
 | `web/dist is missing` at start | UI not built | `cd web; npm install; npm run build` |
 | Docker: `POSTGRES_PASSWORD is missing a value` | no `.env` | copy `.env.example` to `.env` and set it |
-| Walkthrough fails on "msedge" | Microsoft Edge not installed | install Edge, or change `channel="msedge"` in the script |
+| Walkthrough or fallback check fails on "msedge" | Microsoft Edge not installed | install Edge, or set `ARAI_BROWSER` to a Chromium executable (both scripts read it) |
 
 Server logs are in the terminal where `arai local` runs (or `docker compose logs api worker`). Every error the
 API returns carries a `request_id`; search the log for it.

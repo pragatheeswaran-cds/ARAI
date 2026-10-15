@@ -1,7 +1,7 @@
 """Browser check of the baseline-fallback state (final-spec component 13, UI-AC-03 and UI-AC-08).
 
 Self-contained: it starts its own temporary instance (embedded PostgreSQL, a copy of the bundles with only the
-baseline active, the built UI), scores fixture world W2001 and looks at the pages. Needs `web/dist` and the
+baseline active, the built UI), scores fixture world W2001 (or W5401 when W2001 is absent, or the world named on the command line) and looks at the pages. Needs `web/dist` and the
 development artifacts under data/artifacts.
 
     uv run python tests/e2e/fallback_check.py
@@ -9,11 +9,13 @@ development artifacts under data/artifacts.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
 import threading
 import time
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -28,7 +30,7 @@ from arai.service.config import ServiceConfig
 
 PORT = 8011
 BASE = f"http://127.0.0.1:{PORT}"
-OUT = paths.REPO_ROOT / "reports" / "ui" / "2026-10-02"
+OUT = paths.REPO_ROOT / "reports" / "ui" / date.today().isoformat()
 results = []
 
 
@@ -64,7 +66,9 @@ try:
     health = httpx.get(BASE + "/api/v1/health").json()
     check("health reports the baseline, not a promoted model", health["scoring_ready"] and not health["promoted_model_ready"]
           and health["model_kind"] == "baseline_fallback", health)
-    world = paths.ARTIFACT_ROOT / "worlds" / "W2001" / "operational"
+    # the fixture world W2001 where it exists; otherwise the demonstration world (a fresh clone has only experiment 4's worlds)
+    world_id = sys.argv[1] if len(sys.argv) > 1 else ("W2001" if (paths.ARTIFACT_ROOT / "worlds" / "W2001").exists() else "W5401")
+    world = paths.ARTIFACT_ROOT / "worlds" / world_id / "operational"
     files = {name: (f"{name}.csv", (world / f"{name}.csv").read_bytes(), "text/csv") for name in TABLES}
     dataset = httpx.post(BASE + "/api/v1/datasets", data={"manifest": (world / "manifest.json").read_text(encoding="utf-8")}, files=files,
                          timeout=120).json()
@@ -78,7 +82,9 @@ try:
           and run["model_only_count"] == 0 and run["baseline_only_count"] == 0, run["status"])
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(channel="msedge", headless=True)
+        # ARAI_BROWSER names a Chromium executable (a cloud container's pre-installed one); otherwise the machine's Edge is used
+        executable = os.environ.get("ARAI_BROWSER")
+        browser = pw.chromium.launch(executable_path=executable, headless=True) if executable else pw.chromium.launch(channel="msedge", headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
 
         def settle():
@@ -106,8 +112,8 @@ try:
         page.locator("main table tbody tr a.link").first.click()
         settle()
         text = page.locator("main").inner_text()
-        check("case evidence is complete under fallback", "What the record shows" in text and "Return-rate percentile" in text
-              and "Wardrobing indicator" in text)
+        check("case evidence is complete under fallback", "Expected vs actual returns" in text and "Return-rate percentile" in text
+              and "Wardrobing indicator" in text and "Why this score" in text)
         page.screenshot(path=str(OUT / "14-fallback-case.png"), full_page=True)
 
         page.get_by_role("link", name="Evaluation").click()
