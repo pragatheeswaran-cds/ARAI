@@ -12,6 +12,7 @@ saves screenshots under reports/ui/<date>/.
 from __future__ import annotations
 
 import json
+import re
 import os
 import sys
 import time
@@ -95,8 +96,9 @@ with sync_playwright() as pw:
     check("keyboard filter change updates the address", "show=all" in page.url, page.url)
     page.get_by_label("Model and return-rate rule").select_option("baseline_only")
     settle(page)
-    text = main_text(page)
-    check("comparison filter lists rule-only selections", "comparison=baseline_only" in page.url and "not selected" in text)
+    body = page.locator("main table tbody").inner_text()
+    check("comparison filter lists rule-only selections",
+          "comparison=baseline_only" in page.url and "selected by the rule" in body and "Escalate" not in body and "Hold" not in body, body[:120])
     shot(page, "03-queue-rule-only")
     page.get_by_label("Model and return-rate rule").select_option("all")
     page.get_by_label("Show").select_option("review")
@@ -125,12 +127,13 @@ with sync_playwright() as pw:
     check("case shows no truth", not any(w in text.lower() for w in TRUTH_WORDS))
     shot(page, "05-case-evidence")
     for tab, key in (("returns", "tab=returns"), ("linked accounts", "tab=linked+accounts"), ("notes", "tab=notes")):
-        page.get_by_role("tab", name=tab, exact=True).focus()
+        page.get_by_role("tab", name=re.compile(rf"^{tab}( \(\d+\))?$")).focus()   # notes carries its count
         page.keyboard.press("Enter")
         settle(page)
         check(f"case tab {tab} opens from the keyboard", key in page.url, page.url)
+        if tab == "returns":
+            check("return behaviour shows reason codes, never free text", "Reason code" in main_text(page) or "No return request" in main_text(page))
         shot(page, f"06-case-{tab.replace(' ', '-')}")
-    check("return behaviour shows reason codes, never free text", "Reason code" in page.locator("main").inner_text() or "No return request" in main_text(page))
     stamp = str(int(time.time()))
     page.get_by_label("Reviewer name").fill("Walkthrough reviewer")                       # the run strip; the decision panel reads it
     page.get_by_label("Your reading").select_option("unresolved")
@@ -144,9 +147,10 @@ with sync_playwright() as pw:
     check("note persists after reload", f"Walkthrough note {stamp}" in main_text(page))
     shot(page, "07-case-notes")
     # the second-person rule, on stage: the reviewer who opens a case cannot approve it; the server's words are shown
-    page.get_by_label("Note (required with every action)").fill(f"Walkthrough open {stamp}.")
-    page.get_by_role("button", name="Open case").click()
-    page.wait_for_function("document.querySelector('main').innerText.includes('In review')", timeout=15000)
+    if page.get_by_role("button", name="Open case").count():       # an earlier walkthrough may have left the case in review
+        page.get_by_label("Note (required with every action)").fill(f"Walkthrough open {stamp}.")
+        page.get_by_role("button", name="Open case").click()
+        page.wait_for_function("document.querySelector('main').innerText.includes('In review')", timeout=15000)
     page.get_by_label("Note (required with every action)").fill(f"Walkthrough approve {stamp}.")
     page.get_by_role("button", name="Approve", exact=True).click()
     page.wait_for_function("document.querySelector('main').innerText.includes('second_reviewer_required')", timeout=15000)
@@ -226,10 +230,11 @@ with sync_playwright() as pw:
     check("no horizontal page scroll on a phone-width screen", overflow <= 2, overflow)
     shot(page, "12-overview-narrow")
 
-    expected_failures = [r for r in failed_requests if "run-does-not-exist" in r]
+    # the unknown run's 404 and the staged second-reviewer 409 are the two refusals this walkthrough asks for
+    expected_failures = [r for r in failed_requests if "run-does-not-exist" in r or (r.startswith("409 ") and r.endswith("/reviews"))]
     unexpected = [r for r in failed_requests if r not in expected_failures]
     check("no unexpected failed request", not unexpected, unexpected[:3])
-    real_errors = [e for e in console_errors if "run-does-not-exist" not in e and "404" not in e]
+    real_errors = [e for e in console_errors if "run-does-not-exist" not in e and "404" not in e and "409" not in e]
     check("no console error", not real_errors, real_errors[:3])
     browser_version = browser.version
     browser.close()
