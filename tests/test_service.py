@@ -1260,3 +1260,64 @@ def test_under_baseline_fallback_only_the_expected_vs_actual_family_moves_the_sc
                 assert f["feature_count"] == 0 and f["raw_score_without"] == pytest.approx(c["raw_score"])
                 assert f["delta_points"] == pytest.approx(0.0) and f["in_queue_without"] is True
     assert 0 < median < 1
+
+
+def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_derived(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    queue = all_pages(client, url)
+    everyone = all_pages(client, url, {"review_only": "false"})
+    # before any review: the queue is new, every eligible customer outside it is auto-logged, the unranked are new
+    for c in everyone:
+        expected = "auto_logged" if c["gate_outcome"] in ("LOW", "WARNING") else "new"
+        assert c["workflow"] == {"state": expected, "opened_by": None, "opened_at": None, "decided_by": None, "decided_at": None}
+    assert {c["workflow"]["state"] for c in queue} == {"new"} and any(c["workflow"]["state"] == "auto_logged" for c in everyone)
+    first, second = queue[0]["customer_id"], queue[1]["customer_id"]
+    reviews = lambda customer: f"{url}/{customer}/reviews"  # noqa: E731
+    post = lambda customer, key, **body: client.post(reviews(customer), json={  # noqa: E731
+        "reviewer_name": "Asha", "disposition": "needs_investigation", "note": "Looked at the timeline.", "idempotency_key": key, **body})
+    # a note never moves the state; the kinds that do need an open first
+    assert post(first, "k0").status_code == 201 and client.get(f"{url}/{first}").json()["customer"]["workflow"]["state"] == "new"
+    for kind in ("approve", "reject", "request_approval"):
+        refused = post(first, "k-" + kind, kind=kind)
+        assert refused.status_code == 409 and refused.json()["error_code"] == "case_not_open", kind
+    opened = post(first, "k1", kind="open")
+    assert opened.status_code == 201 and opened.json()["kind"] == "open"
+    conforms("Review", opened.json())
+    state = client.get(f"{url}/{first}").json()["customer"]["workflow"]
+    assert state["state"] == "in_review" and state["opened_by"] == "Asha" and state["opened_at"] and state["decided_by"] is None
+    # the reviewer who opened the case cannot decide it; the message is fixed
+    for kind in ("approve", "reject"):
+        refused = post(first, "k2-" + kind, kind=kind)
+        assert refused.status_code == 409 and refused.json()["error_code"] == "second_reviewer_required"
+        assert refused.json()["message"] == "You opened this case. A different reviewer must approve or reject it."
+    assert post(first, "k3", kind="request_approval").status_code == 201
+    assert client.get(f"{url}/{first}").json()["customer"]["workflow"]["state"] == "awaiting_approval"
+    # the approval band: awaiting cases, without the ones this reviewer opened
+    band = all_pages(client, url, {"state": "awaiting_approval"})
+    assert [c["customer_id"] for c in band] == [first]
+    assert all_pages(client, url, {"state": "awaiting_approval", "exclude_reviewer": "Asha"}) == []
+    assert [c["customer_id"] for c in all_pages(client, url, {"state": "awaiting_approval", "exclude_reviewer": "Ravi"})] == [first]
+    decided = post(first, "k4", kind="approve", reviewer_name="Ravi", disposition="likely_legitimate")
+    assert decided.status_code == 201
+    state = client.get(f"{url}/{first}").json()["customer"]["workflow"]
+    assert state["state"] == "approved" and state["opened_by"] == "Asha" and state["decided_by"] == "Ravi" and state["decided_at"]
+    assert [c["customer_id"] for c in all_pages(client, url, {"state": "approved"})] == [first]
+    # feedback on a cleared case records an opinion without moving it out of the log
+    cleared = next(c for c in everyone if c["workflow"]["state"] == "auto_logged")["customer_id"]
+    assert post(cleared, "k5", kind="feedback", disposition="likely_legitimate", note="Agree: the basket predicts this.").status_code == 201
+    row = client.get(f"{url}/{cleared}").json()["customer"]
+    assert row["workflow"]["state"] == "auto_logged" and row["latest_disposition"] == "likely_legitimate"
+    # a reopen after a decision goes back into review; a reject by a second person closes it the other way
+    assert post(second, "k6", kind="open", reviewer_name="Ravi").status_code == 201
+    assert post(second, "k7", kind="reject", reviewer_name="Asha", disposition="likely_legitimate").status_code == 201
+    assert client.get(f"{url}/{second}").json()["customer"]["workflow"]["state"] == "rejected"
+    assert post(second, "k8", kind="open", reviewer_name="Asha").status_code == 201
+    assert client.get(f"{url}/{second}").json()["customer"]["workflow"]["state"] == "in_review"
+    # every state filter returns exactly the customers whose workflow says so; the list is still append-only
+    for state_name in ("new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"):
+        shown = [c["customer_id"] for c in all_pages(client, url, {"review_only": "false", "state": state_name})]
+        assert shown == [c["customer_id"] for c in all_pages(client, url, {"review_only": "false"}) if c["workflow"]["state"] == state_name]
+    history = client.get(reviews(first)).json()["items"]
+    assert [r["kind"] for r in history] == ["note", "open", "request_approval", "approve"]
+    assert post(first, "k9", note=" ").status_code == 422 and post(first, "k10", kind="close").status_code == 422

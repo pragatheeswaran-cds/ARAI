@@ -30,6 +30,28 @@ TIER_SQL = {"HIGH": "c.selected_for_review",
             "LOW": "c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND c.risk_score < %(medium_from)s"}
 _ESCALATE = "(coalesce(k.kind, '') = 'ring' OR c.wardrobing_status = 'elevated')"
 _WARNING = "(c.risk_score >= %(medium_from)s OR (%(heavy_cutoff)s IS NOT NULL AND (c.measures->>'raw_return_rate')::double precision >= %(heavy_cutoff)s))"
+# review kinds (frontend data plan WP6): a note or feedback never changes the workflow; the other four are its events
+REVIEW_KINDS = ("note", "open", "request_approval", "approve", "reject", "feedback")
+WORKFLOW_KINDS = ("open", "request_approval", "approve", "reject")
+SECOND_REVIEWER_MESSAGE = "You opened this case. A different reviewer must approve or reject it."
+CASE_NOT_OPEN_MESSAGE = "Open the case first: approval, rejection and a request for approval follow an open."
+# the latest workflow event and the latest open of a customer in its world, joined to a customer row c
+WORKFLOW_JOINS = """LEFT JOIN LATERAL (SELECT w.kind, w.reviewer_name, w.created_at FROM reviews w
+                                      WHERE w.world_id = %(world_id)s AND w.customer_id = c.customer_id
+                                        AND w.kind IN ('open', 'request_approval', 'approve', 'reject')
+                                      ORDER BY w.created_at DESC, w.id DESC LIMIT 1) wf ON true
+                   LEFT JOIN LATERAL (SELECT o.reviewer_name, o.created_at FROM reviews o
+                                      WHERE o.world_id = %(world_id)s AND o.customer_id = c.customer_id AND o.kind = 'open'
+                                      ORDER BY o.created_at DESC, o.id DESC LIMIT 1) opened ON true"""
+WORKFLOW_FIELDS = ("wf.kind AS workflow_kind, wf.reviewer_name AS workflow_reviewer, wf.created_at AS workflow_at, "
+                   "opened.reviewer_name AS opened_by, opened.created_at AS opened_at")
+# the state rule as SQL (views.workflow is the same rule in Python): with no event, a customer the gate leaves at LOW or
+# WARNING (eligible and not selected) is auto_logged and every other customer is new
+_NO_EVENT = "wf.kind IS NULL"
+STATE_SQL = {"in_review": "wf.kind = 'open'", "awaiting_approval": "wf.kind = 'request_approval'", "approved": "wf.kind = 'approve'",
+             "rejected": "wf.kind = 'reject'",
+             "auto_logged": f"{_NO_EVENT} AND c.eligibility_status = 'eligible' AND NOT c.selected_for_review",
+             "new": f"{_NO_EVENT} AND NOT (c.eligibility_status = 'eligible' AND NOT c.selected_for_review)"}
 GATE_SQL = {"ESCALATE": f"c.selected_for_review AND {_ESCALATE}", "HOLD": f"c.selected_for_review AND NOT {_ESCALATE}",
             "WARNING": f"c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND {_WARNING}",
             "LOW": f"c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND NOT {_WARNING}"}
@@ -296,17 +318,27 @@ class Store:
 
     # ------------------------------------------------------------------ reviews (append only)
     def append_review(self, review: dict, idempotency_key: str, body_hash: str) -> tuple:
+        """(review, created). Append-only. The workflow rules hold under one lock per customer of a world: an approval, a
+        rejection or a request for approval needs an earlier open, and the reviewer who made the latest open can neither
+        approve nor reject (409 second_reviewer_required, a fixed message the UI shows as it is)."""
         scope = f"reviews:{review['world_id']}:{review['customer_id']}"
         with self.transaction() as db:
-            db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (scope + "|" + idempotency_key,))
+            db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (scope,))                # one customer's reviews at a time
             seen = db.execute("SELECT * FROM idempotency WHERE scope = %s AND key = %s", (scope, idempotency_key)).fetchone()
             if seen:
                 if seen["request_hash"] != body_hash:
                     raise Conflict("idempotency_conflict", "This idempotency key was already used with a different note.")
                 return db.execute("SELECT * FROM reviews WHERE id = %s", (seen["response_ref"],)).fetchone(), False
-            row = db.execute("""INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note)
+            if review["kind"] in ("request_approval", "approve", "reject"):
+                opened = db.execute("""SELECT reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s AND kind = 'open'
+                                       ORDER BY created_at DESC, id DESC LIMIT 1""", (review["world_id"], review["customer_id"])).fetchone()
+                if opened is None:
+                    raise Conflict("case_not_open", CASE_NOT_OPEN_MESSAGE)
+                if review["kind"] != "request_approval" and opened["reviewer_name"] == review["reviewer_name"]:
+                    raise Conflict("second_reviewer_required", SECOND_REVIEWER_MESSAGE)
+            row = db.execute("""INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind)
                                 VALUES (%(id)s, %(world_id)s, %(customer_id)s, %(run_id)s, %(model_id)s, %(reviewer_name)s,
-                                        %(disposition)s, %(note)s) RETURNING *""", dict(review, id=new_id("rev"))).fetchone()
+                                        %(disposition)s, %(note)s, %(kind)s) RETURNING *""", dict(review, id=new_id("rev"))).fetchone()
             db.execute("INSERT INTO idempotency (scope, key, request_hash, response_ref) VALUES (%s, %s, %s, %s)",
                        (scope, idempotency_key, body_hash, row["id"]))
             return row, True
@@ -335,6 +367,11 @@ class Store:
         """
         clauses, values = ["c.run_id = %s"], [world_id, run_id]
         rules = rules or {}
+        if filters.get("state", "all") != "all":
+            clauses.append(STATE_SQL[filters["state"]])
+        if filters.get("exclude_reviewer"):
+            clauses.append("coalesce(opened.reviewer_name, '') <> %s")
+            values.append(filters["exclude_reviewer"])
         for name, table in (("tier", TIER_SQL), ("gate", GATE_SQL)):
             if filters.get(name, "all") != "all":
                 clause = table[filters[name]]
@@ -377,19 +414,26 @@ class Store:
             clauses.append("c.queue_position > %s")
             values.append(after)
         with self.transaction() as db:
-            return db.execute(f"""SELECT c.*, latest.disposition AS latest_disposition, {COMMUNITY_FIELDS} FROM run_customers c
+            joins = WORKFLOW_JOINS % {"world_id": "%s"}
+            return db.execute(f"""SELECT c.*, latest.disposition AS latest_disposition, {COMMUNITY_FIELDS}, {WORKFLOW_FIELDS}
+                                  FROM run_customers c
                                   LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
                                   LEFT JOIN LATERAL (SELECT r.disposition FROM reviews r
                                                      WHERE r.world_id = %s AND r.customer_id = c.customer_id
                                                      ORDER BY r.created_at DESC, r.id DESC LIMIT 1) latest ON true
-                                  WHERE {' AND '.join(clauses)} ORDER BY c.queue_position LIMIT %s""", (*values, limit)).fetchall()
+                                  {joins}
+                                  WHERE {' AND '.join(clauses)} ORDER BY c.queue_position LIMIT %s""",
+                              (world_id, world_id, *values, limit)).fetchall()
 
-    def run_customer(self, run_id: str, customer_id: str) -> dict:
-        """The customer's result row, with the kind and size of the community it belongs to (null columns without one)."""
+    def run_customer(self, run_id: str, customer_id: str, world_id: str | None = None) -> dict:
+        """The customer's result row, with the kind and size of the community it belongs to and, given the world, the latest
+        workflow event and open of its reviews (null columns without one)."""
         with self.transaction() as db:
-            row = db.execute(f"""SELECT c.*, {COMMUNITY_FIELDS} FROM run_customers c
+            joins = WORKFLOW_JOINS % {"world_id": "%s"}
+            row = db.execute(f"""SELECT c.*, {COMMUNITY_FIELDS}, {WORKFLOW_FIELDS} FROM run_customers c
                                  LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
-                                 WHERE c.run_id = %s AND c.customer_id = %s""", (run_id, customer_id)).fetchone()
+                                 {joins}
+                                 WHERE c.run_id = %s AND c.customer_id = %s""", (world_id, world_id, run_id, customer_id)).fetchone()
         if not row:
             raise NotFound("customer in this run")
         return row

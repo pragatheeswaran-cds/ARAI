@@ -224,6 +224,8 @@ No pipeline change; `store.py`, `views.py`, `api.py`, `openapi.yaml`, one migrat
 
 `store.py`, `api.py`, `openapi.yaml`, one migration on `reviews`.
 
+**Status: done on branch `ccr-488644ae-esclgi` (contract 1.8.0, AM-59).** Kinds `note | open | request_approval | approve | reject | feedback` (`request_approval` instead of a second `open`, so the state is never ambiguous); `Customer.workflow {state, opened_by, opened_at, decided_by, decided_at}` derived on read; 409 `case_not_open` and 409 `second_reviewer_required` with the fixed message; queue filters `state` and `exclude_reviewer`. Schema version 7 adds `reviews.kind`.
+
 - Add `kind` to reviews: `open | approve | reject | feedback | note`, existing rows become `note`. The
   table stays append-only.
 - State derived on read in SQL, per `(world_id, customer_id)`: `auto_logged` when gate is LOW or WARNING

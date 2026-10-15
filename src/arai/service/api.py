@@ -53,6 +53,7 @@ class RunRequest(BaseModel):
 class ReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reviewer_name: str = Field(min_length=1, max_length=100)
+    kind: Literal["note", "open", "request_approval", "approve", "reject", "feedback"] = "note"
     disposition: Literal["needs_investigation", "likely_legitimate", "unresolved"]
     note: str = Field(min_length=1, max_length=4000)
     idempotency_key: str = Field(min_length=1, max_length=128)
@@ -93,8 +94,8 @@ def run_body(row: dict, summary: dict | None = None) -> dict:
 
 def review_body(row: dict) -> dict:
     return {"review_id": row["id"], "world_id": row["world_id"], "customer_id": row["customer_id"], "run_id": row["run_id"],
-            "model_id": row["model_id"], "reviewer_name": row["reviewer_name"], "disposition": row["disposition"], "note": row["note"],
-            "created_at": _iso(row["created_at"])}
+            "model_id": row["model_id"], "reviewer_name": row["reviewer_name"], "kind": row["kind"], "disposition": row["disposition"],
+            "note": row["note"], "created_at": _iso(row["created_at"])}
 
 
 class Service:
@@ -179,7 +180,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if stop:
             stop.set()
 
-    app = FastAPI(title="ARAI development API", version="1.7.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title="ARAI development API", version="1.8.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(CORSMiddleware, allow_origins=list(config.ui_origins), allow_methods=["GET", "POST"],
                        allow_headers=["content-type"], allow_credentials=False)
@@ -357,14 +358,17 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                        community: Literal["all", "ring", "household", "none"] = "all",
                        community_id: str | None = Query(None, max_length=200),
                        tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
-                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all"):
+                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
+                       state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
+                       exclude_reviewer: str | None = Query(None, max_length=100)):
         run = service.succeeded_run(run_id)
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
                            [{"rule_id": "request.evidence", "table": None, "row_key": evidence, "count": 1}])
         filters = {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
                    "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing,
-                   "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate}
+                   "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate,
+                   "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None}
         context = {"list": "customers", "run_id": run_id, **filters}
         after = views.decode_cursor(cursor, context, "int")
         items, following = views.customer_queue(service.store, run, filters, after, limit)
@@ -377,7 +381,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
 
     def _case_customer(run_id: str, customer_id: str) -> tuple:
         run = service.succeeded_run(run_id)
-        return run, service.store.run_customer(run_id, customer_id)        # a customer must belong to the run: otherwise 404
+        return run, service.store.run_customer(run_id, customer_id, run["world_id"])   # a customer must belong to the run: otherwise 404
 
     @api.get("/runs/{run_id}/customers/{customer_id}")
     def get_customer_case(run_id: str, customer_id: str):
@@ -407,11 +411,13 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     def append_review(run_id: str, customer_id: str, body: ReviewRequest):
         run, _ = _case_customer(run_id, customer_id)
         review = {"world_id": run["world_id"], "customer_id": customer_id, "run_id": run_id, "model_id": run["model_id"],
-                  "reviewer_name": body.reviewer_name.strip(), "disposition": body.disposition, "note": body.note}
+                  "reviewer_name": body.reviewer_name.strip(), "disposition": body.disposition, "note": body.note, "kind": body.kind}
         if not review["reviewer_name"]:
             raise ApiError(422, "invalid_request", "A reviewer name is required.")
+        if not body.note.strip():
+            raise ApiError(422, "invalid_request", "A note is required.")
         row, _ = service.store.append_review(review, body.idempotency_key, request_hash(
-            {"reviewer_name": body.reviewer_name, "disposition": body.disposition, "note": body.note}))
+            {"reviewer_name": body.reviewer_name, "disposition": body.disposition, "note": body.note, "kind": body.kind}))
         return review_body(row)
 
     # ------------------------------------------------------------------ styles

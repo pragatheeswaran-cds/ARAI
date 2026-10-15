@@ -170,6 +170,27 @@ def gate_outcome(row: dict, summary: dict) -> str | None:
     return "WARNING" if band == "MEDIUM" or heavy else "LOW"
 
 
+def workflow(row: dict, summary: dict) -> dict:
+    """Where the case stands in the review workflow, derived from its reviews and never stored (store.STATE_SQL is the same rule).
+
+    The latest open, request_approval, approve or reject decides: in_review, awaiting_approval, approved, rejected. With no
+    such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed; it is still in the log),
+    and every other customer is new. A note or feedback never moves the state.
+    """
+    kind = row.get("workflow_kind")
+    if kind is None:
+        state = "auto_logged" if gate_outcome(row, summary) in ("LOW", "WARNING") else "new"
+    else:
+        state = {"open": "in_review", "request_approval": "awaiting_approval", "approve": "approved", "reject": "rejected"}[kind]
+    decided = kind in ("approve", "reject")
+    return {"state": state, "opened_by": row.get("opened_by"), "opened_at": _iso(row.get("opened_at")),
+            "decided_by": row.get("workflow_reviewer") if decided else None, "decided_at": _iso(row.get("workflow_at")) if decided else None}
+
+
+def _iso(value) -> str | None:
+    return None if value is None else value.isoformat().replace("+00:00", "Z")
+
+
 def primary_signals(row: dict) -> list:
     """Up to three evidence tags in the order scoring ranked them (the family that moves the score most first), each as a
     plain phrase with the value and denominator of the signal behind it. The tags themselves are unchanged."""
@@ -189,7 +210,7 @@ def customer_item(row: dict, latest_disposition: str | None, summary: dict | Non
     return {
         "basket_expectation": basket_expectation(row), "cleared_reason": (row.get("measures") or {}).get("cleared_reason"),
         "community": community_summary(row), "tier": tier(row), "gate_outcome": gate_outcome(row, summary),
-        "primary_signals": primary_signals(row),
+        "primary_signals": primary_signals(row), "workflow": workflow(row, summary),
         "customer_id": row["customer_id"], "eligibility_status": row["eligibility_status"],
         "raw_score": _number(row["raw_score"]), "risk_score": _number(row["risk_score"]), "rank": _integer(row["rank"]),
         "selected_for_review": bool(row["selected_for_review"]), "baseline_rank": _integer(row["baseline_rank"]),

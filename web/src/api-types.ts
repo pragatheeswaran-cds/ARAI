@@ -395,9 +395,27 @@ export interface components {
                 denominator: number | null;
                 unit: string;
             }[];
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this world and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            workflow: {
+                /** @enum {string} */
+                state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                opened_by: string | null;
+                /** Format: date-time */
+                opened_at: string | null;
+                /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
+                decided_by: string | null;
+                /** Format: date-time */
+                decided_at: string | null;
+            };
         };
         ReviewRequest: {
             reviewer_name: string;
+            /**
+             * @description What the review does. note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; request_approval asks for a second person; approve and reject decide it. request_approval, approve and reject need an earlier open (409 case_not_open), and approve and reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed message the UI shows as it is. Every kind needs a note.
+             * @default note
+             * @enum {string}
+             */
+            kind: "note" | "open" | "request_approval" | "approve" | "reject" | "feedback";
             /** @enum {string} */
             disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
             note: string;
@@ -410,6 +428,11 @@ export interface components {
             run_id: string;
             model_id: string;
             reviewer_name: string;
+            /**
+             * @description Rows written before contract 1.8.0 are notes.
+             * @enum {string}
+             */
+            kind: "note" | "open" | "request_approval" | "approve" | "reject" | "feedback";
             /** @enum {string} */
             disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
             note: string;
@@ -568,6 +591,7 @@ export interface components {
                     /** @enum {string} */
                     family: "claims" | "timing" | "expected_vs_actual" | "composition" | "volume";
                     label: string;
+                    /** @description How many of the family's features this run's bundle reads; 0 for a family the baseline fallback does not read (it scores on raw_return_rate alone). */
                     feature_count: number;
                     raw_score_without: number;
                     score_without: number;
@@ -1236,6 +1260,10 @@ export interface operations {
                 tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
                 /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
                 gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
+                /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
+                state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                /** @description Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer only the cases another person opened. */
+                exclude_reviewer?: string;
             };
             header?: never;
             path: {

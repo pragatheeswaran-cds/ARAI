@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.7.0
+  version: 1.8.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -527,6 +527,30 @@ paths:
           - HOLD
           - WARNING
           - LOW
+      - name: state
+        in: query
+        required: false
+        description: Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses
+          what is shown; it changes no score or selection.
+        schema:
+          type: string
+          default: all
+          enum:
+          - all
+          - new
+          - in_review
+          - awaiting_approval
+          - approved
+          - rejected
+          - auto_logged
+      - name: exclude_reviewer
+        in: query
+        required: false
+        description: Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer
+          only the cases another person opened.
+        schema:
+          type: string
+          maxLength: 100
   /runs/{run_id}/customers/{customer_id}:
     get:
       operationId: getCustomerCase
@@ -1365,6 +1389,7 @@ components:
       - tier
       - gate_outcome
       - primary_signals
+      - workflow
       properties:
         customer_id: *id001
         eligibility_status:
@@ -1550,6 +1575,46 @@ components:
                 type: number
                 nullable: true
               unit: *id001
+        workflow:
+          type: object
+          additionalProperties: false
+          required:
+          - state
+          - opened_by
+          - opened_at
+          - decided_by
+          - decided_at
+          description: Where the case stands in the review workflow, derived on read from the customer's reviews in this
+            world and never stored. The latest open, request_approval, approve or reject decides the state; with no such
+            event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in
+            the log) and every other customer is new. A note or feedback never moves the state. opened_by names the
+            reviewer of the latest open; the server refuses an approve or reject by that reviewer (409
+            second_reviewer_required).
+          properties:
+            state:
+              type: string
+              enum:
+              - new
+              - in_review
+              - awaiting_approval
+              - approved
+              - rejected
+              - auto_logged
+            opened_by:
+              type: string
+              nullable: true
+            opened_at:
+              type: string
+              format: date-time
+              nullable: true
+            decided_by:
+              type: string
+              nullable: true
+              description: The reviewer of the approve or reject that is the latest workflow event; null otherwise.
+            decided_at:
+              type: string
+              format: date-time
+              nullable: true
     ReviewRequest:
       type: object
       additionalProperties: false
@@ -1563,6 +1628,21 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+        kind:
+          type: string
+          default: note
+          enum:
+          - note
+          - open
+          - request_approval
+          - approve
+          - reject
+          - feedback
+          description: What the review does. note (the default) and feedback record an opinion and never move the
+            workflow; open takes the case into review; request_approval asks for a second person; approve and reject
+            decide it. request_approval, approve and reject need an earlier open (409 case_not_open), and approve and
+            reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed
+            message the UI shows as it is. Every kind needs a note.
         disposition:
           type: string
           enum:
@@ -1587,6 +1667,7 @@ components:
       - run_id
       - model_id
       - reviewer_name
+      - kind
       - disposition
       - note
       - created_at
@@ -1597,6 +1678,16 @@ components:
         run_id: *id001
         model_id: *id001
         reviewer_name: *id001
+        kind:
+          type: string
+          enum:
+          - note
+          - open
+          - request_approval
+          - approve
+          - reject
+          - feedback
+          description: Rows written before contract 1.8.0 are notes.
         disposition:
           type: string
           enum:

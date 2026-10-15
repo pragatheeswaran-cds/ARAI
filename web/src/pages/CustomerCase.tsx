@@ -185,7 +185,7 @@ function Notes({ data, runId, onAppended }: { data: Case; runId: string; onAppen
     setError(null);
     setSaved(false);
     try {
-      await api.appendReview(runId, data.customer.customer_id, { reviewer_name: reviewer.trim(), disposition, note: note.trim(), idempotency_key: key });
+      await api.appendReview(runId, data.customer.customer_id, { reviewer_name: reviewer.trim(), kind: "note", disposition, note: note.trim(), idempotency_key: key });
       localStorage.setItem("arai.reviewer", reviewer.trim());
       setNote("");
       setKey(newKey()); // a new note needs a new key; a retry of the same note reuses the old one
