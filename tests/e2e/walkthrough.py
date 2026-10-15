@@ -12,6 +12,7 @@ saves screenshots under reports/ui/<date>/.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from datetime import date
@@ -47,7 +48,9 @@ def shot(page, name: str) -> None:
 
 
 with sync_playwright() as pw:
-    browser = pw.chromium.launch(channel="msedge", headless=True)
+    # ARAI_BROWSER names a Chromium executable (a cloud container's pre-installed one); otherwise the machine's Edge is used
+    executable = os.environ.get("ARAI_BROWSER")
+    browser = pw.chromium.launch(executable_path=executable, headless=True) if executable else pw.chromium.launch(channel="msedge", headless=True)
     context = browser.new_context(viewport={"width": 1440, "height": 1000})
     page = context.new_page()
     page.on("console", lambda m: console_errors.append(m.text) if m.type == "error" else None)
@@ -112,22 +115,27 @@ with sync_playwright() as pw:
     settle(page)
     check("case opens from the keyboard", page.url.endswith("/customers/" + first_customer), page.url)
     text = main_text(page)
-    check("case shows observed and expected with denominators", "Units requested for return on mature sale lines" in text and "expected" in text.lower())
+    check("case shows observed and expected with denominators", "Actual units requested for return" in text and "Expected for this basket" in text and "Normal band" in text)
+    check("case shows the served tier, recommendation and status with their caveats",
+          "Score and tier" in text and "not a model output" in text and "Status" in text and "not a probability" in text)
+    check("case breaks the score down without parts that add up", "Why this score" in text and "not parts that add up" in text)
+    check("case shows the memo only by status", "Investigation memo" in text and ("Memo unavailable" in text or "Summary" in text or "Being drafted" in text))
     check("case separates the wardrobing indicator", "Wardrobing indicator" in text and "cannot establish" in text)
     check("case says evidence, not verdict", "not a finding of misconduct" in text and "fraud" not in text.lower() and "confidence" not in text.lower())
     check("case shows no truth", not any(w in text.lower() for w in TRUTH_WORDS))
     shot(page, "05-case-evidence")
-    for tab in ("timeline", "relationships", "notes"):
-        page.get_by_role("tab", name=tab, exact=False).focus()
+    for tab, key in (("returns", "tab=returns"), ("linked accounts", "tab=linked+accounts"), ("notes", "tab=notes")):
+        page.get_by_role("tab", name=tab, exact=True).focus()
         page.keyboard.press("Enter")
         settle(page)
-        check(f"case tab {tab} opens from the keyboard", f"tab={tab}" in page.url, page.url)
-        shot(page, f"06-case-{tab}")
+        check(f"case tab {tab} opens from the keyboard", key in page.url, page.url)
+        shot(page, f"06-case-{tab.replace(' ', '-')}")
+    check("return behaviour shows reason codes, never free text", "Reason code" in page.locator("main").inner_text() or "No return request" in main_text(page))
     stamp = str(int(time.time()))
-    page.get_by_label("Reviewer name").fill("Walkthrough reviewer")
-    page.get_by_label("Disposition").select_option("unresolved")
-    page.get_by_label("Evidence-based note").fill(f"Walkthrough note {stamp}: checked timeline and links.")
-    page.get_by_role("button", name="Append note").focus()
+    page.get_by_label("Reviewer name").fill("Walkthrough reviewer")                       # the run strip; the decision panel reads it
+    page.get_by_label("Your reading").select_option("unresolved")
+    page.get_by_label("Note (required with every action)").fill(f"Walkthrough note {stamp}: checked timeline and links.")
+    page.get_by_role("button", name="Add a note only").focus()
     page.keyboard.press("Enter")
     page.wait_for_function(f"document.querySelector('main').innerText.includes('Walkthrough note {stamp}')", timeout=15000)
     check("note appended and shown with its origin run", f"Walkthrough note {stamp}" in main_text(page) and "written on run" in main_text(page))
@@ -135,6 +143,16 @@ with sync_playwright() as pw:
     settle(page)
     check("note persists after reload", f"Walkthrough note {stamp}" in main_text(page))
     shot(page, "07-case-notes")
+    # the second-person rule, on stage: the reviewer who opens a case cannot approve it; the server's words are shown
+    page.get_by_label("Note (required with every action)").fill(f"Walkthrough open {stamp}.")
+    page.get_by_role("button", name="Open case").click()
+    page.wait_for_function("document.querySelector('main').innerText.includes('In review')", timeout=15000)
+    page.get_by_label("Note (required with every action)").fill(f"Walkthrough approve {stamp}.")
+    page.get_by_role("button", name="Approve", exact=True).click()
+    page.wait_for_function("document.querySelector('main').innerText.includes('second_reviewer_required')", timeout=15000)
+    check("approving one's own case is refused in the server's words",
+          "A different reviewer must approve or reject it" in main_text(page) and "second_reviewer_required" in main_text(page))
+    shot(page, "07b-case-refusal")
     page.go_back()
     page.go_back()
     settle(page)
@@ -143,8 +161,9 @@ with sync_playwright() as pw:
     page.get_by_role("link", name="Style investigation").click()
     settle(page)
     styles = page.locator("main table tbody tr").count()
-    check("style queue lists every style with states", styles == 37 and "Linked-claim share" in main_text(page), styles)
-    page.get_by_label("Evidence state").select_option("targeting")
+    check("style queue lists every style with a verdict", styles == 37 and "Flagged returners" in main_text(page) and "Suggested owner" in main_text(page), styles)
+    check("the headline pair sets a quality style beside an abuse target", "different stories" in main_text(page))
+    page.get_by_label("Verdict").select_option("targeting")
     settle(page)
     targeting = page.locator("main table tbody tr").count()
     check("state filter narrows the style queue", 0 < targeting < 37, targeting)
@@ -152,10 +171,11 @@ with sync_playwright() as pw:
     page.locator("main table tbody tr a.link").first.click()
     settle(page)
     text = main_text(page)
-    check("style detail has SKU drill-down and linked customers", "SKU drill-down" in text and "Customers with requests on this style" in text)
+    check("style detail has the four drawers and the SKU drill-down",
+          all(w in text for w in ("Who is returning it", "Reasons given", "When in the window", "How risky the returners are", "SKU drill-down")))
     check("style page never clears or condemns a customer", "never clears a customer" in text)
     shot(page, "09-style-detail")
-    page.locator("main ul.plain a").first.click()
+    page.locator("main .small-table a.link").first.click()
     settle(page)
     check("style links through to a customer case", "/customers/" in page.url)
     page.go_back()
@@ -181,6 +201,8 @@ with sync_playwright() as pw:
     check("the scorecard shows every gate group of the experiment",
           all(heading in text for heading in ("Heavy returners reviewed", "Household members reviewed", "Repeat genuine claimants reviewed")))
     check("truth is hidden until asked for", "Reveal simulated truth" in text and "abused returns in the simulation" not in text)
+    check("evaluation draws the hero curves with the budget marker and the run manifest",
+          "Abusers caught against alerts used" in text and "Run manifest" in text and ("alerts used (queue size k)" in text or "not on the demonstration world" in text))
     shot(page, "10-evaluation")
     page.get_by_role("button", name="Reveal simulated truth").click()
     page.wait_for_function("document.querySelector('main').innerText.includes('abused returns in the simulation')", timeout=90000)
@@ -213,7 +235,7 @@ with sync_playwright() as pw:
     browser.close()
 
 passed = sum(r["ok"] for r in results)
-(OUT / "walkthrough-result.json").write_text(json.dumps({"base": BASE, "browser": "msedge " + browser_version, "checks": results,
+(OUT / "walkthrough-result.json").write_text(json.dumps({"base": BASE, "browser": ("chromium " if os.environ.get("ARAI_BROWSER") else "msedge ") + browser_version, "checks": results,
                                                          "passed": passed, "failed": len(results) - passed}, indent=2) + "\n", encoding="utf-8")
 print(f"{passed} of {len(results)} checks passed; screenshots in {OUT}")
 sys.exit(0 if passed == len(results) else 1)
