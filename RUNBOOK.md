@@ -105,12 +105,14 @@ no model has passed the gate: the return-rate ranking, the banner that says so, 
 uv run arai baseline-rehearsal              # http://127.0.0.1:8011
 ```
 
-It keeps its own database and artifact folder under `data\EXP-20261005-04\baseline-rehearsal` (the bundles are
-copied, the published report is rewritten as if no candidate had passed, the baseline is activated), so it can run
-beside `arai local` without sharing anything. On first start it registers and scores W5401 with the rule, about
-15 seconds; later starts reuse the run. Stop it with Ctrl+C like the main instance. `--fresh` rebuilds its folder
-from the current bundles, `--port` and `--demo-world` change the defaults. The run-time check
-`tests\e2e\fallback_check.py` exercises the same mode on a temporary instance.
+Its fixture is in git under `rehearsal\baseline\artifacts` (the baseline bundle, the published report rewritten as
+if no candidate had passed, the active pointer); its database and the registered copy of the demo world sit beside
+it in `rehearsal\baseline\postgres` and `rehearsal\baseline\artifacts\datasets`, which git ignores. So it runs
+beside `arai local` without sharing anything. On first start it registers and scores W5401 with the rule (read from
+`data\EXP-20261005-04\artifacts\worlds`, like `arai local`), about 15 seconds; later starts reuse the run. Stop it
+with Ctrl+C like the main instance. `--fresh` rebuilds the fixture from the current bundles and empties its
+database; `--port` and `--demo-world` change the defaults. The run-time check `tests\e2e\fallback_check.py`
+exercises the same mode on a temporary instance.
 
 ---
 

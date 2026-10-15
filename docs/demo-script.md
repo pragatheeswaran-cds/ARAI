@@ -112,9 +112,10 @@ pattern that explains the rank. Say the week-one lines over it, ninety seconds a
 8000 tab: "same Monday, the other list". If the second instance is not running, skip this and tell week one from
 the premise slide; nothing else in the demo depends on it.
 
-`--fresh` rebuilds the rehearsal folder (`data\EXP-20261005-04\baseline-rehearsal`) from the current bundles;
-`--port` and `--demo-world` change the defaults. The instance's notes and runs persist between starts like the
-main one's.
+The instance's fixture is in git under `rehearsal/baseline` (see its README); its database sits beside it and is
+not tracked, so its notes and runs persist between starts on one machine like the main instance's. `--fresh`
+rebuilds the fixture from the current bundles and empties that database; `--port` and `--demo-world` change the
+defaults.
 
 ---
 

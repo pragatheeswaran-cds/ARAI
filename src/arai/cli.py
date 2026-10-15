@@ -173,9 +173,11 @@ def _local(args) -> int:
 def _baseline_rehearsal(args) -> int:
     """A second local instance that serves the return-rate rule only: the demo's cold open (docs/demo-script.md, 1d).
 
-    It keeps its own database and artifact folder under data/<contract>/baseline-rehearsal, so it runs beside `arai local`
-    without sharing anything: the bundles are copied, the published report is rewritten as if no candidate had passed the
-    gate, and the baseline is activated. On first start the demo world is registered and scored with the rule.
+    Its fixture lives in git under rehearsal/baseline/artifacts: the baseline bundle, the published report rewritten as
+    if no candidate had passed the gate, and the active pointer. Its runtime state (the embedded database and the
+    registered snapshot) sits beside it and is ignored by git. It runs beside `arai local` without sharing anything.
+    The fixture is rebuilt from the current artifacts when it is missing, names a bundle that is not there, or --fresh
+    is given. On first start the demo world is registered and scored with the rule.
     """
     import logging
     import shutil
@@ -195,12 +197,18 @@ def _baseline_rehearsal(args) -> int:
         print("The embedded PostgreSQL is a development dependency: run `uv sync`.")
         return 1
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-    work = paths.DATA_ROOT / "baseline-rehearsal"
-    if args.fresh and work.exists():
-        shutil.rmtree(work)
+    work = paths.REPO_ROOT / "rehearsal" / "baseline"
     root = work / "artifacts"
-    if not (root / "active" / "active.json").is_file():
-        shutil.copytree(paths.ARTIFACT_ROOT / "bundles", root / "bundles", dirs_exist_ok=True)
+    if args.fresh:
+        for state in (work / "postgres", root / "datasets", root / "bundles", root / "experiments", root / "active"):
+            shutil.rmtree(state, ignore_errors=True)
+    pointer = bundles.read_active(root)
+    if pointer is None or not (root / "bundles" / str(pointer.get("baseline_id"))).is_dir():
+        for stale in (root / "bundles", root / "experiments", root / "active"):
+            shutil.rmtree(stale, ignore_errors=True)
+        for bundle in sorted((paths.ARTIFACT_ROOT / "bundles").iterdir()):
+            if bundle.name.startswith("b-"):                               # the rule's bundle only; the model stays out
+                shutil.copytree(bundle, root / "bundles" / bundle.name)
         source = next((paths.ARTIFACT_ROOT / "experiments").glob("*/published/experiment.json"))
         report = json.loads(source.read_text(encoding="utf-8"))
         report["summary"].update(selection_status="no_selected_model", selected_model_id=None, selected_candidate_id=None,
@@ -243,7 +251,8 @@ def _baseline_rehearsal(args) -> int:
             print(f"baseline rehearsal: scoring {args.demo_world} with the return-rate rule, run {run.get('run_id')}; open {base}")
 
     threading.Thread(target=seed, daemon=True).start()
-    print(f"ARAI baseline rehearsal (return-rate rule only) on {base}  (database in {server.pgdata}); run `arai local` on another port")
+    print(f"ARAI baseline rehearsal (return-rate rule only) on {base}  (fixture in {root}, database in {server.pgdata}); "
+          "run `arai local` on another port")
     uvicorn.run(create_app(config, with_worker=True, static_dir=static), host=args.host, port=args.port, log_level="info")
     return 0
 
@@ -333,12 +342,12 @@ def main(argv=None) -> int:
     local.add_argument("--pg-dir", type=Path, default=None, help="PostgreSQL data directory (default: postgres/ in the contract's data folder)")
     local.set_defaults(run=_local)
     rehearsal = commands.add_parser("baseline-rehearsal", help="a second local instance serving the return-rate rule only (the demo's "
-                                                             "cold open): its own database and artifacts under data/<contract>/"
-                                                             "baseline-rehearsal, the demo world scored on first start")
+                                                             "cold open): its fixture in rehearsal/baseline, its database beside it, "
+                                                             "the demo world scored on first start")
     rehearsal.add_argument("--host", default="127.0.0.1")
     rehearsal.add_argument("--port", type=int, default=8011)
     rehearsal.add_argument("--demo-world", default="W5401")
-    rehearsal.add_argument("--fresh", action="store_true", help="rebuild the rehearsal folder from the current bundles")
+    rehearsal.add_argument("--fresh", action="store_true", help="rebuild the fixture from the current bundles and start with an empty database")
     rehearsal.set_defaults(run=_baseline_rehearsal)
     register = commands.add_parser("register", help="validate and register an operational world directory as a dataset")
     register.add_argument("directory", type=Path)

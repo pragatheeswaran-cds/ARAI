@@ -14,3 +14,7 @@ data/
 .pytest_cache/
 .ipynb_checkpoints/
 .env
+
+# Baseline rehearsal: the fixture is tracked, its runtime state is not
+rehearsal/baseline/postgres/
+rehearsal/baseline/artifacts/datasets/
