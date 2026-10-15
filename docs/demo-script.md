@@ -34,6 +34,69 @@ Use any names you like; the UI's reviewer name is free text typed into the heade
 
 ---
 
+## 1b. Telling it as two weeks: the rule's week and the product's week
+
+The story below says why the product is better without naming a capability. It is one reviewer's week, told twice:
+same retailer, same 10,000 customers, same 284 review slots. Only the way the list was built differs. Use it as the
+spine of the demo, with the scenes in section 4 as the evidence for each line; the baseline is shown inside the
+product at every step (section 1c), so no separate baseline demonstration is needed.
+
+**The week with the return-rate list**
+
+- *Monday morning, 284 names.* Every one of them returns a lot. That is all the list knows. Arjun opens the first
+  case, sees a 45 percent return rate, and has nothing else to look at.
+- *Four of five visits find nothing.* On the validation worlds the rule is right 22.7 percent of the time. Arjun
+  spends most of his week clearing people who buy three sizes and keep one.
+- *The rule punishes loyalty.* 44 percent of honest heavy returners get a review. These are the best customers of a
+  fit-sensitive category, and they are the ones being contacted.
+- *The real cases never arrive.* A customer who claims "parcel not received" on one order in five has an ordinary
+  return rate. A ring of five accounts sharing a card looks like five light returners. Neither is on the list, because
+  the number the list uses cannot see them.
+- *Friday, a decision nobody can defend.* Arjun escalates three people. If one of them calls to complain, the only
+  answer is "your return rate is high". No second person checked, because there was nothing to check.
+
+**The same Monday, the other list**
+
+- *284 names again, three quarters of them different.* 209 customers the rule would have reviewed are gone. 209 the
+  rule never showed are here. 75 are on both.
+- *Three of four visits find something.* Precision 74.3 percent on the validation worlds, 76.6 percent on the final
+  test. Same budget, same hours, three times the yield.
+- *The loyal customer is left alone.* Under 5 percent of honest heavy returners are reviewed instead of 44. The
+  cleared list is on screen so the team can argue with it.
+- *The first case explains itself.* Rank 1 bought 29 units and sent back 12 where a buyer of the same products would
+  send back about 6. Four returns in thirteen went back late in the window. The rule ranked this customer 553rd.
+- *Rings appear as rings.* Rank 4 is one of five linked accounts, four of them on the list, with a claim on the same
+  product within days of each other. The reviewer sees the group once, not five strangers.
+- *Friday, a decision with a record.* Arjun opens the case, writes what he saw, and the system refuses to let him
+  approve his own work. Meera approves, with both names and times kept. If the customer calls, there is an answer.
+
+**The three lines to repeat**
+
+1. *Same budget, three times the hits.* The money is not in more reviews. It is in better ones.
+2. *Return rate measures loyalty as often as abuse.* Ranking on it sends your best customers to the fraud desk.
+3. *A queue you can argue with.* Every case shows its expectation, its denominators and the record behind each link,
+   and a second person decides.
+
+Say the week-one lines while the Overview and the queue are on screen, before any filter is touched; say the
+week-two lines as each scene produces its evidence; say the three lines at the close.
+
+## 1c. Where the baseline shows inside the flow
+
+The rule is visible at every step of the product, which is itself part of the message: the product does not hide
+what it replaced.
+
+| Screen | What shows the rule | Line it supports |
+|---|---|---|
+| Overview, "Model and return-rate rule compared" | 209 model only, 75 both, 209 rule only | Three quarters of the two lists differ |
+| Customer queue, column "Return-rate rule" | The rule's rank for every customer: rank 1 is the rule's 553rd, rank 5 its 2,254th | The real cases never arrive |
+| Customer queue, Comparison "Selected by the rule, not by the model" | The 209 the rule would have reviewed | The rule punishes loyalty |
+| Customer queue, Show "Cleared heavy returners" | The customers above the 40.6 percent cutoff the model left out, each with its reason | The loyal customer is left alone |
+| Customer case, "Analyst rules that would have fired" | The five legacy rules against this case | A decision nobody can defend, then one with a record |
+| Evaluation, "Abusers caught against alerts used" | First 58 alerts: 58 abusers against 19; 0 honest heavy returners against 39 | Same budget, three times the hits |
+| Evaluation, "How often each ranking is right" | Rule 22.7 percent, analyst rulebook 32.4, model 74.3 | Four of five visits find nothing |
+
+---
+
 ## 2. Before the audience arrives
 
 1. Start the application and wait for the health line (RUNBOOK.md section 2):
