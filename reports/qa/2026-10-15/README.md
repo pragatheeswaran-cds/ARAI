@@ -6,6 +6,10 @@ tampering, consistency rules between fields, concurrency, latency) and `ui_probe
 and 390 px: console and network errors, accessible names, URL round trips, form guards, hostile input). Both
 need a running stack and a scored run; they write test data, so run them against a disposable database.
 
+A second, functional and product review of the same day, from a returns-operations point of view, is in
+`functional-review.md` (selling claims against the simulation truth, evidence against the raw tables, returns-process
+integrity on upload; scripts `functional_check.py` and `domain_rules.py`).
+
 Severity: **High** = wrong data accepted or wrong state reachable through the API; **Medium** = a screen or rule
 does not do what it says; **Low** = polish, hardening or accessibility.
 
