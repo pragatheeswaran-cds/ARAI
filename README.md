@@ -32,6 +32,9 @@ uv run arai baseline-rehearsal             # optional second instance serving th
 uv run arai db-clean --all --dry-run       # housekeeping for either demo database: notes, runs, datasets or a full reset
 ```
 
+Every command that manages the environment (set up, start, stop, clean up, load data, check) is listed in one table at
+the top of `RUNBOOK.md`, section 0.
+
 `arai local` needs the artifacts of the current experiment (worlds, bundles, the published experiment). They are
 not in git; the offline pipeline below reproduces them from seeds, the specification and `uv.lock`.
 
@@ -81,7 +84,7 @@ points serving at the new bundle only after the report is written.
 ### Tests
 
 ```
-uv run pytest                              # 185+ tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
+uv run pytest                              # 213 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
 cd web && npm test                         # front-end unit tests
 uv run python tests/e2e/walkthrough.py     # browser walkthrough against a running `arai local`
 ```

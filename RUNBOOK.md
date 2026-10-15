@@ -14,6 +14,53 @@ it on PATH yet), or call it by its full path:
 
 The demonstration narrative and click-by-click flow are in `docs\demo-script.md`.
 
+## 0. Every command in one place
+
+Every command that manages the environment, with the section that explains it. Run them from the repository root;
+add `--no-sync` after `uv run` while an instance is running (section 5).
+
+| Purpose | Command | Section |
+|---|---|---|
+| **Set up** | | |
+| Python environment from the lock | `uv sync` | 1.1 |
+| Build the UI (after any change under `web\`) | `cd web; npm install; npm run build; cd ..` | 1.2 |
+| Reproduce the experiment artifacts from seeds (fresh clone only) | the offline pipeline in `README.md`, in order | 1.3 |
+| Rebuild the rehearsal fixture after bundles changed | `uv run arai baseline-rehearsal --fresh` then commit `rehearsal\baseline` | 1.4 |
+| **Start and stop** | | |
+| Start the product instance (port 8000) | `uv run arai local` | 2.1 |
+| Start it on another port | `uv run arai local --port 8010` | 2.1 |
+| Stop it | Ctrl+C; by port: the two lines in 2.1 (`Stop-Process`, then `pg_ctl.exe stop -D .\data\EXP-20261005-04\postgres -m fast`) | 2.1 |
+| Start the baseline rehearsal (port 8011) | `uv run arai baseline-rehearsal` | 2.2 |
+| Its options | `--port 8012`, `--demo-world W5401`, `--fresh` | 2.2 |
+| Stop it | Ctrl+C; by port: the two lines in 2.2 (`Stop-Process`, then `pg_ctl.exe stop -D .\rehearsal\baseline\postgres -m fast`) | 2.2 |
+| Both for a demonstration | terminal 1 `uv run arai baseline-rehearsal`, terminal 2 `uv run arai local` | 2.3 |
+| Docker Compose up, status, logs | `docker compose up --build -d`; `docker compose ps`; `docker compose logs -f worker` | 3 |
+| Docker Compose down, keep or drop the database | `docker compose down`; `docker compose down -v` | 3 |
+| **Clean up** | | |
+| Look before cleaning | `uv run arai db-clean --all --dry-run` | 2.4 |
+| Remove notes, runs or datasets | `uv run arai db-clean --notes --yes`; `--runs --yes`; `--datasets --yes` | 2.4 |
+| Everything demo state holds, all worlds or one | `uv run arai db-clean --all --yes`; `--all --world W5401 --yes` | 2.4 |
+| The rehearsal's database | `uv run arai db-clean --instance rehearsal --all --yes` | 2.4 |
+| Full reset of a stopped instance | `uv run arai db-clean --reset --yes`; `--instance rehearsal --reset --yes` | 2.4 |
+| **Load data** | | |
+| Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
+| The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
+| Validate a snapshot without registering it | `uv run arai validate <folder>` | 5 |
+| **Check** | | |
+| Health of an instance | `curl.exe -s http://127.0.0.1:8000/api/v1/health` (8011 for the rehearsal) | 5 |
+| Latest run | `curl.exe -s http://127.0.0.1:8000/api/v1/runs` | 5 |
+| Python tests | `uv run --no-sync pytest -q` | 5 |
+| Front-end tests and type check | `cd web; npm test; npx tsc --noEmit; cd ..` | 5 |
+| Browser walkthrough (instance up, run scored) | `uv run --no-sync python tests\e2e\walkthrough.py` | 5 |
+| Baseline-fallback check (port 8011 free) | `uv run --no-sync python tests\e2e\fallback_check.py` | 5 |
+| Specification package | `uv run --no-sync python final-spec\tools\verify_package.py`; after edits `uv run --no-sync python scripts\spec_package.py` | 5 |
+| Re-publish the bundles after a code change the run warns about | `uv run --no-sync arai publish --demo-world W5401`, then restart | 6 |
+
+On macOS or Linux the same commands work with forward slashes, `curl` for `curl.exe`, and the `pg_ctl` binary under
+`.venv/lib/python3.12/site-packages/pgserver/pginstall/bin/pg_ctl`.
+
+---
+
 There are three ways to bring the application up. The **local** instance and the **baseline rehearsal** are meant
 to run together for a demonstration; the Docker Compose stack is the reference runtime and must not run beside the
 local instance, because the two would share the `data\EXP-20261005-04\artifacts` folder.

@@ -123,7 +123,7 @@ defaults.
 
 0. For the cold open (section 1d), start `uv run arai baseline-rehearsal` first and check http://127.0.0.1:8011
    shows the baseline banner and a scored run.
-1. Start the application and wait for the health line (RUNBOOK.md section 2):
+1. Start the application and wait for the health line (RUNBOOK.md section 2; every environment command is in its section 0):
    ```powershell
    uv run arai local
    curl.exe -s http://127.0.0.1:8000/api/v1/health
