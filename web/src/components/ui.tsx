@@ -77,8 +77,34 @@ export function Stat({ name, value, note }: { name: string; value: ReactNode; no
   );
 }
 
-export function Badge({ text, tone = "plain" }: { text: string; tone?: "plain" | "amber" | "gray" | "green" }) {
-  return <span className={"badge " + tone}>{label(text)}</span>;
+export function Badge({ text, tone = "plain", className = "", title }: { text: string; tone?: "plain" | "amber" | "gray" | "green"; className?: string; title?: string }) {
+  return (
+    <span className={"badge " + tone + (className ? " " + className : "")} title={title}>
+      {label(text)}
+    </span>
+  );
+}
+
+/** A short identifier shown in full, copied to the clipboard on click (decision D4: no hashing, no truncation). */
+export function CopyId({ id, showId = true }: { id: string; showId?: boolean }) {
+  const [done, setDone] = useState(false);
+  return (
+    <>
+      {showId && <span className="id">{id}</span>}
+      <button
+        type="button"
+        className="copy"
+        aria-label={`Copy ${id}`}
+        title="Copy to clipboard"
+        onClick={() => {
+          navigator.clipboard?.writeText(id).then(() => setDone(true), () => setDone(false));
+          setTimeout(() => setDone(false), 1200);
+        }}
+      >
+        {done ? "copied" : "copy"}
+      </button>
+    </>
+  );
 }
 
 export function Panel({ title, children, aside }: { title?: string; children: ReactNode; aside?: ReactNode }) {

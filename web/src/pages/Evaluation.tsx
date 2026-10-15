@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { allPages, api, type Candidate, type Experiment, type Metric, type TruthExample } from "../api";
+import { ApiError, allPages, api, type Candidate, type Curves, type Experiment, type ExperimentSummary, type Metric, type TruthExample } from "../api";
 import { useWorkspace } from "../App";
 import { Badge, Callout, LoadState, PageTitle, Panel, Row, Stat, label, number, percent, useLoad } from "../components/ui";
 
@@ -283,6 +283,172 @@ function StressWorlds({ experiment, selectedId }: { experiment: Experiment; sele
   );
 }
 
+/** Abusers caught against alerts used, both rankings, from the published truth joined to the workspace run (synthetic only).
+ *  One measure per axis; the budget is a marker, the two statements at it are text; hover reads the nearest point. */
+function HeroCurves({ experimentId }: { experimentId: string }) {
+  const { run } = useWorkspace();
+  const [hover, setHover] = useState<number | null>(null);
+  const [table, setTable] = useState(false);
+  const state = useLoad<{ curves: Curves | null; mismatch: boolean }>(async () => {
+    if (!run || run.status !== "succeeded") return { curves: null, mismatch: false };
+    try {
+      return { curves: await api.curves(experimentId, run.run_id, 400), mismatch: false };
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.code === "world_mismatch") return { curves: null, mismatch: true };
+      throw failure;
+    }
+  }, [experimentId, run?.run_id]);
+  if (!run) return <p className="muted">Curves need a scored run on the demonstration world; none is selected.</p>;
+  if (state.data?.mismatch) return <p className="muted">The selected run is not on the demonstration world whose truth was published, so no curve is drawn for it.</p>;
+  const curves = state.data?.curves ?? null;
+  if (!curves) return <LoadState state={state} />;
+  const W = 640, H = 300, L = 48, R = 16, T = 12, B = 36;
+  const points = curves.points;
+  const maxK = curves.eligible_count || 1;
+  const maxY = Math.max(1, curves.abusers);
+  const x = (k: number) => L + ((W - L - R) * k) / maxK;
+  const y = (v: number) => T + (H - T - B) * (1 - v / maxY);
+  const path = (pick: (p: Curves["points"][number]) => number) => points.map((p, i) => `${i ? "L" : "M"}${x(p.k).toFixed(1)},${y(pick(p)).toFixed(1)}`).join(" ");
+  const budget = curves.review_budget;
+  const at = (k: number) => [...points].sort((a, b) => Math.abs(a.k - k) - Math.abs(b.k - k))[0];
+  const atBudget = budget ? at(budget) : null;
+  const shown = hover !== null ? at(hover) : atBudget;
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(maxK * f));
+  return (
+    <>
+      <figure className="chart" aria-label="Abusers caught against alerts used, model and return-rate rule">
+        <figcaption>Of {number(curves.abusers)} simulated abusers among {number(curves.eligible_count)} eligible customers, how many the first k alerts of each ranking contain</figcaption>
+        <div className="legend">
+          <span>
+            <i style={{ background: ROLE_COLOR.candidate }} aria-hidden="true" /> Selected model
+          </span>
+          <span>
+            <i style={{ background: ROLE_COLOR.baseline }} aria-hidden="true" /> Return-rate rule
+          </span>
+          <span className="muted">dashed marker: the review budget of {number(budget)}</span>
+        </div>
+        <svg
+          className="curve"
+          viewBox={`0 0 ${W} ${H}`}
+          role="img"
+          onMouseMove={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            const k = Math.round(((e.clientX - box.left) / box.width * W - L) / (W - L - R) * maxK);
+            setHover(Math.max(1, Math.min(maxK, k)));
+          }}
+          onMouseLeave={() => setHover(null)}
+        >
+          {[0, 0.5, 1].map((f) => (
+            <g key={f}>
+              <line x1={L} x2={W - R} y1={y(maxY * f)} y2={y(maxY * f)} stroke="#e1e0d9" />
+              <text x={L - 6} y={y(maxY * f) + 4} textAnchor="end" fontSize="11" fill="#898781">
+                {number(Math.round(maxY * f))}
+              </text>
+            </g>
+          ))}
+          {ticks.map((k) => (
+            <text key={k} x={x(k)} y={H - B + 16} textAnchor="middle" fontSize="11" fill="#898781">
+              {number(k)}
+            </text>
+          ))}
+          <text x={(L + W - R) / 2} y={H - 4} textAnchor="middle" fontSize="11" fill="#52514e">
+            alerts used (queue size k)
+          </text>
+          <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} stroke="#c9c8c1" />
+          {budget && <line x1={x(budget)} x2={x(budget)} y1={T} y2={y(0)} stroke="#52514e" strokeDasharray="4 4" />}
+          <path d={path((p) => p.baseline_abusers_caught)} fill="none" stroke={ROLE_COLOR.baseline} strokeWidth="2" />
+          <path d={path((p) => p.model_abusers_caught)} fill="none" stroke={ROLE_COLOR.candidate} strokeWidth="2" />
+          {shown && (
+            <g>
+              <line x1={x(shown.k)} x2={x(shown.k)} y1={T} y2={y(0)} stroke="#898781" strokeWidth="1" />
+              <circle cx={x(shown.k)} cy={y(shown.model_abusers_caught)} r="4" fill={ROLE_COLOR.candidate} stroke="#fcfcfb" strokeWidth="2" />
+              <circle cx={x(shown.k)} cy={y(shown.baseline_abusers_caught)} r="4" fill={ROLE_COLOR.baseline} stroke="#fcfcfb" strokeWidth="2" />
+            </g>
+          )}
+        </svg>
+        {shown && (
+          <p className="small" role="status">
+            At {number(shown.k)} alerts{budget === shown.k ? " (the budget)" : ""}: the model's queue holds {number(shown.model_abusers_caught)} abusers and{" "}
+            {number(shown.model_legitimate_heavy_reviewed)} legitimate heavy returners; the rule's holds {number(shown.baseline_abusers_caught)} abusers and{" "}
+            {number(shown.baseline_legitimate_heavy_reviewed)} legitimate heavy returners.
+          </p>
+        )}
+      </figure>
+      {atBudget && (
+        <div className="stats">
+          <Stat name="Abusers caught at the budget" value={`${number(atBudget.model_abusers_caught)} of ${number(curves.abusers)}`} note={`model / the rule catches ${number(atBudget.baseline_abusers_caught)}`} />
+          <Stat
+            name="Alerts spent on legitimate heavy returners"
+            value={`${number(atBudget.model_legitimate_heavy_reviewed)} of ${number(curves.legitimate_heavy_returners)}`}
+            note={`model / the rule spends ${number(atBudget.baseline_legitimate_heavy_reviewed)}; heavy means a rate at or above ${percent(curves.heavy_returner_cutoff, 0)}`}
+          />
+        </div>
+      )}
+      <button type="button" onClick={() => setTable((t) => !t)}>
+        {table ? "Hide the table" : "Show the points as a table"}
+      </button>
+      {table && (
+        <div className="tablewrap small-table">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">k</th>
+                <th scope="col">Model: abusers</th>
+                <th scope="col">Model: legitimate heavy returners</th>
+                <th scope="col">Rule: abusers</th>
+                <th scope="col">Rule: legitimate heavy returners</th>
+              </tr>
+            </thead>
+            <tbody>
+              {points.map((p) => (
+                <tr key={p.k}>
+                  <th scope="row">{number(p.k)}</th>
+                  <td>{number(p.model_abusers_caught)}</td>
+                  <td>{number(p.model_legitimate_heavy_reviewed)}</td>
+                  <td>{number(p.baseline_abusers_caught)}</td>
+                  <td>{number(p.baseline_legitimate_heavy_reviewed)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Manifest({ summary }: { summary: ExperimentSummary }) {
+  const { run, dataset } = useWorkspace();
+  const seeds = (list: number[]) => (list.length ? list.join(", ") : "not in this report");
+  return (
+    <Panel title="Run manifest">
+      <div className="manifest">
+        <Row name="Experiment">{summary.experiment_id}</Row>
+        <Row name="Config hash">
+          <code>{summary.config_hash}</code>
+        </Row>
+        <Row name="Publishing commit" note="Recorded when the report was published; verification only, no refit">
+          <code>{summary.git_sha ?? "not in this report (republish to record it)"}</code>
+        </Row>
+        <Row name="Training seeds">{seeds(summary.train_seeds)}</Row>
+        <Row name="Validation seeds">{seeds(summary.validation_seeds)}</Row>
+        <Row name="Test seeds">{seeds(summary.test_seeds)}</Row>
+        <Row name="Demonstration seed">{seeds(summary.demo_seeds)}</Row>
+        {run && (
+          <Row name="Scored run" note={`bundle ${run.model_id}`}>
+            <code>{run.run_id}</code>
+          </Row>
+        )}
+        {dataset && (
+          <Row name="Dataset hash" note={`${dataset.world_id} / schema ${dataset.schema_version}`}>
+            <code>{dataset.manifest_hash}</code>
+          </Row>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function TruthReveal({ experimentId }: { experimentId: string }) {
   const { run } = useWorkspace();
   const [shown, setShown] = useState(false);
@@ -484,6 +650,13 @@ export function Evaluation() {
               </>
             )}
           </Callout>
+          <Panel title="Abusers caught against alerts used">
+            <p className="muted">
+              Synthetic truth of the demonstration world joined to the selected run. The marker is the review budget; the two statements at it are what
+              the queue buys and what it costs.
+            </p>
+            <HeroCurves experimentId={experimentId} />
+          </Panel>
           <Panel title="How often each ranking is right">
             <p className="muted">Measured on: {scope}.</p>
             <PrecisionChart data={data} />
@@ -656,6 +829,7 @@ export function Evaluation() {
             </Panel>
             <TruthReveal experimentId={experimentId} />
           </div>
+          <Manifest summary={summary} />
         </>
       )}
     </>

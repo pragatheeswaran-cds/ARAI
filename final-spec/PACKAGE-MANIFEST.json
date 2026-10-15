@@ -21,7 +21,7 @@
     "components/10-artifacts-and-versioning.md": "c73490e0fd9cb9b0548a694c4ef0baf156268558a4c56bdd033acd21066d1c90",
     "components/11-inference-service.md": "dced17024d6fc0f86edf9116457fc69444322e775191f6a196581dfb9f3bf248",
     "components/12-fastapi-and-api-contract.md": "347dc71e992650a063428af4b70f205ea67238e106942efd05bbe2d96adae49f",
-    "components/13-react-vite-ui.md": "59332a01eb738f8f32b6f3b952114c7b9d9bc0ef43e2cb380f6682e25c00a1fd",
+    "components/13-react-vite-ui.md": "26725c44f1190772097ef6dff7e04db1bb41c786bd06accdc4626c335634430f",
     "components/14-storage-and-audit.md": "fb7aca1d89c457022a13564801d90bfb0695e5a5defb0614632367481b260dda",
     "components/15-security-deployment-portability.md": "789c68a17f7ac86a75089618610374184459fd6cf1fcab937e02d8e6f429881f",
     "components/16-testing-and-delivery.md": "eab88dc1ce853e202e6813fec46605b05cd95a3b9bb6b47182ded97778b75001",

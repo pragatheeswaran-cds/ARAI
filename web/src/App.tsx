@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
-import { allPages, api, type ExperimentSummary, type Health, type Run } from "./api";
-import { ist, shortId, useLoad } from "./components/ui";
+import { allPages, api, type Dataset, type ExperimentSummary, type Health, type Run } from "./api";
+import { ist, number, shortId, useLoad } from "./components/ui";
+import { datasetName } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
 import { CustomerQueue } from "./pages/CustomerQueue";
 import { Datasets } from "./pages/Datasets";
@@ -13,13 +14,83 @@ type Workspace = {
   health: Health | null;
   runs: Run[];
   run: Run | null; // the run in the address bar, otherwise the latest succeeded run
+  dataset: Dataset | null; // the run's dataset, for its name
   experiment: ExperimentSummary | null;
   fallback: boolean;
   reload: () => void;
 };
 
-const WorkspaceContext = createContext<Workspace>({ health: null, runs: [], run: null, experiment: null, fallback: false, reload: () => {} });
+const WorkspaceContext = createContext<Workspace>({ health: null, runs: [], run: null, dataset: null, experiment: null, fallback: false, reload: () => {} });
 export const useWorkspace = () => useContext(WorkspaceContext);
+
+/** The reviewer's name: free text kept in this browser, never an authenticated identity. The workflow rules read it. */
+type Reviewer = { name: string; setName: (name: string) => void };
+const ReviewerContext = createContext<Reviewer>({ name: "", setName: () => {} });
+export const useReviewer = () => useContext(ReviewerContext);
+const REVIEWER_KEY = "arai.reviewer";
+export const SUGGESTED_REVIEWERS = ["Asha", "Ravi", "Meera", "Kabir"];
+
+function ReviewerProvider({ children }: { children: ReactNode }) {
+  const [name, setStored] = useState(() => {
+    try {
+      return localStorage.getItem(REVIEWER_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const setName = (next: string) => {
+    setStored(next);
+    try {
+      localStorage.setItem(REVIEWER_KEY, next);
+    } catch {
+      /* a private window keeps the name for this page only */
+    }
+  };
+  return <ReviewerContext.Provider value={{ name, setName }}>{children}</ReviewerContext.Provider>;
+}
+
+/** The run strip: what the queue is cut from, the budget and its edge, when it was scored, and how far its memos are. */
+function RunStrip({ run, dataset }: { run: Run; dataset: Dataset | null }) {
+  const { name, setName } = useReviewer();
+  const inProgress = run.status === "queued" || run.status === "running";
+  return (
+    <div className="runstrip" aria-label="Run strip">
+      <span>
+        Dataset <strong>{datasetName(run, dataset)}</strong>
+      </span>
+      <span>
+        Customers scored <strong>{number(run.eligible_count)}</strong> <span className="muted">(+{number(run.excluded_count)} unranked)</span>
+      </span>
+      <span>
+        Alerts in queue <strong>{number(run.selected_count)}</strong>
+        {run.review_budget !== null && <span className="muted"> of {number(run.review_budget)} budget</span>}
+      </span>
+      {run.threshold_score !== null && (
+        <span title="The reference percentile of the last customer inside the budget; the queue is everyone at or above it">
+          Queue threshold <strong>{run.threshold_score.toFixed(1)}</strong>
+        </span>
+      )}
+      <span>
+        Scored <strong>{ist(run.completed_at)}</strong>
+      </span>
+      {run.memos && !run.memos.complete && (
+        <span className="muted" role="status">
+          Memos drafting: {number(run.memos.ok + run.memos.unavailable)} of {number(run.memos.selected)}
+        </span>
+      )}
+      {inProgress && <span role="status">New run in progress: {run.stage}</span>}
+      <label>
+        Reviewer
+        <input list="reviewers" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" maxLength={100} aria-label="Reviewer name" />
+        <datalist id="reviewers">
+          {SUGGESTED_REVIEWERS.map((suggested) => (
+            <option key={suggested} value={suggested} />
+          ))}
+        </datalist>
+      </label>
+    </div>
+  );
+}
 
 /** Why the return-rate ranking is active, in the words the situation calls for. */
 export function fallbackReason(health: Health | null, experiment: ExperimentSummary | null): string | null {
@@ -34,7 +105,7 @@ export function fallbackReason(health: Health | null, experiment: ExperimentSumm
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  const { run, health, experiment } = useWorkspace();
+  const { run, dataset, health, experiment } = useWorkspace();
   const location = useLocation();
   useEffect(() => {
     document.getElementById("main")?.focus();
@@ -88,6 +159,7 @@ function Shell({ children }: { children: ReactNode }) {
               )}
             </div>
           </header>
+          {run && <RunStrip run={run} dataset={dataset} />}
           {reason && (
             <div className="banner" role="status">
               {reason}
@@ -110,12 +182,13 @@ function Shell({ children }: { children: ReactNode }) {
 export default function App() {
   const match = useMatch("/runs/:runId/*");
   const loaded = useLoad(async () => {
-    const [health, runs, experiments] = await Promise.all([
+    const [health, runs, experiments, datasets] = await Promise.all([
       api.health().catch(() => null),
       allPages((cursor) => api.runs(undefined, cursor), 5).catch(() => [] as Run[]),
       api.experiments().catch(() => ({ items: [] as ExperimentSummary[], next_cursor: null })),
+      allPages((cursor) => api.datasets(cursor), 5).catch(() => [] as Dataset[]),
     ]);
-    return { health, runs, experiment: experiments.items.at(-1) ?? null };
+    return { health, runs, datasets, experiment: experiments.items.at(-1) ?? null };
   }, []);
   const workspace = useMemo<Workspace>(() => {
     const runs = loaded.data?.runs ?? [];
@@ -126,6 +199,7 @@ export default function App() {
       health,
       runs,
       run,
+      dataset: run ? (loaded.data?.datasets ?? []).find((d) => d.dataset_id === run.dataset_id) ?? null : null,
       experiment: loaded.data?.experiment ?? null,
       fallback: run ? run.model_kind === "baseline_fallback" : !!health && !health.promoted_model_ready,
       reload: loaded.reload,
@@ -134,6 +208,7 @@ export default function App() {
 
   return (
     <WorkspaceContext.Provider value={workspace}>
+      <ReviewerProvider>
       <Shell>
         <Routes>
           <Route path="/" element={<Navigate to="/overview" replace />} />
@@ -147,6 +222,7 @@ export default function App() {
           <Route path="*" element={<div className="empty">Unknown page. <NavLink to="/overview">Go to the overview</NavLink></div>} />
         </Routes>
       </Shell>
+      </ReviewerProvider>
     </WorkspaceContext.Provider>
   );
 }

@@ -5,6 +5,8 @@ UI/UX spec without regard to what the system serves today. This document lists e
 screens show, says whether the current API contract (`web/src/api-types.ts`, generated from
 `final-spec/contracts/openapi.yaml`) provides it, and what is needed if it does not.
 
+**Status (15 Oct 2026).** Every row below is now served by API contract 1.12.0 or derived in `web/src/derive.ts`; the screens are built. `docs/frontend-data-plan.md` records what was decided and where each item landed. This document stays as the record of the gap analysis.
+
 **How to use it.** For each row marked *Missing* or *Derivable*, decide one of: (a) add it to the API
 response, (b) derive it in the frontend from fields that exist, (c) compute it in the ML pipeline and
 publish it with the run, or (d) serve it from a synthetic fixture until (a)–(c) land. The last column

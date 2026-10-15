@@ -16,6 +16,20 @@ export type Metric = S["Metric"];
 export type Candidate = S["Candidate"];
 export type Health = S["Health"];
 export type TruthExample = S["TruthExample"];
+export type ScoreDistribution = S["ScoreDistribution"];
+export type Curves = S["Curves"];
+export type CommunityMember = S["CommunityMember"];
+export type CommunityEdge = S["CommunityEdge"];
+export type Community = NonNullable<Case["community"]>;
+export type ScoreBreakdown = NonNullable<Case["score_breakdown"]>;
+export type Memo = Case["memo"];
+export type Workflow = Customer["workflow"];
+export type WorkflowState = Workflow["state"];
+export type PrimarySignal = Customer["primary_signals"][number];
+export type Tier = NonNullable<Customer["tier"]>;
+export type GateOutcome = NonNullable<Customer["gate_outcome"]>;
+export type ReviewKind = Review["kind"];
+export type Returner = StyleDetail["returners"][number];
 export type ApiErrorBody = S["Error"];
 export type Page<T> = { items: T[]; next_cursor: string | null };
 export type Disposition = Review["disposition"];
@@ -69,6 +83,14 @@ export type CustomerFilters = {
   evidence: string;
   disposition: "all" | "unreviewed" | Disposition;
   comparison: "all" | "model_only" | "baseline_only" | "both";
+  // contract 1.6.0 and later; every filter changes what is shown and never a score or a selection
+  wardrobing: "all" | Customer["wardrobing_status"];
+  community: "all" | "ring" | "household" | "none";
+  community_id: string;
+  tier: "all" | Tier;
+  gate: "all" | GateOutcome;
+  state: "all" | WorkflowState;
+  exclude_reviewer: string;
 };
 
 export const api = {
@@ -77,6 +99,8 @@ export const api = {
   registerDataset: (form: FormData) => request<Dataset>("/datasets", { method: "POST", body: form }),
   runs: (dataset_id?: string, cursor?: string | null) => request<Page<Run>>("/runs", undefined, { dataset_id, cursor, limit: 100 }),
   run: (runId: string) => request<Run>(`/runs/${encodeURIComponent(runId)}`),
+  cancelRun: (runId: string) => request<Run>(`/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
+  scoreDistribution: (runId: string) => request<ScoreDistribution>(`/runs/${encodeURIComponent(runId)}/score-distribution`),
   submitRun: (dataset_id: string, idempotency_key: string, model_id?: string) =>
     request<Run>("/runs", json(model_id ? { dataset_id, idempotency_key, model_id } : { dataset_id, idempotency_key })),
   customers: (runId: string, filters: Partial<CustomerFilters>, cursor?: string | null, limit = 50) =>
@@ -91,6 +115,8 @@ export const api = {
     request<StyleDetail>(`/runs/${encodeURIComponent(runId)}/styles/${encodeURIComponent(styleId)}`),
   experiments: () => request<Page<ExperimentSummary>>("/experiments", undefined, { limit: 100 }),
   experiment: (id: string) => request<Experiment>(`/experiments/${encodeURIComponent(id)}`),
+  curves: (id: string, runId: string, maxPoints = 200) =>
+    request<Curves>(`/experiments/${encodeURIComponent(id)}/curves`, undefined, { run_id: runId, max_points: maxPoints }),
   truth: (id: string, cursor?: string | null) =>
     request<{ synthetic_only: boolean; world_id: string | null } & Page<TruthExample>>(`/experiments/${encodeURIComponent(id)}/truth`, undefined, { cursor, limit: 100 }),
 };

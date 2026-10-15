@@ -287,6 +287,8 @@ New stage after `evidence`, table `run_memos`, `Case.memo`.
 
 ## 4. What the frontend derives itself
 
+**Status: the UI is built on branch `ccr-488644ae-esclgi`.** Every rule below lives in `web/src/derive.ts` with unit tests in `web/src/derive.test.ts`; the screens are the pages under `web/src/pages/`. The design's "second pass" panel and page numbers were dropped as planned; quarantine stays blocking; the reviewer name is a browser-side field, not a login.
+
 Rules the UI applies with fields that exist after WP0. Keep each rule in one place (`web/src/derive.ts`)
 and mirror the server rule where one exists.
 

@@ -53,10 +53,42 @@ describe("customer table", () => {
     expect(screen.queryByText("Return-rate rule")).toBeNull();
     expect(screen.getByText(/Return-rate percentile/)).toBeInTheDocument();
   });
+  it("shows the served tier, recommendation, chips, group and workflow state with their wording", () => {
+    show(false, [
+      customer({
+        gate_outcome: "ESCALATE",
+        primary_signals: [{ tag: "repeat_claims", label: "Two or more transaction claims", family: "claims", value: 3, denominator: 5, unit: "of return lines" }],
+        community: { id: "W1-L1", kind: "ring", size: 4 },
+        workflow: { state: "in_review", opened_by: "Asha", opened_at: "2026-10-15T10:00:00Z", decided_by: null, decided_at: null },
+      }),
+    ]);
+    expect(screen.getByText("High")).toBeInTheDocument();
+    expect(screen.getByText("Escalate")).toBeInTheDocument();
+    expect(screen.getByTitle(/Two or more transaction claims: 3 of 5/)).toBeInTheDocument();
+    expect(screen.getByText("ring")).toBeInTheDocument();
+    expect(screen.getByText("In review")).toBeInTheDocument();
+    expect(screen.getByText("opened by Asha")).toBeInTheDocument();
+    expect(screen.queryByText(/probability|fraud/i)).toBeNull();
+  });
+  it("shows a cleared heavy returner with its templated reason", () => {
+    render(
+      <MemoryRouter>
+        <CustomerTable
+          runId="run-1"
+          customers={[customer({ selected_for_review: false, tier: "LOW", gate_outcome: "WARNING", cleared_reason: "size_bracketing", risk_score: 60, rank: 400 })]}
+          fallback={false}
+          run={{ heavy_returner_cutoff: 0.3 } as unknown as import("./api").Run}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/cleared heavy returner · size bracketing · consistent with the basket/)).toBeInTheDocument();
+    expect(screen.getByText("Warning")).toBeInTheDocument();
+  });
   it("shows an unranked customer as insufficient history, never as low risk", () => {
     show(false, [customer({ eligibility_status: "insufficient_history", rank: null, risk_score: null, raw_score: null, baseline_rank: null,
-      selected_for_review: false })]);
+      selected_for_review: false, tier: null, gate_outcome: null })]);
     expect(screen.getByText("insufficient history")).toBeInTheDocument();
+    expect(screen.getByText("not ranked")).toBeInTheDocument();
     expect(screen.getByText(/fewer than 3 mature sale lines/)).toBeInTheDocument();
     expect(screen.queryByText(/low risk/i)).toBeNull();
   });

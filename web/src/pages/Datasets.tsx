@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ApiError, allPages, api, newKey, type Dataset, type Run } from "../api";
 import { useWorkspace } from "../App";
 import { Badge, Callout, ErrorBox, LoadState, PageTitle, Panel, Row, ist, label, number, shortId, useLoad } from "../components/ui";
+import { seconds, stepper } from "../derive";
 
 const TABLES = ["customer_master", "sku_master", "reason_code", "sales_order", "sales_order_line", "return_order", "return_order_line"];
 const REQUIRED = ["manifest.json", ...TABLES.map((name) => name + ".csv")];
@@ -18,6 +19,7 @@ export function workerState(secondsSinceSeen: number | null): string {
 
 function Upload({ onRegistered }: { onRegistered: () => void }) {
   const input = useRef<HTMLInputElement>(null);
+  const [chosen, setChosen] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,11 +56,21 @@ function Upload({ onRegistered }: { onRegistered: () => void }) {
     <form onSubmit={submit}>
       <label>
         Snapshot files: manifest.json and the seven operational CSV files
-        <input ref={input} type="file" multiple accept=".csv,.json" />
+        <input ref={input} type="file" multiple accept=".csv,.json" onChange={() => setChosen(Array.from(input.current?.files ?? []).map((f) => f.name))} />
       </label>
+      <ul className="checklist" aria-label="Required files">
+        {REQUIRED.map((name) => {
+          const present = chosen.includes(name) && !(error?.body?.details ?? []).some((d) => d.rule_id === "upload.missing_part" && d.table && name.startsWith(d.table));
+          return (
+            <li key={name} className={present ? "present" : "missing"}>
+              {name} {present ? "" : <span className="muted">{chosen.length ? "missing" : ""}</span>}
+            </li>
+          );
+        })}
+      </ul>
       <p className="small">
         The files are validated on the server (columns, keys, references, money, chronology, hashes against the manifest). A snapshot that fails is
-        rejected whole; nothing is repaired or stored.
+        rejected whole with its reasons grouped by rule; nothing is repaired, quarantined or stored.
       </p>
       <button className="primary" type="submit" disabled={busy}>
         {busy ? "Validating..." : "Validate and register"}
@@ -69,8 +81,22 @@ function Upload({ onRegistered }: { onRegistered: () => void }) {
   );
 }
 
-function RunRow({ run, onRetry }: { run: Run; onRetry: (run: Run) => void }) {
+function Stepper({ run }: { run: Run }) {
+  return (
+    <div className="stepper" aria-label="Stages">
+      {stepper(run).map((step) => (
+        <div key={step.name} className={"step " + step.status} title={step.detail}>
+          <strong>{step.title}</strong>
+          {step.status === "done" ? `done ${seconds(step.seconds)}` : step.status === "active" ? `running ${seconds(step.seconds)}` : step.status === "stopped" ? "stopped" : "waiting"}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RunRow({ run, onRetry, onCancel }: { run: Run; onRetry: (run: Run) => void; onCancel: (run: Run) => void }) {
   const tone = run.status === "succeeded" ? "green" : run.status === "failed" || run.status === "interrupted" ? "amber" : "gray";
+  const active = run.status === "running" || run.status === "queued";
   return (
     <tr>
       <td>
@@ -82,7 +108,7 @@ function RunRow({ run, onRetry }: { run: Run; onRetry: (run: Run) => void }) {
       <td>
         <Badge text={run.status} tone={tone} />
         <small>
-          {run.status === "running" || run.status === "queued" ? (
+          {active ? (
             <>
               stage: {label(run.stage)}
               <progress value={run.progress} max={1} aria-label="Scoring progress" />
@@ -93,6 +119,7 @@ function RunRow({ run, onRetry }: { run: Run; onRetry: (run: Run) => void }) {
             ""
           )}
         </small>
+        {(active || run.stage_log.length > 0) && <Stepper run={run} />}
       </td>
       <td>
         {run.model_kind === "baseline_fallback" ? "Return-rate baseline" : label(run.model_kind) + " model"}
@@ -101,8 +128,16 @@ function RunRow({ run, onRetry }: { run: Run; onRetry: (run: Run) => void }) {
       <td>
         {run.status === "succeeded" ? (
           <>
-            {number(run.eligible_count)} eligible / {number(run.selected_count)} selected
-            <small>{number(run.excluded_count)} with insufficient history</small>
+            {number(run.eligible_count)} scored / {number(run.selected_count)} alerts
+            <small>
+              {number(run.excluded_count)} unranked / {run.ring_count ?? 0} ring(s) in {run.community_count ?? 0} linked group(s) / {run.styles_with_verdict ?? 0} style(s) with a
+              verdict
+            </small>
+            {run.memos && (
+              <small>
+                memos: {run.memos.complete ? `${run.memos.ok} drafted, ${run.memos.unavailable} unavailable` : `${run.memos.ok + run.memos.unavailable} of ${run.memos.selected} decided`}
+              </small>
+            )}
           </>
         ) : run.error ? (
           <>
@@ -124,6 +159,11 @@ function RunRow({ run, onRetry }: { run: Run; onRetry: (run: Run) => void }) {
         {(run.status === "failed" || run.status === "interrupted") && (
           <button type="button" onClick={() => onRetry(run)}>
             Retry with the same dataset and bundle
+          </button>
+        )}
+        {active && (
+          <button type="button" onClick={() => onCancel(run)}>
+            {run.status === "queued" ? "Cancel" : "Stop at the next stage"}
           </button>
         )}
       </td>
@@ -161,10 +201,19 @@ export function Datasets() {
     }
   };
   const ready = !!health?.scoring_ready;
+  const cancel = async (run: Run) => {
+    setError(null);
+    try {
+      await api.cancelRun(run.run_id);
+      reload();
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure : new ApiError(0, null));
+    }
+  };
 
   return (
     <>
-      <PageTitle title="Datasets & runs">
+      <PageTitle title="Upload & score">
         Register an operational snapshot, then score it with the active bundle. Scoring uses frozen artifacts; nothing is trained here.
       </PageTitle>
       <div className="grid">
@@ -251,7 +300,7 @@ export function Datasets() {
               </thead>
               <tbody>
                 {runs.map((run) => (
-                  <RunRow key={run.run_id} run={run} onRetry={(failed) => submit(failed.dataset_id, failed.model_id)} />
+                  <RunRow key={run.run_id} run={run} onRetry={(failed) => submit(failed.dataset_id, failed.model_id)} onCancel={cancel} />
                 ))}
               </tbody>
             </table>
