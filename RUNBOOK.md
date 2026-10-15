@@ -12,6 +12,8 @@ If `uv` is "not recognized", open a new terminal (it was installed with winget a
 it on PATH yet), or call it by its full path:
 `C:\Users\<you>\AppData\Local\Microsoft\WinGet\Packages\astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe\uv.exe`.
 
+The demonstration narrative and click-by-click flow are in `docs\demo-script.md`.
+
 There are two ways to run the application. **Use one at a time**, never both together: they would share the
 `data\EXP-20261005-04\artifacts` folder.
 
