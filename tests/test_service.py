@@ -11,7 +11,7 @@ import yaml
 from fastapi.testclient import TestClient
 from openapi_schema_validator import OAS30Validator
 
-from arai import bundles
+from arai import bundles, modeling
 from arai.operational import TABLES, read_csv_world
 from arai.paths import SPEC_ROOT
 from arai.service import datasets, ingest, scoring, worker
@@ -43,8 +43,9 @@ def env(trained, database_url, tmp_path):
     root = tmp_path / "artifacts"
     shutil.copytree(trained["artifact_root"] / "experiments", root / "experiments")
     experiment = root / "experiments" / "EXP-TEST"
-    baseline_id = bundles.build_baseline_bundle(experiment, root)
-    model_id = bundles.build_model_bundle(experiment, "logreg_c1", root)
+    quantiles = modeling.feature_quantiles(trained["frame"])             # travel with the bundles, as `arai publish` writes them
+    baseline_id = bundles.build_baseline_bundle(experiment, root, feature_quantiles=quantiles)
+    model_id = bundles.build_model_bundle(experiment, "logreg_c1", root, feature_quantiles=quantiles)
     bundles.activate(model_id, baseline_id, "selected", "EXP-TEST", None, root)
     config = ServiceConfig(database_url=database_url, artifact_root=root, ui_origins=("http://localhost:5173",))
     return {"config": config, "root": root, "baseline_id": baseline_id, "model_id": model_id, "experiment": experiment}
@@ -1164,3 +1165,98 @@ def test_a_large_component_is_split_by_louvain_and_no_member_is_left_alone():
                                   columns=["customer_id", "neighbor_id", "coordinated_claim_matches"])
     parts, _ = scoring._communities("W9", star, star_neighbors, customers)
     assert (parts["size"] >= 2).all() and parts["size"].sum() == 14
+
+
+def test_tiers_gate_outcomes_and_primary_signals_follow_the_stated_rules_and_the_filters_agree(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    everyone = all_pages(client, url, {"review_only": "false"})
+    cutoff = run["heavy_returner_cutoff"]
+    cases = {}
+    for c in everyone:
+        if c["eligibility_status"] != "eligible":
+            assert c["tier"] is None and c["gate_outcome"] is None
+            continue
+        tier = "HIGH" if c["selected_for_review"] else "MEDIUM" if c["risk_score"] >= 90 else "LOW"        # decision D1
+        assert c["tier"] == tier
+        if c["selected_for_review"]:                                                                      # decision D2
+            ring = c["community"] is not None and c["community"]["kind"] == "ring"
+            assert c["gate_outcome"] == ("ESCALATE" if ring or c["wardrobing_status"] == "elevated" else "HOLD")
+        else:
+            rate = c["support_counts"]["mature_requested_units"] / c["support_counts"]["mature_purchased_units"]
+            assert c["gate_outcome"] == ("WARNING" if tier == "MEDIUM" or rate >= cutoff else "LOW")
+        # the chips are the customer's own tags, at most three, each with the value of the signal behind it
+        tags = [p["tag"] for p in c["primary_signals"]]
+        assert len(tags) <= 3 and set(tags) <= set(c["evidence_tags"]) and len(tags) == min(3, len(c["evidence_tags"]))
+        assert all(len(p["label"]) < 40 for p in c["primary_signals"])
+    assert {c["gate_outcome"] for c in everyone} >= {"HOLD", "WARNING", "LOW"} and {c["tier"] for c in everyone} >= {"HIGH", "MEDIUM", "LOW"}
+    # the SQL filters are the same rules: each filter returns exactly the customers the shown field says
+    for name, values in (("tier", ("HIGH", "MEDIUM", "LOW")), ("gate", ("ESCALATE", "HOLD", "WARNING", "LOW"))):
+        field = "tier" if name == "tier" else "gate_outcome"
+        for value in values:
+            shown = [c["customer_id"] for c in all_pages(client, url, {"review_only": "false", name: value})]
+            assert shown == [c["customer_id"] for c in everyone if c[field] == value], (name, value)
+    assert client.get(url, params={"tier": "CRITICAL"}).status_code == 422
+    # the breakdown: five families covering the 43 features, delta against the shown score, the counterfactual against the edge
+    selected = [c for c in everyone if c["selected_for_review"]]
+    cleared = [c for c in everyone if c["eligibility_status"] == "eligible" and not c["selected_for_review"]]
+    for c in selected[:15] + cleared[:10] + [x for x in everyone if x["eligibility_status"] != "eligible"][:3]:
+        case = client.get(f"{url}/{c['customer_id']}").json()
+        conforms("Case", case)
+        cases[c["customer_id"]] = case
+        breakdown = case["score_breakdown"]
+        if c["eligibility_status"] != "eligible":
+            assert breakdown is None
+            continue
+        assert breakdown["method"] == "family_at_typical_values" and breakdown["typical_from"] == "training"
+        assert [f["family"] for f in breakdown["families"]] == ["claims", "timing", "expected_vs_actual", "composition", "volume"]
+        assert sum(f["feature_count"] for f in breakdown["families"]) == 43
+        for f in breakdown["families"]:
+            assert f["delta_points"] == pytest.approx(f["score_without"] - c["risk_score"])
+            assert f["in_queue_without"] == (f["raw_score_without"] >= breakdown["threshold_raw_score"])
+            assert f["tier_without"] == ("HIGH" if f["in_queue_without"] else "MEDIUM" if f["score_without"] >= 90 else "LOW")
+        # the chips follow the families: the first chip's family lowers the score at least as much as the second's
+        deltas = {f["family"]: f["delta_points"] for f in breakdown["families"]}
+        chips = [p for p in case["customer"]["primary_signals"] if p["family"]]
+        assert all(deltas[a["family"]] <= deltas[b["family"]] for a, b in zip(chips, chips[1:]))
+        assert all(p["family"] is None for p in case["customer"]["primary_signals"][len(chips):])
+        # the rules read the case's own signals; report-only
+        codes = {s["code"]: s["value"] for s in case["signals"]}
+        fired = {r["rule_id"]: r["fired"] for r in case["rules_fired"]}
+        assert set(fired) == {"rate_p90", "claims_2", "refund_ratio_p90", "linked_claimant", "late_half"}
+        assert fired["claims_2"] == (codes["claim_lines"] >= 2)
+        assert fired["linked_claimant"] == (codes["supported_neighbor_count"] >= 1 and codes["claim_lines"] >= 1)
+        assert fired["rate_p90"] in (True, False) and fired["refund_ratio_p90"] in (True, False)
+    assert any(f["in_queue_without"] is False for cid in cases if cases[cid]["score_breakdown"]
+               for f in cases[cid]["score_breakdown"]["families"] if cases[cid]["customer"]["selected_for_review"]), \
+        "some selected customer leaves the queue with a family at typical values"
+    # the training median of the rate is the bundle's; a cleared customer with a raw rate above it gets a lower score without that family
+    quantiles = bundles.load_bundle(run["model_id"], env["root"]).manifest["feature_quantiles"]
+    assert all(quantiles[name] for name in ("raw_return_rate", "claim_lines"))
+
+
+def test_the_attribution_families_partition_the_model_features_and_match_the_offline_ablation():
+    from arai import ablation
+    from arai import features as F
+    from arai.service import attribution
+    assert attribution.CLAIM_FEATURES == ablation.CLAIM_FEATURES and attribution.TIMING_FEATURES == ablation.TIMING_FEATURES
+    names = [name for _, _, names in attribution.FAMILIES for name in names]
+    assert sorted(names) == sorted(F.feature_order()) and len(names) == 43
+
+
+def test_under_baseline_fallback_only_the_expected_vs_actual_family_moves_the_score(client, env, written):
+    run = scored_run(client, env, written, key="fallback", model_id=env["baseline_id"])
+    assert run["model_kind"] == "baseline_fallback"
+    url = f"{API}/runs/{run['run_id']}/customers"
+    median = bundles.load_bundle(env["baseline_id"], env["root"]).manifest["feature_quantiles"]["raw_return_rate"][1]
+    for c in all_pages(client, url)[:10]:
+        breakdown = client.get(f"{url}/{c['customer_id']}").json()["score_breakdown"]
+        assert breakdown["typical_from"] == "training"                           # the baseline bundle carries the rate's quantiles
+        for f in breakdown["families"]:
+            if f["family"] == "expected_vs_actual":
+                assert f["feature_count"] == 1 and f["raw_score_without"] == pytest.approx(median)   # the rate at its training median
+                assert f["in_queue_without"] is False and f["tier_without"] != "HIGH"
+            else:
+                assert f["feature_count"] == 0 and f["raw_score_without"] == pytest.approx(c["raw_score"])
+                assert f["delta_points"] == pytest.approx(0.0) and f["in_queue_without"] is True
+    assert 0 < median < 1

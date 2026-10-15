@@ -17,6 +17,7 @@ import pandas as pd
 from arai import bundles, contract, ranking
 from arai import features as F
 from arai.operational import cutoff_date
+from arai.service import attribution
 
 SMALL_POPULATION = 500           # below this many eligible customers peer aggregates move noticeably (feature review)
 DRIFT_MIN_ELIGIBLE = 200         # below this the shares are too noisy to compare with training
@@ -31,6 +32,7 @@ CLEARED_REASONS = (("size_bracketing", lambda c: c["bracketing_share"] >= 0.5),
                    ("as_basket_predicts", lambda c: c["residual_z"] < 1),
                    ("below_threshold", lambda c: pd.Series(True, index=c.index)))
 LOUVAIN_FROM = 13                # a connected component with this many members or more is split by Louvain (fixed seed); smaller ones stand
+ATTRIBUTION_COLUMNS = ["customer_id", "family", "raw_score_without", "score_without", "delta_points", "in_queue_without"]
 COMMUNITY_COLUMNS = ["community_id", "kind", "method", "size", "selected_count", "requested_units", "purchased_units",
                      "coordinated_claim_matches", "edges"]
 # reason code -> the group the timeline shows beside it; the four groups partition the sixteen codes of the codebook
@@ -49,6 +51,7 @@ class RunOutput:
     timeline: pd.DataFrame
     customer_styles: pd.DataFrame
     communities: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=COMMUNITY_COLUMNS))
+    attributions: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=ATTRIBUTION_COLUMNS))
 
 
 def _nullable_int(values: np.ndarray, mask: np.ndarray) -> pd.Series:
@@ -334,6 +337,15 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
     neighbors = _neighbors(result)
     communities, membership = _communities(world_id, result.graph.edges, neighbors, customers)
     customers["community_id"] = customers["customer_id"].map(membership)
+    # the score with each feature family at typical values (predict-side only), the chips' order and the rules that would have fired
+    at_budget = (customers["rank"] == k).fillna(False).astype(bool)                 # the last customer inside the budget
+    threshold_raw = float(customers.loc[at_budget, "raw_score"].iloc[0]) if k and at_budget.any() else None
+    attributions, typical_from = attribution.attribute(bundle, customers[eligible], raw, customers.loc[eligible, "risk_score"].to_numpy(dtype=float),
+                                                       threshold_raw)
+    customers["primary_signals"] = attribution.primary_signals(customers.set_index("customer_id")["evidence_tags"], attributions).to_numpy()
+    rules = attribution.rules_fired(customers, bundle)
+    for name in rules.columns:
+        customers[name] = rules[name].to_numpy()
 
     styles = result.styles.sort_values("style_id").reset_index(drop=True)
     skus = result.skus.merge(tables["sku_master"][["sku", "size", "colour", "unit_price"]], on="sku", how="left") \
@@ -345,7 +357,6 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         pd.DataFrame(columns=["customer_id", "style_id", "requested_units", "claim_lines", "linked_claim_lines"])
 
     selected, baseline_selected = customers["selected_for_review"], customers["baseline_selected"]
-    at_budget = (customers["rank"] == k).fillna(False).astype(bool)                 # the last customer inside the budget
     threshold = float(customers.loc[at_budget, "risk_score"].iloc[0]) if k and at_budget.any() else None
     requested = int(customers.loc[eligible, "mature_requested_units"].sum())
     purchased = int(customers.loc[eligible, "mature_purchased_units"].sum())
@@ -378,7 +389,10 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         "heavy_returner_cutoff": heavy_cutoff,
         # groups of linked accounts (connected components of the supported edges) and how many look coordinated
         "community_count": int(len(communities)), "ring_count": int((communities["kind"] == "ring").sum()),
+        # how the score breakdown was made: whose medians stood in for a family, and the raw score at the queue's edge
+        "attribution": {"typical_from": typical_from, "threshold_raw_score": threshold_raw},
         "score_label": bundle.manifest["score_label"], "feature_order": bundle.feature_order,
     }
     return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=neighbors,
-                     timeline=_timeline(tables, result), customer_styles=customer_styles, communities=communities)
+                     timeline=_timeline(tables, result), customer_styles=customer_styles, communities=communities,
+                     attributions=attributions)

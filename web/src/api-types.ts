@@ -375,6 +375,26 @@ export interface components {
                 kind: "ring" | "household";
                 size: number;
             } | null;
+            /**
+             * @description Anchored to the queue, not to fixed percentiles (the score is a training reference percentile, so fixed bands would put a quarter of customers in the top band). HIGH is selected for review; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer. Null for a customer without a score.
+             * @enum {string|null}
+             */
+            tier: "HIGH" | "MEDIUM" | "LOW" | null;
+            /**
+             * @description A presentation rule over stored results, not a model output, and the UI says so. ESCALATE is selected and either in a ring or with the wardrobing indicator elevated; HOLD is selected otherwise; WARNING is not selected and either MEDIUM or at or above the run's heavy_returner_cutoff; LOW is every other eligible customer. Null for a customer without a score.
+             * @enum {string|null}
+             */
+            gate_outcome: "ESCALATE" | "HOLD" | "WARNING" | "LOW" | null;
+            /** @description Up to three of the customer's evidence_tags, in the order the score breakdown ranks their families (the family whose typical values lower the score most comes first; a tag with no family comes last), each as a plain phrase under 40 characters with the value and denominator of the signal behind it. Nothing new is measured; the tags are unchanged. */
+            primary_signals: {
+                tag: string;
+                label: string;
+                /** @enum {string|null} */
+                family: "claims" | "timing" | "expected_vs_actual" | "composition" | "volume" | null;
+                value: number | null;
+                denominator: number | null;
+                unit: string;
+            }[];
         };
         ReviewRequest: {
             reviewer_name: string;
@@ -533,6 +553,42 @@ export interface components {
                 members: components["schemas"]["CommunityMember"][];
                 edges: components["schemas"]["CommunityEdge"][];
             } | null;
+            /** @description The score the frozen pipeline gives when one feature family sits at typical values and everything else stays as observed, for each of the five families that partition the 43 model features. The honest reading is "the score with this family at typical values"; boosted trees do not decompose additively, so these are never contributions that sum to the score. Each row is also the counterfactual for that family removed. Predict-side only; nothing is fitted and no selection changes. Null for a customer without a score and for runs scored before contract 1.7.0. */
+            score_breakdown: {
+                /** @enum {string} */
+                method: "family_at_typical_values";
+                /**
+                 * @description Whose medians stood in for a family's features. training is the bundle's frozen training median (the normal case); snapshot is the median of this run's eligible customers, used only when a bundle carries no feature quantiles.
+                 * @enum {string|null}
+                 */
+                typical_from: "training" | "snapshot" | null;
+                /** @description The pipeline's raw score of the customer at rank k, the queue's edge; in_queue_without compares against it. Null when the budget is zero. */
+                threshold_raw_score: number | null;
+                families: {
+                    /** @enum {string} */
+                    family: "claims" | "timing" | "expected_vs_actual" | "composition" | "volume";
+                    label: string;
+                    feature_count: number;
+                    raw_score_without: number;
+                    score_without: number;
+                    /** @description score_without minus the customer's risk_score; negative when the family raises the score. */
+                    delta_points: number;
+                    /** @description Whether raw_score_without is at or above threshold_raw_score, everyone else unchanged. */
+                    in_queue_without: boolean;
+                    /**
+                     * @description The tier rule applied to the re-scored customer, in_queue_without standing for selected.
+                     * @enum {string}
+                     */
+                    tier_without: "HIGH" | "MEDIUM" | "LOW";
+                }[];
+            } | null;
+            /** @description The analyst rulebook's five rules as they stand for this customer, shown as rules that would have fired. Report-only; they are not part of the score. fired is null when the rule's training threshold is not in the bundle, an input is missing, or the run predates contract 1.7.0. */
+            rules_fired: {
+                /** @enum {string} */
+                rule_id: "rate_p90" | "claims_2" | "refund_ratio_p90" | "linked_claimant" | "late_half";
+                label: string;
+                fired: boolean | null;
+            }[];
             reviews: components["schemas"]["Review"][];
         };
         StyleDetail: {
@@ -1176,6 +1232,10 @@ export interface operations {
                 community?: "all" | "ring" | "household" | "none";
                 /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
                 community_id?: string;
+                /** @description Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
+                tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
+                /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
+                gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
             };
             header?: never;
             path: {

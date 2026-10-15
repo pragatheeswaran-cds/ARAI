@@ -135,6 +135,8 @@ No pipeline change; `store.py`, `views.py`, `api.py`, `openapi.yaml`, one migrat
 
 `scoring.py`, a new `service/attribution.py`, new table `run_attributions`, new fields on `Customer`/`Case`.
 
+**Status: done on branch `ccr-488644ae-esclgi` (contract 1.7.0, AM-58).** `Customer.tier`, `Customer.gate_outcome` and `Customer.primary_signals[]`; `Case.score_breakdown` (five families, `typical_from`, `threshold_raw_score`, each row with `in_queue_without` and `tier_without`, so it serves the counterfactual panel too) and `Case.rules_fired[]`; queue filters `tier` and `gate` as the same rules in SQL. Table `run_attributions` (schema version 6). Computed for every eligible customer, so the cleared case has its breakdown too. The first/second pass panel is dropped: nothing exists to publish.
+
 - **Method: family re-scoring with the frozen pipeline, predict-side only.** For each selected customer and
   each feature family, set the family's features to the training median (the bundle manifest carries
   `feature_quantiles[name] = [p10, p50, p90]`), call `bundles.raw_scores`, map through

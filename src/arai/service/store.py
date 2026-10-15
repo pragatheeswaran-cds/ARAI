@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -17,10 +18,21 @@ from psycopg.types.json import Jsonb
 
 MIGRATIONS = Path(__file__).with_name("migrations")
 STAGES = ("queued", "validate", "features", "eligibility", "scoring", "evidence", "publish", "done")
-RESULT_TABLES = ("run_customers", "run_styles", "run_skus", "run_neighbors", "run_timeline", "run_customer_styles", "run_communities")
+RESULT_TABLES = ("run_customers", "run_styles", "run_skus", "run_neighbors", "run_timeline", "run_customer_styles", "run_communities",
+                 "run_attributions")
 
 
 COMMUNITY_FIELDS = "k.kind AS community_kind, k.size AS community_size"   # of the community a customer row belongs to
+# the tier and gate-outcome rules as SQL over a customer row c joined to its community k; views.tier and views.gate_outcome
+# are the same rules in Python, and the service test checks that the two agree on every customer of a run
+TIER_SQL = {"HIGH": "c.selected_for_review",
+            "MEDIUM": "c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND c.risk_score >= %(medium_from)s",
+            "LOW": "c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND c.risk_score < %(medium_from)s"}
+_ESCALATE = "(coalesce(k.kind, '') = 'ring' OR c.wardrobing_status = 'elevated')"
+_WARNING = "(c.risk_score >= %(medium_from)s OR (%(heavy_cutoff)s IS NOT NULL AND (c.measures->>'raw_return_rate')::double precision >= %(heavy_cutoff)s))"
+GATE_SQL = {"ESCALATE": f"c.selected_for_review AND {_ESCALATE}", "HOLD": f"c.selected_for_review AND NOT {_ESCALATE}",
+            "WARNING": f"c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND {_WARNING}",
+            "LOW": f"c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND NOT {_WARNING}"}
 
 
 class Conflict(Exception):
@@ -204,7 +216,7 @@ class Store:
 
     def _write_results(self, db, run_id: str, tables: dict) -> None:
         if set(tables) != set(RESULT_TABLES):
-            raise ValueError("a run publishes exactly its seven result tables")
+            raise ValueError("a run publishes exactly its eight result tables")
         for table in RESULT_TABLES:
             columns, rows = tables[table]
             self._copy(db, table, ("run_id", run_id), columns, rows)
@@ -315,12 +327,19 @@ class Store:
                               values).fetchall()
 
     # ------------------------------------------------------------------ run results (written once, read by the API)
-    def run_customers(self, run_id: str, world_id: str, filters: dict, after: int | None, limit: int) -> list:
+    def run_customers(self, run_id: str, world_id: str, filters: dict, after: int | None, limit: int, rules: dict | None = None) -> list:
         """One page of the queue in queue order, each row with the customer's latest disposition in this world.
 
-        Filters only choose what is shown. `search` is a case-insensitive substring of the identifier.
+        Filters only choose what is shown. `search` is a case-insensitive substring of the identifier. `rules` holds
+        the run's numbers the tier and gate filters read (medium_from, heavy_cutoff).
         """
         clauses, values = ["c.run_id = %s"], [world_id, run_id]
+        rules = rules or {}
+        for name, table in (("tier", TIER_SQL), ("gate", GATE_SQL)):
+            if filters.get(name, "all") != "all":
+                clause = table[filters[name]]
+                values += [rules[key] for key in re.findall(r"%\((\w+)\)s", clause)]       # one value per placeholder, in order
+                clauses.append(re.sub(r"%\(\w+\)s", "%s", clause))
         if filters["review_only"]:
             clauses.append("c.selected_for_review")
         if filters["eligibility"] != "all":
@@ -374,6 +393,12 @@ class Store:
         if not row:
             raise NotFound("customer in this run")
         return row
+
+    def run_attributions(self, run_id: str, customer_id: str) -> list:
+        """The customer's score with each feature family at typical values, in family order; empty for an unranked customer."""
+        with self.transaction() as db:
+            return db.execute("SELECT * FROM run_attributions WHERE run_id = %s AND customer_id = %s ORDER BY family",
+                              (run_id, customer_id)).fetchall()
 
     def run_community(self, run_id: str, community_id: str) -> dict | None:
         """One community of a run with its members' own results, members in queue order; None if the run has no such community."""

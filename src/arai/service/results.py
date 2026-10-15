@@ -33,6 +33,8 @@ TIMELINE = (("customer_id", "text"), ("source_ref", "text"), ("event_type", "tex
             ("item_received", "bool"), ("linked_claim", "bool"))
 CUSTOMER_STYLES = (("customer_id", "text"), ("style_id", "text"), ("requested_units", "int"), ("claim_lines", "int"),
                    ("linked_claim_lines", "int"))
+ATTRIBUTIONS = (("customer_id", "text"), ("family", "text"), ("raw_score_without", "float"), ("score_without", "float"),
+                ("delta_points", "float"), ("in_queue_without", "bool"))
 COMMUNITIES = (("community_id", "text"), ("kind", "text"), ("method", "text"), ("size", "int"), ("selected_count", "int"),
                ("requested_units", "int"), ("purchased_units", "int"), ("coordinated_claim_matches", "int"))
 CASTS = {"int": int, "float": float, "bool": bool, "text": str}
@@ -78,6 +80,7 @@ def tables(output: RunOutput) -> dict:
         "run_timeline": (["seq", *names(TIMELINE)], timeline_rows),
         "run_customer_styles": (names(CUSTOMER_STYLES), _rows(output.customer_styles, CUSTOMER_STYLES)),
         "run_communities": ([*names(COMMUNITIES), "edges"], community_rows),
+        "run_attributions": (names(ATTRIBUTIONS), _rows(output.attributions, ATTRIBUTIONS)),
     }
 
 

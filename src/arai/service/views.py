@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 
 from arai import features as F
-from arai.service import scoring
+from arai.service import attribution, scoring
 from arai.service.store import Store
 
 WARDROBING_LIMITATION = ("Occasion wear returned late in its return window, counted only when what the customer returned supports "
@@ -28,6 +28,15 @@ WARDROBING_SIGNALS = {
 OCCASION_EXPECTED = ("occasion_expected_units", "Occasion-wear returns this customer's other returns predict", "units")
 CASE_STYLES, STYLE_CUSTOMERS, SOURCE_REFS = 12, 50, 20
 SCORE_BINS, SCORE_TOP = 20, 100.0                 # the risk score is a percentile: twenty bins of five points
+TIER_MEDIUM_FROM = 90.0                            # decision D1: MEDIUM is a score at or above this and not selected; HIGH is the queue
+# evidence tag -> (label under 40 characters, the signal code that carries its value, the measure of its denominator, unit)
+PRIMARY_SIGNAL_LABELS = {
+    "repeat_claims": ("Two or more transaction claims", "claim_lines", "timed_return_lines", "of return lines"),
+    "linked_claims": ("Claims matched by a linked account", "coordinated_claim_share", "claim_lines", "share of claim lines"),
+    "late_returns": ("Two or more late returns", "late_return_lines", "item_return_lines", "of item-return lines"),
+    "returns_above_expected": ("Returns well above basket expectation", "residual_z", None, "score"),
+    "supported_links": ("Shares identifiers with other accounts", "supported_neighbor_count", None, "accounts"),
+}
 TIMELINE_FACTS = ("order_id", "order_line_no", "quantity", "size", "reason_code", "reason_group", "day_in_window", "window_days",
                   "line_status", "item_received", "linked_claim")
 
@@ -137,10 +146,50 @@ def community_detail(store: Store, run_id: str, row: dict) -> dict | None:
                       for e in community["edges"]]}
 
 
-def customer_item(row: dict, latest_disposition: str | None) -> dict:
+def tier(row: dict) -> str | None:
+    """Decision D1, anchored to the queue: HIGH is selected for review, MEDIUM scores at or above 90 and is not selected, LOW
+    is every other eligible customer. None for a customer without a score. store.TIER_SQL is the same rule."""
+    if row["eligibility_status"] != "eligible" or row["risk_score"] is None:
+        return None
+    if row["selected_for_review"]:
+        return "HIGH"
+    return "MEDIUM" if float(row["risk_score"]) >= TIER_MEDIUM_FROM else "LOW"
+
+
+def gate_outcome(row: dict, summary: dict) -> str | None:
+    """Decision D2, a presentation rule over stored results and never a model output: ESCALATE is selected and in a ring or with
+    the wardrobing indicator elevated; HOLD is selected otherwise; WARNING is not selected and either MEDIUM or at or above
+    the run's heavy-returner cutoff; LOW is the rest. None for a customer without a score. store.GATE_SQL is the same rule."""
+    band = tier(row)
+    if band is None:
+        return None
+    if row["selected_for_review"]:
+        return "ESCALATE" if row.get("community_kind") == "ring" or row["wardrobing_status"] == "elevated" else "HOLD"
+    cutoff, rate = summary.get("heavy_returner_cutoff"), (row.get("measures") or {}).get("raw_return_rate")
+    heavy = cutoff is not None and rate is not None and float(rate) >= float(cutoff)
+    return "WARNING" if band == "MEDIUM" or heavy else "LOW"
+
+
+def primary_signals(row: dict) -> list:
+    """Up to three evidence tags in the order scoring ranked them (the family that moves the score most first), each as a
+    plain phrase with the value and denominator of the signal behind it. The tags themselves are unchanged."""
+    measures = row.get("measures") or {}
+    ordered = [t for t in str(measures.get("primary_signals") or "").split("|") if t] or list(row["evidence_tags"])[:attribution.PRIMARY_SIGNALS]
+    out = []
+    for tag in ordered:
+        label, code, denominator, unit = PRIMARY_SIGNAL_LABELS[tag]
+        out.append({"tag": tag, "label": label, "family": attribution.TAG_FAMILY.get(tag), "value": _number(measures.get(code)),
+                    "denominator": _number(measures.get(denominator)) if denominator else None, "unit": unit})
+    return out
+
+
+def customer_item(row: dict, latest_disposition: str | None, summary: dict | None = None) -> dict:
+    """A customer as the queue shows it. `summary` is what scoring recorded for the run (the gate reads its heavy-returner cutoff)."""
+    summary = summary or {}
     return {
         "basket_expectation": basket_expectation(row), "cleared_reason": (row.get("measures") or {}).get("cleared_reason"),
-        "community": community_summary(row),
+        "community": community_summary(row), "tier": tier(row), "gate_outcome": gate_outcome(row, summary),
+        "primary_signals": primary_signals(row),
         "customer_id": row["customer_id"], "eligibility_status": row["eligibility_status"],
         "raw_score": _number(row["raw_score"]), "risk_score": _number(row["risk_score"]), "rank": _integer(row["rank"]),
         "selected_for_review": bool(row["selected_for_review"]), "baseline_rank": _integer(row["baseline_rank"]),
@@ -153,8 +202,10 @@ def customer_item(row: dict, latest_disposition: str | None) -> dict:
 
 def customer_queue(store: Store, run: dict, filters: dict, after: int | None, limit: int) -> tuple:
     """(items, next position). Order: rank, then unranked customers by identifier. Filters only choose what is shown."""
-    rows = store.run_customers(run["id"], run["world_id"], filters, after, limit + 1)
-    items = [customer_item(row, row["latest_disposition"]) for row in rows[:limit]]
+    summary = run["summary"] or {}
+    rules = {"medium_from": TIER_MEDIUM_FROM, "heavy_cutoff": summary.get("heavy_returner_cutoff")}
+    rows = store.run_customers(run["id"], run["world_id"], filters, after, limit + 1, rules)
+    items = [customer_item(row, row["latest_disposition"], summary) for row in rows[:limit]]
     return items, (rows[limit - 1]["queue_position"] if len(rows) > limit else None)
 
 
@@ -173,6 +224,38 @@ def _style_item(row: dict) -> dict:
         "linked_claim_share": _number(row["linked_claim_share"]), "linked_claimers": int(row["linked_claimers"]),
         "quality_signal": bool(row["quality_signal"]), "targeting_signal": bool(row["targeting_signal"]),
     }
+
+
+def score_breakdown(store: Store, run: dict, customer: dict) -> dict | None:
+    """The score with each feature family at typical values (decision D6): the honest reading is "the score with this family
+    at typical values", never parts that sum to the score. Each row is also the counterfactual for that family removed:
+    in_queue_without compares the re-scored raw score with the raw score at rank k, everyone else unchanged. None for a
+    customer without a score and for runs scored before contract 1.7.0."""
+    rows = store.run_attributions(run["id"], customer["customer_id"])
+    if not rows:
+        return None
+    summary = run["summary"] or {}
+    basis = summary.get("attribution") or {}
+    read = set(summary.get("feature_order") or [])                      # the baseline reads one feature, a model all 43
+    feature_count = {family: len(read.intersection(names)) for family, _, names in attribution.FAMILIES}
+    by_family = {row["family"]: row for row in rows}
+    families = []
+    for family, label, _ in attribution.FAMILIES:
+        row = by_family[family]
+        score = float(row["score_without"])
+        families.append({"family": family, "label": label, "feature_count": feature_count[family],
+                         "raw_score_without": float(row["raw_score_without"]), "score_without": score,
+                         "delta_points": float(row["delta_points"]), "in_queue_without": bool(row["in_queue_without"]),
+                         "tier_without": "HIGH" if row["in_queue_without"] else "MEDIUM" if score >= TIER_MEDIUM_FROM else "LOW"})
+    return {"method": "family_at_typical_values", "typical_from": basis.get("typical_from"),
+            "threshold_raw_score": _number(basis.get("threshold_raw_score")), "families": families}
+
+
+def rules_fired(customer: dict) -> list:
+    """The analyst rulebook's five rules as they stand for this customer: report-only, never part of the score. `fired` is null
+    when the rule's training threshold is not in the bundle, an input is missing, or the run predates contract 1.7.0."""
+    measures = customer.get("measures") or {}
+    return [{"rule_id": rule_id, "label": label, "fired": _boolean(measures.get("rule_" + rule_id))} for rule_id, label in attribution.RULES]
 
 
 def customer_case(store: Store, run_id: str, customer: dict) -> dict:
@@ -247,6 +330,7 @@ def customer_case(store: Store, run_id: str, customer: dict) -> dict:
         "wardrobing": {"status": row["wardrobing_status"], "indicator_score": _integer(row["indicator_score"]),
                        "signals": wardrobing_signals, "limitation": WARDROBING_LIMITATION},
         "community": community_detail(store, run_id, customer),
+        "rules_fired": rules_fired(customer),
     }
 
 

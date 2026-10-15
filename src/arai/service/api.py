@@ -179,7 +179,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if stop:
             stop.set()
 
-    app = FastAPI(title="ARAI development API", version="1.6.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title="ARAI development API", version="1.7.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(CORSMiddleware, allow_origins=list(config.ui_origins), allow_methods=["GET", "POST"],
                        allow_headers=["content-type"], allow_credentials=False)
@@ -355,14 +355,16 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                        comparison: Literal["all", "model_only", "baseline_only", "both"] = "all",
                        wardrobing: Literal["all", "elevated", "possible", "no_elevated_signal", "insufficient_evidence", "incomplete"] = "all",
                        community: Literal["all", "ring", "household", "none"] = "all",
-                       community_id: str | None = Query(None, max_length=200)):
+                       community_id: str | None = Query(None, max_length=200),
+                       tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
+                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all"):
         run = service.succeeded_run(run_id)
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
                            [{"rule_id": "request.evidence", "table": None, "row_key": evidence, "count": 1}])
         filters = {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
                    "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing,
-                   "community": community, "community_id": (community_id or "").strip() or None}
+                   "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate}
         context = {"list": "customers", "run_id": run_id, **filters}
         after = views.decode_cursor(cursor, context, "int")
         items, following = views.customer_queue(service.store, run, filters, after, limit)
@@ -385,9 +387,11 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         latest = reviews[-1]["disposition"] if reviews else None
         return {"run_id": run_id, "dataset_id": run["dataset_id"], "world_id": run["world_id"], "model_id": run["model_id"],
                 "model_kind": run["model_kind"], "cutoff": _iso(run["cutoff"]),
-                "customer": views.customer_item(customer, latest),
+                "customer": views.customer_item(customer, latest, run["summary"]),
                 "signals": case["signals"], "timeline": case["timeline"], "neighbors": case["neighbors"], "styles": case["styles"],
-                "wardrobing": case["wardrobing"], "community": case["community"], "reviews": [review_body(r) for r in reviews]}
+                "wardrobing": case["wardrobing"], "community": case["community"],
+                "score_breakdown": views.score_breakdown(service.store, run, customer), "rules_fired": case["rules_fired"],
+                "reviews": [review_body(r) for r in reviews]}
 
     @api.get("/runs/{run_id}/customers/{customer_id}/reviews")
     def list_reviews(run_id: str, customer_id: str, cursor: str | None = None, limit: int = limit_query):

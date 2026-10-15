@@ -19,7 +19,7 @@ from arai.service.store import Store
 
 log = logging.getLogger("arai.ingest")
 LEGACY_TABLES = ("customers", "styles", "skus", "neighbors", "timeline", "customer_styles")
-LEGACY_OPTIONAL = ("communities",)                 # result files a later version writes beside the six; absent from earlier runs
+LEGACY_OPTIONAL = ("communities", "attributions")                 # result files a later version writes beside the six; absent from earlier runs
 LEGACY_MARKER = "COMPLETE"
 
 

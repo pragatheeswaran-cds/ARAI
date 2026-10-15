@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.6.0
+  version: 1.7.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -500,6 +500,33 @@ paths:
         description: Show only the members of this community of the run, in queue order (with review_only=false, every
           member).
         schema: *id001
+      - name: tier
+        in: query
+        required: false
+        description: Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW
+          is every other eligible customer). A filter chooses what is shown; it changes no score or selection.
+        schema:
+          type: string
+          default: all
+          enum:
+          - all
+          - HIGH
+          - MEDIUM
+          - LOW
+      - name: gate
+        in: query
+        required: false
+        description: Show only customers with this gate outcome (a presentation rule over stored results, see
+          Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection.
+        schema:
+          type: string
+          default: all
+          enum:
+          - all
+          - ESCALATE
+          - HOLD
+          - WARNING
+          - LOW
   /runs/{run_id}/customers/{customer_id}:
     get:
       operationId: getCustomerCase
@@ -1335,6 +1362,9 @@ components:
       - basket_expectation
       - cleared_reason
       - community
+      - tier
+      - gate_outcome
+      - primary_signals
       properties:
         customer_id: *id001
         eligibility_status:
@@ -1459,6 +1489,67 @@ components:
             size:
               type: integer
               minimum: 2
+        tier:
+          type: string
+          nullable: true
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - null
+          description: Anchored to the queue, not to fixed percentiles (the score is a training reference percentile, so
+            fixed bands would put a quarter of customers in the top band). HIGH is selected for review; MEDIUM scores
+            90 or above and is not selected; LOW is every other eligible customer. Null for a customer without a score.
+        gate_outcome:
+          type: string
+          nullable: true
+          enum:
+          - ESCALATE
+          - HOLD
+          - WARNING
+          - LOW
+          - null
+          description: A presentation rule over stored results, not a model output, and the UI says so. ESCALATE is
+            selected and either in a ring or with the wardrobing indicator elevated; HOLD is selected otherwise;
+            WARNING is not selected and either MEDIUM or at or above the run's heavy_returner_cutoff; LOW is every
+            other eligible customer. Null for a customer without a score.
+        primary_signals:
+          type: array
+          maxItems: 3
+          description: Up to three of the customer's evidence_tags, in the order the score breakdown ranks their families
+            (the family whose typical values lower the score most comes first; a tag with no family comes last), each
+            as a plain phrase under 40 characters with the value and denominator of the signal behind it. Nothing new is
+            measured; the tags are unchanged.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - tag
+            - label
+            - family
+            - value
+            - denominator
+            - unit
+            properties:
+              tag: *id001
+              label: *id001
+              family:
+                type: string
+                nullable: true
+                enum:
+                - claims
+                - timing
+                - expected_vs_actual
+                - composition
+                - volume
+                - null
+              value:
+                type: number
+                nullable: true
+              denominator:
+                type: number
+                nullable: true
+              unit: *id001
     ReviewRequest:
       type: object
       additionalProperties: false
@@ -1837,6 +1928,8 @@ components:
       - styles
       - wardrobing
       - community
+      - score_breakdown
+      - rules_fired
       - reviews
       properties:
         run_id: *id001
@@ -1915,6 +2008,114 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/CommunityEdge'
+        score_breakdown:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - method
+          - typical_from
+          - threshold_raw_score
+          - families
+          description: The score the frozen pipeline gives when one feature family sits at typical values and everything
+            else stays as observed, for each of the five families that partition the 43 model features. The honest
+            reading is "the score with this family at typical values"; boosted trees do not decompose additively, so
+            these are never contributions that sum to the score. Each row is also the counterfactual for that family
+            removed. Predict-side only; nothing is fitted and no selection changes. Null for a customer without a score
+            and for runs scored before contract 1.7.0.
+          properties:
+            method:
+              type: string
+              enum:
+              - family_at_typical_values
+            typical_from:
+              type: string
+              nullable: true
+              enum:
+              - training
+              - snapshot
+              - null
+              description: Whose medians stood in for a family's features. training is the bundle's frozen training
+                median (the normal case); snapshot is the median of this run's eligible customers, used only when a
+                bundle carries no feature quantiles.
+            threshold_raw_score:
+              type: number
+              nullable: true
+              description: The pipeline's raw score of the customer at rank k, the queue's edge; in_queue_without compares
+                against it. Null when the budget is zero.
+            families:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - family
+                - label
+                - feature_count
+                - raw_score_without
+                - score_without
+                - delta_points
+                - in_queue_without
+                - tier_without
+                properties:
+                  family:
+                    type: string
+                    enum:
+                    - claims
+                    - timing
+                    - expected_vs_actual
+                    - composition
+                    - volume
+                  label: *id001
+                  feature_count:
+                    type: integer
+                    minimum: 0
+                    description: How many of the family's features this run's bundle reads; 0 for a family the baseline
+                      fallback does not read (it scores on raw_return_rate alone).
+                  raw_score_without:
+                    type: number
+                  score_without:
+                    type: number
+                    minimum: 0
+                    maximum: 100
+                  delta_points:
+                    type: number
+                    description: score_without minus the customer's risk_score; negative when the family raises the score.
+                  in_queue_without:
+                    type: boolean
+                    description: Whether raw_score_without is at or above threshold_raw_score, everyone else unchanged.
+                  tier_without:
+                    type: string
+                    enum:
+                    - HIGH
+                    - MEDIUM
+                    - LOW
+                    description: The tier rule applied to the re-scored customer, in_queue_without standing for selected.
+        rules_fired:
+          type: array
+          description: The analyst rulebook's five rules as they stand for this customer, shown as rules that would have
+            fired. Report-only; they are not part of the score. fired is null when the rule's training threshold is not
+            in the bundle, an input is missing, or the run predates contract 1.7.0.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - rule_id
+            - label
+            - fired
+            properties:
+              rule_id:
+                type: string
+                enum:
+                - rate_p90
+                - claims_2
+                - refund_ratio_p90
+                - linked_claimant
+                - late_half
+              label: *id001
+              fired:
+                type: boolean
+                nullable: true
         reviews:
           type: array
           items:
