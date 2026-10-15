@@ -103,6 +103,8 @@ No pipeline change; `store.py`, `views.py`, `api.py`, `openapi.yaml`, one migrat
 
 `scoring.py` + new table `run_communities` + `Customer.community` + `Case.community`.
 
+**Status: done on branch `ccr-488644ae-esclgi` (contract 1.6.0, AM-57).** `Customer.community {id, kind, size}` (null without a supported edge), `Case.community` with `method`, the member sums, `members[]` carrying each member's own result and `edges[] {a, b, types, coordinated_claim_matches}`; `Run.community_count` and `Run.ring_count`; queue filters `community=ring|household|none` and `community_id`. Table `run_communities` and `run_customers.community_id` (schema version 5). The kind rule is checked offline by `scripts/community_check.py`; the confusion against `relationship_truth` is in `records/2026-10-15-community-kind-check.md`.
+
 - Input: `result.graph.edges` (`customer_a`, `customer_b`, `shared_types`, `shared_value_count`,
   `max_value_fanout`, `weight`). An edge already needs two shared identifier types and values shared by more
   than 25 accounts are already dropped, so components are small and clean.

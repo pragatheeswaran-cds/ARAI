@@ -17,7 +17,10 @@ from psycopg.types.json import Jsonb
 
 MIGRATIONS = Path(__file__).with_name("migrations")
 STAGES = ("queued", "validate", "features", "eligibility", "scoring", "evidence", "publish", "done")
-RESULT_TABLES = ("run_customers", "run_styles", "run_skus", "run_neighbors", "run_timeline", "run_customer_styles")
+RESULT_TABLES = ("run_customers", "run_styles", "run_skus", "run_neighbors", "run_timeline", "run_customer_styles", "run_communities")
+
+
+COMMUNITY_FIELDS = "k.kind AS community_kind, k.size AS community_size"   # of the community a customer row belongs to
 
 
 class Conflict(Exception):
@@ -201,7 +204,7 @@ class Store:
 
     def _write_results(self, db, run_id: str, tables: dict) -> None:
         if set(tables) != set(RESULT_TABLES):
-            raise ValueError("a run publishes exactly its six result tables")
+            raise ValueError("a run publishes exactly its seven result tables")
         for table in RESULT_TABLES:
             columns, rows = tables[table]
             self._copy(db, table, ("run_id", run_id), columns, rows)
@@ -333,6 +336,14 @@ class Store:
         if filters.get("wardrobing", "all") != "all":
             clauses.append("c.wardrobing_status = %s")
             values.append(filters["wardrobing"])
+        if filters.get("community", "all") == "none":
+            clauses.append("c.community_id IS NULL")
+        elif filters.get("community", "all") != "all":
+            clauses.append("k.kind = %s")
+            values.append(filters["community"])
+        if filters.get("community_id"):
+            clauses.append("c.community_id = %s")
+            values.append(filters["community_id"])
         comparison = {"model_only": "c.selected_for_review AND NOT c.baseline_selected",
                       "baseline_only": "c.baseline_selected AND NOT c.selected_for_review",
                       "both": "c.selected_for_review AND c.baseline_selected"}.get(filters["comparison"])
@@ -347,17 +358,33 @@ class Store:
             clauses.append("c.queue_position > %s")
             values.append(after)
         with self.transaction() as db:
-            return db.execute(f"""SELECT c.*, latest.disposition AS latest_disposition FROM run_customers c
+            return db.execute(f"""SELECT c.*, latest.disposition AS latest_disposition, {COMMUNITY_FIELDS} FROM run_customers c
+                                  LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
                                   LEFT JOIN LATERAL (SELECT r.disposition FROM reviews r
                                                      WHERE r.world_id = %s AND r.customer_id = c.customer_id
                                                      ORDER BY r.created_at DESC, r.id DESC LIMIT 1) latest ON true
                                   WHERE {' AND '.join(clauses)} ORDER BY c.queue_position LIMIT %s""", (*values, limit)).fetchall()
 
     def run_customer(self, run_id: str, customer_id: str) -> dict:
+        """The customer's result row, with the kind and size of the community it belongs to (null columns without one)."""
         with self.transaction() as db:
-            row = db.execute("SELECT * FROM run_customers WHERE run_id = %s AND customer_id = %s", (run_id, customer_id)).fetchone()
+            row = db.execute(f"""SELECT c.*, {COMMUNITY_FIELDS} FROM run_customers c
+                                 LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
+                                 WHERE c.run_id = %s AND c.customer_id = %s""", (run_id, customer_id)).fetchone()
         if not row:
             raise NotFound("customer in this run")
+        return row
+
+    def run_community(self, run_id: str, community_id: str) -> dict | None:
+        """One community of a run with its members' own results, members in queue order; None if the run has no such community."""
+        with self.transaction() as db:
+            row = db.execute("SELECT * FROM run_communities WHERE run_id = %s AND community_id = %s", (run_id, community_id)).fetchone()
+            if row is None:
+                return None
+            row["members"] = db.execute("""SELECT customer_id, risk_score, rank, selected_for_review, eligibility_status,
+                                                  mature_requested_units, mature_purchased_units, evidence_tags
+                                           FROM run_customers WHERE run_id = %s AND community_id = %s ORDER BY queue_position""",
+                                        (run_id, community_id)).fetchall()
         return row
 
     def run_timeline(self, run_id: str, customer_id: str) -> list:

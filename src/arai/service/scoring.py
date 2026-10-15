@@ -6,8 +6,11 @@ transaction that marks the run succeeded (decision AM-39).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import json
+from dataclasses import dataclass, field
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -27,6 +30,9 @@ CLEARED_REASONS = (("size_bracketing", lambda c: c["bracketing_share"] >= 0.5),
                    ("high_return_styles", lambda c: c["expected_return_rate"] >= 0.35),
                    ("as_basket_predicts", lambda c: c["residual_z"] < 1),
                    ("below_threshold", lambda c: pd.Series(True, index=c.index)))
+LOUVAIN_FROM = 13                # a connected component with this many members or more is split by Louvain (fixed seed); smaller ones stand
+COMMUNITY_COLUMNS = ["community_id", "kind", "method", "size", "selected_count", "requested_units", "purchased_units",
+                     "coordinated_claim_matches", "edges"]
 # reason code -> the group the timeline shows beside it; the four groups partition the sixteen codes of the codebook
 REASON_GROUPS = {code: group for group, name in (("transaction_claim", "transaction_claim"), ("item_complaint", "item_complaint_customer"),
                                                   ("fit", "fit"), ("discretionary", "discretionary"))
@@ -42,6 +48,7 @@ class RunOutput:
     neighbors: pd.DataFrame
     timeline: pd.DataFrame
     customer_styles: pd.DataFrame
+    communities: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=COMMUNITY_COLUMNS))
 
 
 def _nullable_int(values: np.ndarray, mask: np.ndarray) -> pd.Series:
@@ -123,6 +130,72 @@ def _neighbors(result: F.FeatureResult) -> pd.DataFrame:
             rows.append((own, other, "|".join(edge.shared_types), int(edge.shared_value_count), True, int(edge.max_value_fanout),
                          matches(own, other)))
     return pd.DataFrame(rows, columns=columns).sort_values(["customer_id", "neighbor_id"]).reset_index(drop=True)
+
+
+def _louvain(component: nx.Graph) -> list:
+    """Louvain parts of one large component, each sorted, in order of their smallest member; no part is left alone.
+
+    A member Louvain leaves by itself joins the part of its heaviest neighbour (smallest id on a tie), so every
+    community has at least two members and the parts of one component partition it.
+    """
+    parts = [set(part) for part in nx.community.louvain_communities(component, weight="weight", seed=0)]
+    while (alone := next((part for part in parts if len(part) == 1), None)) is not None:
+        parts.remove(alone)
+        member = next(iter(alone))
+        neighbour = max(sorted(component.neighbors(member)), key=lambda n: component[member][n]["weight"])
+        next(other for other in parts if neighbour in other).add(member)
+    return [sorted(part) for part in sorted(parts, key=min)]
+
+
+def _communities(world_id: str, graph_edges: pd.DataFrame, neighbors: pd.DataFrame, customers: pd.DataFrame) -> tuple:
+    """Groups of linked accounts and the observable kind of each; (communities frame, customer_id -> community_id).
+
+    A community is a connected component of the supported edges (two or more shared identifier types, values shared
+    by more than 25 accounts already dropped), so components are small and the grouping is deterministic. A component
+    of LOUVAIN_FROM members or more is split by Louvain on the edge weight with a fixed seed; `method` records which
+    produced each community. The identifier is the world prefix and a hash of the sorted member ids, so the same
+    accounts linked the same way get the same id in every run of the world.
+
+    Kind (decision D3), from observed evidence only, truth is never read: `ring` when any edge in the community has a
+    coordinated claim match, or two or more members are selected for review, or a member has a coordinated claim
+    share above zero; `household` otherwise. A customer with no supported edge belongs to no community.
+    """
+    membership = pd.Series(None, index=pd.Index(customers["customer_id"]), dtype=object)
+    if not len(graph_edges):
+        return pd.DataFrame(columns=COMMUNITY_COLUMNS), membership
+    matches = {}                                                     # undirected edge -> the larger of its two directions
+    for row in neighbors.itertuples(index=False):
+        key = (min(row.customer_id, row.neighbor_id), max(row.customer_id, row.neighbor_id))
+        matches[key] = max(matches.get(key, 0), int(row.coordinated_claim_matches))
+    graph = nx.Graph()
+    for row in graph_edges.sort_values(["customer_a", "customer_b"]).itertuples(index=False):
+        graph.add_edge(row.customer_a, row.customer_b, types=list(row.shared_types), weight=float(row.weight))
+    groups = []
+    for component in sorted(nx.connected_components(graph), key=min):
+        if len(component) >= LOUVAIN_FROM:
+            groups += [(members, "louvain") for members in _louvain(graph.subgraph(sorted(component)))]
+        else:
+            groups.append((sorted(component), "components"))
+    by_id = customers.set_index("customer_id")
+    rows = []
+    for members, method in groups:
+        digest = hashlib.sha256("|".join(members).encode("utf-8")).hexdigest()[:12].upper()
+        community_id = f"{world_id}-L{digest}"
+        membership[members] = community_id
+        inside = set(members)
+        edges = [{"a": a, "b": b, "types": data["types"], "coordinated_claim_matches": matches.get((a, b), 0)}
+                 for a, b, data in sorted(((min(u, v), max(u, v), d) for u, v, d in graph.edges(members, data=True)
+                                           if u in inside and v in inside), key=lambda e: e[:2])]
+        own = by_id.loc[members]
+        selected = int(own["selected_for_review"].sum())
+        matched = sum(edge["coordinated_claim_matches"] for edge in edges)
+        ring = matched >= 1 or selected >= 2 or bool((own["coordinated_claim_share"].fillna(0) > 0).any())
+        rows.append({"community_id": community_id, "kind": "ring" if ring else "household", "method": method,
+                     "size": len(members), "selected_count": selected,
+                     "requested_units": int(own["mature_requested_units"].sum()),
+                     "purchased_units": int(own["mature_purchased_units"].sum()),
+                     "coordinated_claim_matches": int(matched), "edges": json.dumps(edges)})     # one JSON text per community
+    return pd.DataFrame(rows, columns=COMMUNITY_COLUMNS), membership
 
 
 def _timeline(tables: dict, result: F.FeatureResult) -> pd.DataFrame:
@@ -258,6 +331,9 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
     for name in basket.columns:
         customers[name] = basket[name].to_numpy()
     customers["cleared_reason"] = _cleared_reason(customers)
+    neighbors = _neighbors(result)
+    communities, membership = _communities(world_id, result.graph.edges, neighbors, customers)
+    customers["community_id"] = customers["customer_id"].map(membership)
 
     styles = result.styles.sort_values("style_id").reset_index(drop=True)
     skus = result.skus.merge(tables["sku_master"][["sku", "size", "colour", "unit_price"]], on="sku", how="left") \
@@ -300,7 +376,9 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         "eligible_requested_units": requested, "eligible_purchased_units": purchased,
         "mean_return_rate": requested / purchased if purchased else None,
         "heavy_returner_cutoff": heavy_cutoff,
+        # groups of linked accounts (connected components of the supported edges) and how many look coordinated
+        "community_count": int(len(communities)), "ring_count": int((communities["kind"] == "ring").sum()),
         "score_label": bundle.manifest["score_label"], "feature_order": bundle.feature_order,
     }
-    return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=_neighbors(result),
-                     timeline=_timeline(tables, result), customer_styles=customer_styles)
+    return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=neighbors,
+                     timeline=_timeline(tables, result), customer_styles=customer_styles, communities=communities)

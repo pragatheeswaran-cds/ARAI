@@ -315,6 +315,10 @@ export interface components {
             graph_edges: number | null;
             /** @description The raw return rate at the 90th percentile of this run's eligible customers (linear interpolation), the gate's own definition of a heavy returner. A customer at or above it who is not selected for review is a cleared heavy returner. Null until the run succeeded. */
             heavy_returner_cutoff: number | null;
+            /** @description Groups of linked accounts in the snapshot, the connected components of the supported edges (a component of thirteen or more members is split by Louvain with a fixed seed). Null until the run succeeded. */
+            community_count: number | null;
+            /** @description Of community_count, the groups the stated rule calls a ring (a coordinated claim match on an edge, two or more members selected for review, or a member with a coordinated claim share above zero). Evidence about the group, not a verdict on any member. Null until the run succeeded. */
+            ring_count: number | null;
         };
         Support: {
             mature_sale_lines: number;
@@ -361,6 +365,16 @@ export interface components {
              * @enum {string|null}
              */
             cleared_reason: "size_bracketing" | "high_return_styles" | "as_basket_predicts" | "below_threshold" | null;
+            /** @description The group of linked accounts this customer belongs to (a connected component of the supported edges), with its observable kind. Null for a customer with no supported edge, and for runs scored before contract 1.6.0. Membership of a group is evidence about the relationship, not guilt. */
+            community: {
+                id: string;
+                /**
+                 * @description ring when any edge of the group has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero; household otherwise. From observed evidence only.
+                 * @enum {string}
+                 */
+                kind: "ring" | "household";
+                size: number;
+            } | null;
         };
         ReviewRequest: {
             reviewer_name: string;
@@ -465,6 +479,25 @@ export interface components {
             /** @enum {string} */
             support_status: "supported" | "insufficient_support" | "no_return_evidence";
         };
+        /** @description A member of the community with its own result in this run. The score is the member's, and says nothing about the customer whose case is shown. */
+        CommunityMember: {
+            customer_id: string;
+            risk_score: number | null;
+            rank: number | null;
+            selected_for_review: boolean;
+            /** @enum {string} */
+            eligibility_status: "eligible" | "insufficient_history";
+            mature_requested_units: number;
+            mature_purchased_units: number;
+            evidence_tags: string[];
+        };
+        /** @description A supported edge between two members (a sorts before b), the identifier types shared, and how many claim lines of either account the other matched on the same style within 7 days (the larger of the two directions). */
+        CommunityEdge: {
+            a: string;
+            b: string;
+            types: ("address" | "device" | "payment")[];
+            coordinated_claim_matches: number;
+        };
         Case: {
             run_id: string;
             dataset_id: string;
@@ -479,6 +512,27 @@ export interface components {
             neighbors: components["schemas"]["Neighbor"][];
             styles: components["schemas"]["Style"][];
             wardrobing: components["schemas"]["Wardrobing"];
+            /** @description The customer's group of linked accounts with every member's own result and the edges between members, so the group can be drawn and its captions derived (requested_units over purchased_units is the group's return rate on mature lines; a member's rate is read against the run's mean_return_rate). Null for a customer with no supported edge, and for runs scored before contract 1.6.0. */
+            community: {
+                id: string;
+                /**
+                 * @description ring when any edge of the group has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero; household otherwise. From observed evidence only.
+                 * @enum {string}
+                 */
+                kind: "ring" | "household";
+                /**
+                 * @description components when the group is a whole connected component of the supported edges; louvain when it is one part of a component of thirteen or more members, split on the edge weight with a fixed seed.
+                 * @enum {string}
+                 */
+                method: "components" | "louvain";
+                size: number;
+                selected_count: number;
+                requested_units: number;
+                purchased_units: number;
+                coordinated_claim_matches: number;
+                members: components["schemas"]["CommunityMember"][];
+                edges: components["schemas"]["CommunityEdge"][];
+            } | null;
             reviews: components["schemas"]["Review"][];
         };
         StyleDetail: {
@@ -1118,6 +1172,10 @@ export interface operations {
                 comparison?: "all" | "model_only" | "baseline_only" | "both";
                 /** @description Show only customers whose independent wardrobing indicator is in this band. A filter chooses what is shown; it changes no score or selection. */
                 wardrobing?: "all" | "elevated" | "possible" | "no_elevated_signal" | "insufficient_evidence" | "incomplete";
+                /** @description Show only customers whose group of linked accounts is of this kind (ring, household), or only customers with no supported edge (none). A filter chooses what is shown; it changes no score or selection. */
+                community?: "all" | "ring" | "household" | "none";
+                /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
+                community_id?: string;
             };
             header?: never;
             path: {

@@ -19,6 +19,7 @@ from arai.service.store import Store
 
 log = logging.getLogger("arai.ingest")
 LEGACY_TABLES = ("customers", "styles", "skus", "neighbors", "timeline", "customer_styles")
+LEGACY_OPTIONAL = ("communities",)                 # result files a later version writes beside the six; absent from earlier runs
 LEGACY_MARKER = "COMPLETE"
 
 
@@ -70,7 +71,8 @@ def import_legacy_runs(config: ServiceConfig, store: Store) -> dict:
             continue
         try:
             summary = json.loads((directory / "run.json").read_text(encoding="utf-8"))
-            output = RunOutput(summary=summary, **{name: pd.read_parquet(directory / f"{name}.parquet") for name in LEGACY_TABLES})
+            present = [*LEGACY_TABLES, *(name for name in LEGACY_OPTIONAL if (directory / f"{name}.parquet").is_file())]
+            output = RunOutput(summary=summary, **{name: pd.read_parquet(directory / f"{name}.parquet") for name in present})
             if store.import_results(run_id, summary, results.tables(output)):
                 imported.append(run_id)
         except Exception:                                        # noqa: BLE001  one unreadable run must not stop the others

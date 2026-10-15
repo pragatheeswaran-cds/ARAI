@@ -16,7 +16,7 @@ const summary = (over: Partial<ExperimentSummary>): ExperimentSummary => ({
 const customer = (over: Partial<Customer>): Customer => ({
   customer_id: "W1-C1", eligibility_status: "eligible", raw_score: 1.2, risk_score: 97.3, rank: 3, selected_for_review: true, baseline_rank: 40,
   baseline_selected: false, support_counts: { mature_sale_lines: 9, mature_purchased_units: 10, mature_requested_units: 4, all_requested_units: 5 },
-  evidence_tags: ["repeat_claims"], wardrobing_status: "no_elevated_signal", latest_disposition: null, basket_expectation: null, cleared_reason: null, ...over,
+  evidence_tags: ["repeat_claims"], wardrobing_status: "no_elevated_signal", latest_disposition: null, basket_expectation: null, cleared_reason: null, community: null, ...over,
 });
 
 describe("fallback banner", () => {

@@ -103,9 +103,44 @@ def basket_expectation(row: dict) -> dict | None:
             "z": _number(measures.get("residual_z"))}
 
 
+def community_summary(row: dict) -> dict | None:
+    """The community a customer row belongs to, as the queue shows it; None for a customer with no supported edge.
+
+    Also None when the run has no row for the community (result files of an earlier version imported without one).
+    """
+    if row.get("community_id") is None or row.get("community_size") is None:
+        return None
+    return {"id": row["community_id"], "kind": row["community_kind"], "size": int(row["community_size"])}
+
+
+def community_detail(store: Store, run_id: str, row: dict) -> dict | None:
+    """The customer's community with its members' own results and the edges between them; None without a supported edge.
+
+    Everything is read from the stored rows: the members are the customers of the run that carry the community id,
+    the edges and their coordinated claim matches were recorded when the run was scored. The kind follows the stated
+    rule (ring: a coordinated claim match, two or more members selected, or a member with a coordinated claim share)
+    and is evidence about the group, not a verdict on any member.
+    """
+    if row.get("community_id") is None:
+        return None
+    community = store.run_community(run_id, row["community_id"])
+    if community is None:
+        return None
+    return {"id": community["community_id"], "kind": community["kind"], "method": community["method"], "size": int(community["size"]),
+            "selected_count": int(community["selected_count"]), "requested_units": int(community["requested_units"]),
+            "purchased_units": int(community["purchased_units"]), "coordinated_claim_matches": int(community["coordinated_claim_matches"]),
+            "members": [{"customer_id": m["customer_id"], "risk_score": _number(m["risk_score"]), "rank": _integer(m["rank"]),
+                         "selected_for_review": bool(m["selected_for_review"]), "eligibility_status": m["eligibility_status"],
+                         "mature_requested_units": int(m["mature_requested_units"]), "mature_purchased_units": int(m["mature_purchased_units"]),
+                         "evidence_tags": list(m["evidence_tags"])} for m in community["members"]],
+            "edges": [{"a": e["a"], "b": e["b"], "types": list(e["types"]), "coordinated_claim_matches": int(e["coordinated_claim_matches"])}
+                      for e in community["edges"]]}
+
+
 def customer_item(row: dict, latest_disposition: str | None) -> dict:
     return {
         "basket_expectation": basket_expectation(row), "cleared_reason": (row.get("measures") or {}).get("cleared_reason"),
+        "community": community_summary(row),
         "customer_id": row["customer_id"], "eligibility_status": row["eligibility_status"],
         "raw_score": _number(row["raw_score"]), "risk_score": _number(row["risk_score"]), "rank": _integer(row["rank"]),
         "selected_for_review": bool(row["selected_for_review"]), "baseline_rank": _integer(row["baseline_rank"]),
@@ -211,6 +246,7 @@ def customer_case(store: Store, run_id: str, customer: dict) -> dict:
         "styles": [_style_item(style) for style in store.run_customer_styles(run_id, customer_id, CASE_STYLES)],
         "wardrobing": {"status": row["wardrobing_status"], "indicator_score": _integer(row["indicator_score"]),
                        "signals": wardrobing_signals, "limitation": WARDROBING_LIMITATION},
+        "community": community_detail(store, run_id, customer),
     }
 
 

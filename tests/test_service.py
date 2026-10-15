@@ -492,7 +492,7 @@ def test_results_of_earlier_runs_are_imported_once_from_their_files(client, env,
     directory = env["root"] / "runs" / run["run_id"]
     directory.mkdir(parents=True)
     (directory / "run.json").write_text(json.dumps(dict(output.summary, run_id=run["run_id"])), encoding="utf-8")
-    for name in ingest.LEGACY_TABLES:
+    for name in (*ingest.LEGACY_TABLES, *ingest.LEGACY_OPTIONAL):
         getattr(output, name).to_parquet(directory / f"{name}.parquet", index=False)
     (directory / ingest.LEGACY_MARKER).write_text(run["run_id"], encoding="utf-8")
     with store.transaction() as db:
@@ -1063,3 +1063,104 @@ def test_the_score_distribution_counts_the_queue_at_every_threshold(client, env,
     queued = client.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "pending"}).json()
     assert client.get(f"{API}/runs/{queued['run_id']}/score-distribution").status_code == 409
     assert client.get(f"{API}/runs/run-unknown/score-distribution").status_code == 404
+
+
+def test_communities_group_linked_accounts_and_their_kind_follows_the_stated_rule(client, env, written, world):
+    run = scored_run(client, env, written)
+    conforms("Run", run)
+    assert run["community_count"] >= run["ring_count"] >= 1, "the fixture world has coordination groups"
+    url = f"{API}/runs/{run['run_id']}/customers"
+    everyone = all_pages(client, url, {"review_only": "false"})
+    by_id = {c["customer_id"]: c for c in everyone}
+    linked = [c for c in everyone if c["community"] is not None]
+    assert linked and len({c["community"]["id"] for c in linked}) == run["community_count"]
+    # membership: a customer without a supported edge has no community; a community's size is its member count; ids are world-scoped
+    for c in [x for x in everyone if x["community"] is None][:10]:
+        case = client.get(f"{url}/{c['customer_id']}").json()
+        assert case["neighbors"] == [] and case["community"] is None
+    for community_id in sorted({c["community"]["id"] for c in linked}):
+        members = [c for c in linked if c["community"]["id"] == community_id]
+        assert community_id.startswith(run["world_id"] + "-L")
+        assert {c["community"]["size"] for c in members} == {len(members)} and len(members) >= 2
+        assert len({c["community"]["kind"] for c in members}) == 1
+        assert [c["customer_id"] for c in all_pages(client, url, {"review_only": "false", "community_id": community_id})] == \
+            [c["customer_id"] for c in members]
+    # the case shows the whole group: members with their own results, edges between members only, sums over members
+    rings = 0
+    for c in linked:
+        case = client.get(f"{url}/{c['customer_id']}").json()
+        conforms("Case", case)
+        group = case["community"]
+        assert {"id": group["id"], "kind": group["kind"], "size": group["size"]} == c["community"]
+        ids = {m["customer_id"] for m in group["members"]}
+        assert c["customer_id"] in ids and len(ids) == group["size"] == len(group["members"])
+        assert ids == {x["customer_id"] for x in linked if x["community"]["id"] == group["id"]}
+        for m in group["members"]:
+            own = by_id[m["customer_id"]]
+            assert (m["risk_score"], m["rank"], m["selected_for_review"]) == (own["risk_score"], own["rank"], own["selected_for_review"])
+            assert m["mature_requested_units"] == own["support_counts"]["mature_requested_units"]
+        assert group["requested_units"] == sum(m["mature_requested_units"] for m in group["members"])
+        assert group["purchased_units"] == sum(m["mature_purchased_units"] for m in group["members"])
+        assert group["selected_count"] == sum(m["selected_for_review"] for m in group["members"])
+        assert group["edges"], "a community is connected"
+        for edge in group["edges"]:
+            assert edge["a"] < edge["b"] and {edge["a"], edge["b"]} <= ids and len(edge["types"]) >= 2
+        # every neighbour of the customer is a member; the edge carries the larger of the two directed match counts
+        neighbours = {n["customer_id"]: n for n in case["neighbors"]}
+        assert set(neighbours) <= ids
+        for n in neighbours.values():
+            edge = next(e for e in group["edges"] if {e["a"], e["b"]} == {c["customer_id"], n["customer_id"]})
+            assert edge["coordinated_claim_matches"] >= n["coordinated_claim_matches"] and edge["types"] == n["shared_types"]
+        assert group["coordinated_claim_matches"] == sum(e["coordinated_claim_matches"] for e in group["edges"])
+        # the kind is the stated rule over observed evidence, checked once per community from its members' own cases
+        if c["customer_id"] == min(ids):
+            cases = [client.get(f"{url}/{m}").json() for m in sorted(ids)]
+            share = any((next(s["value"] for s in k["signals"] if s["code"] == "coordinated_claim_share") or 0) > 0 for k in cases)
+            ring = group["coordinated_claim_matches"] >= 1 or group["selected_count"] >= 2 or share
+            assert group["kind"] == ("ring" if ring else "household")
+            rings += group["kind"] == "ring"
+    assert rings == run["ring_count"]
+    # the filters choose what is shown and nothing else
+    ring_rows = all_pages(client, url, {"review_only": "false", "community": "ring"})
+    household_rows = all_pages(client, url, {"review_only": "false", "community": "household"})
+    none_rows = all_pages(client, url, {"review_only": "false", "community": "none"})
+    assert all(c["community"]["kind"] == "ring" for c in ring_rows) and all(c["community"]["kind"] == "household" for c in household_rows)
+    assert all(c["community"] is None for c in none_rows)
+    assert len(ring_rows) + len(household_rows) + len(none_rows) == len(everyone)
+    assert client.get(url, params={"community": "gang"}).status_code == 422
+    # truth is never read: a coordination group of the generator surfaces as a ring only through its observed claims and links
+    truth = world.truth["relationship_truth"]
+    coordinated = set(truth.loc[truth["group_type"] == "coordination", "customer_id"])
+    assert any(c["customer_id"] in coordinated for c in ring_rows), "a generated coordination group is found as a ring"
+
+
+def test_a_large_component_is_split_by_louvain_and_no_member_is_left_alone():
+    """Two dense cliques joined by one weak edge form one component of 16 members; Louvain splits it, deterministically."""
+    import itertools
+
+    members = [f"W9-C{i:05d}" for i in range(16)]
+    cliques = [members[:8], members[8:]]
+    rows = [(a, b, 2.0) for clique in cliques for a, b in itertools.combinations(clique, 2)] + [(members[7], members[8], 0.1)]
+    edges = pd.DataFrame([{"customer_a": a, "customer_b": b, "shared_types": ["address", "device"], "shared_value_count": 2,
+                           "max_value_fanout": 3, "weight": w} for a, b, w in rows])
+    neighbors = pd.DataFrame([(x, y, 1 if {x, y} == {members[0], members[1]} else 0) for a, b, _ in rows for x, y in ((a, b), (b, a))],
+                             columns=["customer_id", "neighbor_id", "coordinated_claim_matches"])
+    customers = pd.DataFrame({"customer_id": members + ["W9-C99999"], "selected_for_review": [True] + [False] * 16,
+                              "coordinated_claim_share": [0.5] + [0.0] * 16, "mature_requested_units": 2, "mature_purchased_units": 10})
+    communities, membership = scoring._communities("W9", edges, neighbors, customers)
+    again, _ = scoring._communities("W9", edges.sample(frac=1, random_state=3), neighbors, customers)
+    assert communities["method"].tolist() == ["louvain", "louvain"] and communities["size"].tolist() == [8, 8]
+    assert communities["kind"].tolist() == ["ring", "household"]                     # the match and the share sit in the first clique
+    assert communities["community_id"].tolist() == again["community_id"].tolist()    # the input order does not matter
+    assert sorted(membership.dropna().groupby(membership.dropna()).apply(lambda s: sorted(s.index)).tolist()) == sorted(cliques)
+    assert pd.isna(membership["W9-C99999"])                                           # no supported edge, no community
+    first = json.loads(communities["edges"].iloc[0])
+    assert len(first) == 28 and all(e["a"] < e["b"] and e["a"] in cliques[0] and e["b"] in cliques[0] for e in first)
+    assert sum(e["coordinated_claim_matches"] for e in first) == 1 == communities["coordinated_claim_matches"].iloc[0]
+    # a part Louvain would leave alone joins its heaviest neighbour's part
+    star = pd.DataFrame([{"customer_a": members[0], "customer_b": m, "shared_types": ["address", "payment"], "shared_value_count": 2,
+                          "max_value_fanout": 14, "weight": 1.0} for m in members[1:14]])
+    star_neighbors = pd.DataFrame([(x, y, 0) for a, b in zip(star["customer_a"], star["customer_b"]) for x, y in ((a, b), (b, a))],
+                                  columns=["customer_id", "neighbor_id", "coordinated_claim_matches"])
+    parts, _ = scoring._communities("W9", star, star_neighbors, customers)
+    assert (parts["size"] >= 2).all() and parts["size"].sum() == 14

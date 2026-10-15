@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.5.0
+  version: 1.6.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -481,6 +481,25 @@ paths:
           - no_elevated_signal
           - insufficient_evidence
           - incomplete
+      - name: community
+        in: query
+        required: false
+        description: Show only customers whose group of linked accounts is of this kind (ring, household), or only
+          customers with no supported edge (none). A filter chooses what is shown; it changes no score or selection.
+        schema:
+          type: string
+          default: all
+          enum:
+          - all
+          - ring
+          - household
+          - none
+      - name: community_id
+        in: query
+        required: false
+        description: Show only the members of this community of the run, in queue order (with review_only=false, every
+          member).
+        schema: *id001
   /runs/{run_id}/customers/{customer_id}:
     get:
       operationId: getCustomerCase
@@ -1132,6 +1151,8 @@ components:
       - eligible_purchased_units
       - graph_edges
       - heavy_returner_cutoff
+      - community_count
+      - ring_count
       properties:
         run_id: *id001
         dataset_id: *id001
@@ -1246,6 +1267,19 @@ components:
           description: The raw return rate at the 90th percentile of this run's eligible customers (linear interpolation),
             the gate's own definition of a heavy returner. A customer at or above it who is not selected for review is a
             cleared heavy returner. Null until the run succeeded.
+        community_count:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Groups of linked accounts in the snapshot, the connected components of the supported edges (a
+            component of thirteen or more members is split by Louvain with a fixed seed). Null until the run succeeded.
+        ring_count:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Of community_count, the groups the stated rule calls a ring (a coordinated claim match on an edge,
+            two or more members selected for review, or a member with a coordinated claim share above zero). Evidence
+            about the group, not a verdict on any member. Null until the run succeeded.
     Support:
       type: object
       additionalProperties: false
@@ -1300,6 +1334,7 @@ components:
       - latest_disposition
       - basket_expectation
       - cleared_reason
+      - community
       properties:
         customer_id: *id001
         eligibility_status:
@@ -1400,6 +1435,30 @@ components:
             sizes of one style), high_return_styles (expected return rate of the basket .35 or more), as_basket_predicts
             (residual z below 1), else below_threshold. Null for customers in the queue and for unranked customers. A
             template, never generated text.
+        community:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - id
+          - kind
+          - size
+          description: The group of linked accounts this customer belongs to (a connected component of the supported
+            edges), with its observable kind. Null for a customer with no supported edge, and for runs scored before
+            contract 1.6.0. Membership of a group is evidence about the relationship, not guilt.
+          properties:
+            id: *id001
+            kind: &id012
+              type: string
+              enum:
+              - ring
+              - household
+              description: ring when any edge of the group has a coordinated claim match (both accounts claimed on the
+                same style within 7 days), or two or more members are selected for review, or a member has a
+                coordinated claim share above zero; household otherwise. From observed evidence only.
+            size:
+              type: integer
+              minimum: 2
     ReviewRequest:
       type: object
       additionalProperties: false
@@ -1702,6 +1761,65 @@ components:
           - supported
           - insufficient_support
           - no_return_evidence
+    CommunityMember:
+      type: object
+      additionalProperties: false
+      required:
+      - customer_id
+      - risk_score
+      - rank
+      - selected_for_review
+      - eligibility_status
+      - mature_requested_units
+      - mature_purchased_units
+      - evidence_tags
+      description: A member of the community with its own result in this run. The score is the member's, and says
+        nothing about the customer whose case is shown.
+      properties:
+        customer_id: *id001
+        risk_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+        rank:
+          type: integer
+          minimum: 1
+          nullable: true
+        selected_for_review: *id011
+        eligibility_status:
+          type: string
+          enum:
+          - eligible
+          - insufficient_history
+        mature_requested_units: *id008
+        mature_purchased_units: *id008
+        evidence_tags:
+          type: array
+          items: *id001
+    CommunityEdge:
+      type: object
+      additionalProperties: false
+      required:
+      - a
+      - b
+      - types
+      - coordinated_claim_matches
+      description: A supported edge between two members (a sorts before b), the identifier types shared, and how many
+        claim lines of either account the other matched on the same style within 7 days (the larger of the two
+        directions).
+      properties:
+        a: *id001
+        b: *id001
+        types:
+          type: array
+          items:
+            type: string
+            enum:
+            - address
+            - device
+            - payment
+        coordinated_claim_matches: *id008
     Case:
       type: object
       additionalProperties: false
@@ -1718,6 +1836,7 @@ components:
       - neighbors
       - styles
       - wardrobing
+      - community
       - reviews
       properties:
         run_id: *id001
@@ -1751,6 +1870,51 @@ components:
             $ref: '#/components/schemas/Style'
         wardrobing:
           $ref: '#/components/schemas/Wardrobing'
+        community:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - id
+          - kind
+          - method
+          - size
+          - selected_count
+          - requested_units
+          - purchased_units
+          - coordinated_claim_matches
+          - members
+          - edges
+          description: The customer's group of linked accounts with every member's own result and the edges between
+            members, so the group can be drawn and its captions derived (requested_units over purchased_units is the
+            group's return rate on mature lines; a member's rate is read against the run's mean_return_rate). Null for
+            a customer with no supported edge, and for runs scored before contract 1.6.0.
+          properties:
+            id: *id001
+            kind: *id012
+            method:
+              type: string
+              enum:
+              - components
+              - louvain
+              description: components when the group is a whole connected component of the supported edges; louvain
+                when it is one part of a component of thirteen or more members, split on the edge weight with a fixed
+                seed.
+            size:
+              type: integer
+              minimum: 2
+            selected_count: *id008
+            requested_units: *id008
+            purchased_units: *id008
+            coordinated_claim_matches: *id008
+            members:
+              type: array
+              items:
+                $ref: '#/components/schemas/CommunityMember'
+            edges:
+              type: array
+              items:
+                $ref: '#/components/schemas/CommunityEdge'
         reviews:
           type: array
           items:
