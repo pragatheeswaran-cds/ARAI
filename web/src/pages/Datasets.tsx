@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, allPages, api, newKey, type Dataset, type Run } from "../api";
-import { useWorkspace } from "../App";
+import { useSession, useWorkspace } from "../App";
 import { Badge, Callout, ErrorBox, LoadState, PageTitle, Panel, Row, ist, label, number, shortId, useLoad } from "../components/ui";
 import { seconds, snapshotDate, stepper } from "../derive";
 
@@ -96,7 +96,7 @@ function Stepper({ run }: { run: Run }) {
   );
 }
 
-function RunRow({ run, onRetry, onCancel }: { run: Run; onRetry: (run: Run) => void; onCancel: (run: Run) => void }) {
+function RunRow({ run, onRetry, onCancel, manage }: { run: Run; onRetry: (run: Run) => void; onCancel: (run: Run) => void; manage: boolean }) {
   const cancelled = run.status === "interrupted" && run.error?.error_code === "cancelled"; // stopped on purpose, not a failure
   const tone = run.status === "succeeded" ? "green" : cancelled ? "gray" : run.status === "failed" || run.status === "interrupted" ? "amber" : "gray";
   const active = run.status === "running" || run.status === "queued";
@@ -159,12 +159,12 @@ function RunRow({ run, onRetry, onCancel }: { run: Run; onRetry: (run: Run) => v
             View results
           </Link>
         )}
-        {(run.status === "failed" || run.status === "interrupted") && !cancelled && (
+        {manage && (run.status === "failed" || run.status === "interrupted") && !cancelled && (
           <button type="button" onClick={() => onRetry(run)}>
             Retry with the same dataset and bundle
           </button>
         )}
-        {active && (
+        {manage && active && (
           <button type="button" onClick={() => onCancel(run)}>
             {run.status === "queued" ? "Cancel" : "Stop at the next stage"}
           </button>
@@ -176,6 +176,7 @@ function RunRow({ run, onRetry, onCancel }: { run: Run; onRetry: (run: Run) => v
 
 export function Datasets() {
   const { health, runs, reload } = useWorkspace();
+  const manage = useSession().can("manage"); // datasets and runs are the admin's (contract 1.16.0)
   const datasets = useLoad(() => allPages<Dataset>((cursor) => api.datasets(cursor)), []);
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -232,7 +233,7 @@ export function Datasets() {
       </PageTitle>
       <div className="grid">
         <Panel title="Register a snapshot">
-          <Upload onRegistered={datasets.reload} />
+          {manage ? <Upload onRegistered={datasets.reload} /> : <p className="muted">Registering and scoring snapshots need the admin role.</p>}
         </Panel>
         <Panel title="Scoring readiness">
           <Row name="Service">{health ? "Reachable" : "Not reachable"}</Row>
@@ -288,11 +289,15 @@ export function Datasets() {
                     </td>
                     <td title={dataset.manifest_hash}>{shortId(dataset.manifest_hash, 16)}</td>
                     <td>
-                      <button type="button" className="primary" disabled={!ready || busy} onClick={() => submit(dataset.dataset_id)}>
-                        Score with the active bundle
-                      </button>
-                      {!ready && <small>Blocked: no valid scoring bundle.</small>}
-                      {!scored.has(dataset.dataset_id) && (
+                      {manage ? (
+                        <button type="button" className="primary" disabled={!ready || busy} onClick={() => submit(dataset.dataset_id)}>
+                          Score with the active bundle
+                        </button>
+                      ) : (
+                        <small>Scoring needs the admin role.</small>
+                      )}
+                      {manage && !ready && <small>Blocked: no valid scoring bundle.</small>}
+                      {manage && !scored.has(dataset.dataset_id) && (
                         <button type="button" className="quiet" onClick={() => remove(dataset)} title="Only a dataset nothing was scored on can be removed">
                           Remove
                         </button>
@@ -322,7 +327,7 @@ export function Datasets() {
               </thead>
               <tbody>
                 {runs.map((run) => (
-                  <RunRow key={run.run_id} run={run} onRetry={(failed) => submit(failed.dataset_id, failed.model_id)} onCancel={cancel} />
+                  <RunRow key={run.run_id} run={run} onRetry={(failed) => submit(failed.dataset_id, failed.model_id)} onCancel={cancel} manage={manage} />
                 ))}
               </tbody>
             </table>

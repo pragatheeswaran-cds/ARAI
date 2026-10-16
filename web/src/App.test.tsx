@@ -17,7 +17,7 @@ const customer = (over: Partial<Customer>): Customer => ({
   customer_id: "W1-C1", eligibility_status: "eligible", raw_score: 1.2, risk_score: 97.3, rank: 3, selected_for_review: true, baseline_rank: 40,
   baseline_selected: false, support_counts: { mature_sale_lines: 9, mature_purchased_units: 10, mature_requested_units: 4, all_requested_units: 5 },
   evidence_tags: ["repeat_claims"], wardrobing_status: "no_elevated_signal", latest_disposition: null, basket_expectation: null, cleared_reason: null, community: null, tier: "HIGH", gate_outcome: "HOLD", primary_signals: [],
-  workflow: { state: "new", opened_by: null, opened_at: null, decided_by: null, decided_at: null }, previous: null, earlier_decision: null, ...over,
+  workflow: { state: "new", opened_by: null, opened_by_user_id: null, opened_at: null, decided_by: null, decided_at: null }, previous: null, earlier_decision: null, ...over,
 });
 
 describe("fallback banner", () => {
@@ -59,7 +59,7 @@ describe("customer table", () => {
         gate_outcome: "ESCALATE",
         primary_signals: [{ tag: "repeat_claims", label: "Two or more transaction claims", family: "claims", value: 3, denominator: 5, unit: "of return lines" }],
         community: { id: "W1-L1", kind: "ring", size: 4 },
-        workflow: { state: "in_review", opened_by: "Asha", opened_at: "2026-10-15T10:00:00Z", decided_by: null, decided_at: null },
+        workflow: { state: "in_review", opened_by: "Asha", opened_by_user_id: "usr-asha", opened_at: "2026-10-15T10:00:00Z", decided_by: null, decided_at: null },
       }),
     ]);
     expect(screen.getByText("High")).toBeInTheDocument();

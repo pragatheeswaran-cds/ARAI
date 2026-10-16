@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -64,17 +65,20 @@ try:
         except httpx.HTTPError:
             time.sleep(0.3)
     health = httpx.get(BASE + "/api/v1/health").json()
+    # registering and scoring are the admin's (contract 1.16.0): an API session through the development login
+    api = httpx.Client(base_url=BASE, timeout=120)
+    api.headers["X-CSRF-Token"] = api.post("/api/v1/auth/dev-login", json={"user": "Admin"}).json()["csrf_token"]
     check("health reports the baseline, not a promoted model", health["scoring_ready"] and not health["promoted_model_ready"]
           and health["model_kind"] == "baseline_fallback", health)
     # the fixture world W2001 where it exists; otherwise the demonstration world (a fresh clone has only experiment 4's worlds)
     world_id = sys.argv[1] if len(sys.argv) > 1 else ("W2001" if (paths.ARTIFACT_ROOT / "worlds" / "W2001").exists() else "W5401")
     world = paths.ARTIFACT_ROOT / "worlds" / world_id / "operational"
     files = {name: (f"{name}.csv", (world / f"{name}.csv").read_bytes(), "text/csv") for name in TABLES}
-    dataset = httpx.post(BASE + "/api/v1/datasets", data={"manifest": (world / "manifest.json").read_text(encoding="utf-8")}, files=files,
+    dataset = api.post("/api/v1/datasets", data={"manifest": (world / "manifest.json").read_text(encoding="utf-8")}, files=files,
                          timeout=120).json()
-    run = httpx.post(BASE + "/api/v1/runs", json={"dataset_id": dataset["dataset_id"], "idempotency_key": "fallback-1"}).json()
+    run = api.post("/api/v1/runs", json={"dataset_id": dataset["dataset_id"], "idempotency_key": "fallback-1"}).json()
     for _ in range(120):
-        run = httpx.get(f"{BASE}/api/v1/runs/{run['run_id']}").json()
+        run = api.get(f"/api/v1/runs/{run['run_id']}").json()
         if run["status"] in ("succeeded", "failed"):
             break
         time.sleep(0.5)
@@ -93,6 +97,7 @@ try:
             page.wait_for_function("!document.querySelector('main')?.innerText.includes('Loading...')", timeout=30000)
 
         page.goto(BASE + "/overview")
+        page.get_by_role("button", name=re.compile(r"^Admin")).click()           # the development login's sign-in page
         settle()
         banner = page.locator(".banner").first.inner_text()
         check("banner states the real reason and the active ranking", "No candidate passed the validation gate" in banner

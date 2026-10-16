@@ -265,6 +265,12 @@ def _baseline_rehearsal(args) -> int:
                 time.sleep(0.5)
             else:
                 return
+            # registering and scoring are the admin's (contract 1.16.0): sign in through the development login first
+            signed = client.post(base + "/api/v1/auth/dev-login", json={"user": "Admin"})
+            if signed.status_code != 200:
+                print(f"baseline rehearsal: could not sign in as Admin ({signed.status_code}); register {args.demo_world} by hand")
+                return
+            client.headers["X-CSRF-Token"] = signed.json()["csrf_token"]
             if any(r["status"] == "succeeded" for r in client.get(base + "/api/v1/runs").json()["items"]):
                 print(f"baseline rehearsal: {args.demo_world} is already scored here; open {base}")
                 return

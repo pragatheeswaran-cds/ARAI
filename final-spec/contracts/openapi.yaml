@@ -1,13 +1,115 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.15.0
+  version: 1.16.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
 servers:
 - url: /api/v1
 paths:
+  /auth/dev-users:
+    get:
+      operationId: listDevUsers
+      security: []
+      description: Contract 1.16.0 (AM-69). The people of the development login (AUTH_MODE=dev, laptops and demos) with
+        their roles. 404 when the instance uses single sign-on.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevUsers'
+        '404':
+          description: The development login is off on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/dev-login:
+    post:
+      operationId: devLogin
+      security: []
+      description: Contract 1.16.0 (AM-69). Sign in as a person of the development login. Sets the session cookie
+        arai_session (HttpOnly, SameSite=Lax, Secure on the vm profile) and returns the signed-in user with the CSRF
+        token every later POST and DELETE must send as X-CSRF-Token. Refused with AUTH_MODE=oidc (404).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevLoginRequest'
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '404':
+          description: The development login is off on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Not a user of the development login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/login:
+    get:
+      operationId: singleSignOn
+      security: []
+      description: Contract 1.16.0 (AM-69). Keycloak single sign-on (AUTH_MODE=oidc). Step 1 of the authentication design
+        answers 503 single_sign_on_unavailable; step 2 redirects to Keycloak. 404 with the development login.
+      responses:
+        '302':
+          description: To the identity provider (step 2)
+        '404':
+          description: Single sign-on is off on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Single sign-on is not available yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/logout:
+    post:
+      operationId: logout
+      description: Contract 1.16.0 (AM-69). End the session and clear its cookie. Needs X-CSRF-Token.
+      responses:
+        '204':
+          description: Signed out
+        '401':
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me:
+    get:
+      operationId: getMe
+      description: Contract 1.16.0 (AM-69). The signed-in user, roles, permissions, the session's CSRF token and its limits.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401':
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /datasets:
     get:
       operationId: listDatasets
@@ -19,7 +121,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DatasetPage'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -80,7 +188,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Dataset'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -175,7 +289,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Dataset'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -219,7 +339,13 @@ paths:
         '204':
           description: Removed
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -258,7 +384,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Run'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -309,7 +441,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/RunPage'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -362,7 +500,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Run'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -416,7 +560,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Run'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -467,7 +617,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/CustomerPage'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -639,6 +795,14 @@ paths:
         schema:
           type: string
           maxLength: 100
+      - name: exclude_mine
+        in: query
+        required: false
+        description: Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval
+          band). Replaces exclude_reviewer, which compares a typed name.
+        schema:
+          type: boolean
+          default: false
       - name: cleared_heavy
         in: query
         required: false
@@ -681,7 +845,13 @@ paths:
               schema:
                 type: string
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -851,6 +1021,14 @@ paths:
         schema:
           type: string
           maxLength: 100
+      - name: exclude_mine
+        in: query
+        required: false
+        description: Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval
+          band). Replaces exclude_reviewer, which compares a typed name.
+        schema:
+          type: boolean
+          default: false
       - name: cleared_heavy
         in: query
         required: false
@@ -886,7 +1064,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Case'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -943,7 +1127,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReviewPage'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -993,7 +1183,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Review'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1046,7 +1242,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ScoreDistribution'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1097,7 +1299,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/StylePage'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1163,7 +1371,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/StyleDetail'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1218,7 +1432,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExperimentSummaryPage'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1265,7 +1485,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Experiment'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1316,7 +1542,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/TruthPage'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1371,7 +1603,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Curves'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1428,6 +1666,7 @@ paths:
           default: 200
   /health:
     get:
+      security: []
       operationId: getHealth
       responses:
         '200':
@@ -1437,7 +1676,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Health'
         '401':
-          description: VM authentication required
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required)
           content:
             application/json:
               schema:
@@ -1474,6 +1719,96 @@ paths:
                 $ref: '#/components/schemas/Error'
 components:
   schemas:
+    Me:
+      type: object
+      additionalProperties: false
+      required:
+      - user_id
+      - display_name
+      - email
+      - roles
+      - permissions
+      - auth_mode
+      - csrf_token
+      - session_expires_at
+      - idle_minutes
+      properties:
+        user_id: *id001
+        display_name: *id001
+        email:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+            - viewer
+            - reviewer
+            - approver
+            - admin
+        permissions:
+          type: array
+          description: read (every screen), export (CSV and case summary), review (notes, open, request approval), decide
+            (approve, reject), manage (datasets and runs). Admin manages and does not review.
+          items:
+            type: string
+            enum:
+            - read
+            - export
+            - review
+            - decide
+            - manage
+        auth_mode:
+          type: string
+          enum:
+          - dev
+          - oidc
+        csrf_token:
+          type: string
+          description: Send as the X-CSRF-Token header on every POST and DELETE of this session.
+        session_expires_at:
+          type: string
+          format: date-time
+          description: The session's maximum age; it also ends after idle_minutes without a request.
+        idle_minutes:
+          type: integer
+          minimum: 1
+    DevUsers:
+      type: object
+      additionalProperties: false
+      required:
+      - auth_mode
+      - users
+      properties:
+        auth_mode:
+          type: string
+          enum:
+          - dev
+        users:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - display_name
+            - roles
+            properties:
+              display_name: *id001
+              roles:
+                type: array
+                items:
+                  type: string
+    DevLoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - user
+      properties:
+        user:
+          type: string
+          minLength: 1
+          maxLength: 100
     Error:
       type: object
       additionalProperties: false
@@ -2182,6 +2517,7 @@ components:
           required:
           - state
           - opened_by
+          - opened_by_user_id
           - opened_at
           - decided_by
           - decided_at
@@ -2204,6 +2540,11 @@ components:
             opened_by:
               type: string
               nullable: true
+            opened_by_user_id:
+              type: string
+              nullable: true
+              description: Contract 1.16.0. The user who made the latest open; null for an open written before sign-in
+                existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case.
             opened_at:
               type: string
               format: date-time
@@ -2220,15 +2561,15 @@ components:
       type: object
       additionalProperties: false
       required:
-      - reviewer_name
       - disposition
       - note
       - idempotency_key
       properties:
         reviewer_name:
           type: string
-          minLength: 1
           maxLength: 100
+          description: Contract 1.16.0 (AM-69). Ignored - the author is the signed-in user. Accepted so older clients keep
+            working; removed in 2.0.0.
         kind:
           type: string
           default: note
@@ -2279,6 +2620,7 @@ components:
       - created_at
       - dataset_id
       - snapshot_cutoff
+      - author
       properties:
         review_id: *id001
         world_id: *id001
@@ -2314,6 +2656,24 @@ components:
           type: string
           format: date-time
           description: Contract 1.15.0. The cutoff of that snapshot.
+        author:
+          type: object
+          additionalProperties: false
+          required:
+          - user_id
+          - display_name
+          - verified
+          description: Contract 1.16.0 (AM-69). Who wrote it. verified is true for a review written by a signed-in user,
+            whose display name the server recorded; false for a review written before sign-in existed, whose name was
+            typed and never checked (user_id null).
+          properties:
+            user_id:
+              type: string
+              nullable: true
+            display_name:
+              type: string
+            verified:
+              type: boolean
     TimelineEvent:
       type: object
       additionalProperties: false
@@ -3094,6 +3454,7 @@ components:
           required:
           - state
           - opened_by
+          - opened_by_user_id
           - opened_at
           - decided_by
           - decided_at
@@ -3116,6 +3477,11 @@ components:
             opened_by:
               type: string
               nullable: true
+            opened_by_user_id:
+              type: string
+              nullable: true
+              description: Contract 1.16.0. The user who made the latest open; null for an open written before sign-in
+                existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case.
             opened_at:
               type: string
               format: date-time
@@ -3698,5 +4064,12 @@ components:
     SharedAccess:
       type: http
       scheme: basic
-      description: VM reverse proxy only; local profile exempt
-security: []
+      description: VM reverse proxy only, an outer layer in front of the sign-in; local profile exempt
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: arai_session
+      description: Contract 1.16.0 (AM-69). The session of a verified sign-in. Roles decide each route (viewer, reviewer,
+        approver, admin); a POST or DELETE also sends the session's X-CSRF-Token header.
+security:
+- SessionCookie: []

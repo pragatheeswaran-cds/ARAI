@@ -4,6 +4,91 @@
  */
 
 export interface paths {
+    "/auth/dev-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.16.0 (AM-69). The people of the development login (AUTH_MODE=dev, laptops and demos) with their roles. 404 when the instance uses single sign-on. */
+        get: operations["listDevUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/dev-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 1.16.0 (AM-69). Sign in as a person of the development login. Sets the session cookie arai_session (HttpOnly, SameSite=Lax, Secure on the vm profile) and returns the signed-in user with the CSRF token every later POST and DELETE must send as X-CSRF-Token. Refused with AUTH_MODE=oidc (404). */
+        post: operations["devLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.16.0 (AM-69). Keycloak single sign-on (AUTH_MODE=oidc). Step 1 of the authentication design answers 503 single_sign_on_unavailable; step 2 redirects to Keycloak. 404 with the development login. */
+        get: operations["singleSignOn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 1.16.0 (AM-69). End the session and clear its cookie. Needs X-CSRF-Token. */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.16.0 (AM-69). The signed-in user, roles, permissions, the session's CSRF token and its limits. */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/datasets": {
         parameters: {
             query?: never;
@@ -284,6 +369,35 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Me: {
+            user_id: string;
+            display_name: string;
+            email: string | null;
+            roles: ("viewer" | "reviewer" | "approver" | "admin")[];
+            /** @description read (every screen), export (CSV and case summary), review (notes, open, request approval), decide (approve, reject), manage (datasets and runs). Admin manages and does not review. */
+            permissions: ("read" | "export" | "review" | "decide" | "manage")[];
+            /** @enum {string} */
+            auth_mode: "dev" | "oidc";
+            /** @description Send as the X-CSRF-Token header on every POST and DELETE of this session. */
+            csrf_token: string;
+            /**
+             * Format: date-time
+             * @description The session's maximum age; it also ends after idle_minutes without a request.
+             */
+            session_expires_at: string;
+            idle_minutes: number;
+        };
+        DevUsers: {
+            /** @enum {string} */
+            auth_mode: "dev";
+            users: {
+                display_name: string;
+                roles: string[];
+            }[];
+        };
+        DevLoginRequest: {
+            user: string;
+        };
         Error: {
             error_code: string;
             message: string;
@@ -518,6 +632,8 @@ export interface components {
                 /** @enum {string} */
                 state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
                 opened_by: string | null;
+                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case. */
+                opened_by_user_id: string | null;
                 /** Format: date-time */
                 opened_at: string | null;
                 /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
@@ -527,7 +643,8 @@ export interface components {
             };
         };
         ReviewRequest: {
-            reviewer_name: string;
+            /** @description Contract 1.16.0 (AM-69). Ignored - the author is the signed-in user. Accepted so older clients keep working; removed in 2.0.0. */
+            reviewer_name?: string;
             /**
              * @description What the review does. note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; request_approval asks for a second person; approve and reject decide it. The rules, checked under one lock per customer - open needs a case that is not open (409 case_already_open while it is in review or awaiting approval); request_approval, approve and reject need an open case (409 case_not_open) that is not yet decided (409 case_decided; reopen first), and approval cannot be requested twice (409 case_already_open); approve and reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed message the UI shows as it is, names compared without regard to case or spacing; the four workflow kinds apply only to a customer selected for review and feedback only to the others (409 out_of_scope). approve and reject carry a reading, needs_investigation or likely_legitimate (422 request.decision_disposition). Every kind needs a note, and no text may hold a NUL byte.
              * @default note
@@ -563,6 +680,12 @@ export interface components {
              * @description Contract 1.15.0. The cutoff of that snapshot.
              */
             snapshot_cutoff: string;
+            /** @description Contract 1.16.0 (AM-69). Who wrote it. verified is true for a review written by a signed-in user, whose display name the server recorded; false for a review written before sign-in existed, whose name was typed and never checked (user_id null). */
+            author: {
+                user_id: string | null;
+                display_name: string;
+                verified: boolean;
+            };
         };
         /** @description One source transaction of the customer. The sentence in description is built from the fact fields that follow it; read the fields, not the sentence. A fact that does not apply to the event kind is null, and every fact is null for a run scored before contract 1.4.0 (results are written once). The customer's free-text reason is never carried. */
         TimelineEvent: {
@@ -823,6 +946,8 @@ export interface components {
                 /** @enum {string} */
                 state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
                 opened_by: string | null;
+                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case. */
+                opened_by_user_id: string | null;
                 /** Format: date-time */
                 opened_at: string | null;
                 /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
@@ -1024,6 +1149,169 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listDevUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevUsers"];
+                };
+            };
+            /** @description The development login is off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    devLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description The development login is off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not a user of the development login */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    singleSignOn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description To the identity provider (step 2) */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Single sign-on is off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Single sign-on is not available yet */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listDatasets: {
         parameters: {
             query?: {
@@ -1045,8 +1333,17 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1149,8 +1446,17 @@ export interface operations {
                     "application/json": components["schemas"]["Dataset"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1223,8 +1529,17 @@ export interface operations {
                     "application/json": components["schemas"]["Dataset"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1297,8 +1612,17 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1357,8 +1681,17 @@ export interface operations {
                     "application/json": components["schemas"]["RunPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1435,8 +1768,17 @@ export interface operations {
                     "application/json": components["schemas"]["Run"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1511,8 +1853,17 @@ export interface operations {
                     "application/json": components["schemas"]["Run"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1587,8 +1938,17 @@ export interface operations {
                     "application/json": components["schemas"]["Run"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1668,6 +2028,8 @@ export interface operations {
                 state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
                 /** @description Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer only the cases another person opened. */
                 exclude_reviewer?: string;
+                /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Replaces exclude_reviewer, which compares a typed name. */
+                exclude_mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
                 /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
@@ -1690,8 +2052,17 @@ export interface operations {
                     "application/json": components["schemas"]["CustomerPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1769,6 +2140,8 @@ export interface operations {
                 state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
                 /** @description Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer only the cases another person opened. */
                 exclude_reviewer?: string;
+                /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Replaces exclude_reviewer, which compares a typed name. */
+                exclude_mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
                 /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
@@ -1791,8 +2164,17 @@ export interface operations {
                     "text/csv": string;
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1868,8 +2250,17 @@ export interface operations {
                     "application/json": components["schemas"]["Case"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1948,8 +2339,17 @@ export interface operations {
                     "application/json": components["schemas"]["ReviewPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2029,8 +2429,17 @@ export interface operations {
                     "application/json": components["schemas"]["Review"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2105,8 +2514,17 @@ export interface operations {
                     "application/json": components["schemas"]["ScoreDistribution"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2185,8 +2603,17 @@ export interface operations {
                     "application/json": components["schemas"]["StylePage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2262,8 +2689,17 @@ export interface operations {
                     "application/json": components["schemas"]["StyleDetail"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2339,8 +2775,17 @@ export interface operations {
                     "application/json": components["schemas"]["ExperimentSummaryPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2415,8 +2860,17 @@ export interface operations {
                     "application/json": components["schemas"]["Experiment"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2494,8 +2948,17 @@ export interface operations {
                     "application/json": components["schemas"]["TruthPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2575,8 +3038,17 @@ export interface operations {
                     "application/json": components["schemas"]["Curves"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2649,8 +3121,17 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
-import { allPages, api, type Dataset, type ExperimentSummary, type Health, type Run } from "./api";
-import { PageTitle, ist, number, shortId, useLoad } from "./components/ui";
+import { ApiError, SIGNED_OUT_EVENT, allPages, api, setCsrfToken, type Dataset, type ExperimentSummary, type Health, type Me, type Run } from "./api";
+import { ErrorBox, PageTitle, ist, number, shortId, useLoad } from "./components/ui";
 import { datasetName, latestSnapshotRun } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
 import { CustomerQueue } from "./pages/CustomerQueue";
@@ -23,35 +23,61 @@ type Workspace = {
 const WorkspaceContext = createContext<Workspace>({ health: null, runs: [], run: null, dataset: null, experiment: null, fallback: false, reload: () => {} });
 export const useWorkspace = () => useContext(WorkspaceContext);
 
-/** The reviewer's name: free text kept in this browser, never an authenticated identity. The workflow rules read it. */
-type Reviewer = { name: string; setName: (name: string) => void };
-const ReviewerContext = createContext<Reviewer>({ name: "", setName: () => {} });
-export const useReviewer = () => useContext(ReviewerContext);
-const REVIEWER_KEY = "arai.reviewer";
-export const SUGGESTED_REVIEWERS = ["Asha", "Ravi", "Meera", "Kabir"];
+/** Who is signed in (contract 1.16.0, AM-69): from the session, never typed. `can` reads the user's permissions. */
+type Session = { me: Me; can: (permission: string) => boolean; signOut: () => void };
+const SessionContext = createContext<Session>({ me: null as unknown as Me, can: () => false, signOut: () => {} });
+export const useSession = () => useContext(SessionContext);
 
-function ReviewerProvider({ children }: { children: ReactNode }) {
-  const [name, setStored] = useState(() => {
+/** The sign-in page: the development login's people (laptops and demos), or Keycloak single sign-on (step 2). */
+function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
+  const users = useLoad(() => api.devUsers(), []);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const sso = users.error instanceof ApiError && users.error.status === 404;
+  const signIn = async (name: string) => {
+    setBusy(name);
+    setError(null);
     try {
-      return localStorage.getItem(REVIEWER_KEY) ?? "";
-    } catch {
-      return "";
-    }
-  });
-  const setName = (next: string) => {
-    setStored(next);
-    try {
-      localStorage.setItem(REVIEWER_KEY, next);
-    } catch {
-      /* a private window keeps the name for this page only */
+      onSignedIn(await api.devLogin(name));
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure : new ApiError(0, null));
+    } finally {
+      setBusy(null);
     }
   };
-  return <ReviewerContext.Provider value={{ name, setName }}>{children}</ReviewerContext.Provider>;
+  return (
+    <>
+      <div className="strip">SYNTHETIC DATA ONLY / Simulated customers and returns / No real person or production accuracy claim</div>
+      <main id="main" className="signin">
+        <div className="brand">ARAI.</div>
+        <PageTitle title="Sign in">Every note and decision is recorded under the person who signed in.</PageTitle>
+        {sso ? (
+          <p>
+            <a className="button primary" href="/api/v1/auth/login">
+              Sign in with Keycloak
+            </a>
+          </p>
+        ) : (
+          <>
+            <p className="small">Development login: choose who you are. Single sign-on through Keycloak replaces this list on a shared deployment.</p>
+            <div className="signin-users">
+              {(users.data?.users ?? []).map((user) => (
+                <button key={user.display_name} type="button" className="primary" disabled={busy !== null} onClick={() => signIn(user.display_name)}>
+                  {user.display_name}
+                  <small>{user.roles.join(", ")}</small>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {error && <ErrorBox error={error} />}
+      </main>
+    </>
+  );
 }
 
 /** The run strip: what the queue is cut from, the budget and its edge, when it was scored, and how far its memos are. */
 function RunStrip({ run, dataset }: { run: Run; dataset: Dataset | null }) {
-  const { name, setName } = useReviewer();
   const inProgress = run.status === "queued" || run.status === "running";
   return (
     <div className="runstrip" aria-label="Run strip">
@@ -79,15 +105,19 @@ function RunStrip({ run, dataset }: { run: Run; dataset: Dataset | null }) {
         </span>
       )}
       {inProgress && <span role="status">New run in progress: {run.stage}</span>}
-      <label>
-        Reviewer
-        <input list="reviewers" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" maxLength={100} aria-label="Reviewer name" />
-        <datalist id="reviewers">
-          {SUGGESTED_REVIEWERS.map((suggested) => (
-            <option key={suggested} value={suggested} />
-          ))}
-        </datalist>
-      </label>
+    </div>
+  );
+}
+
+/** Who is signed in, their roles and Sign out, above the run strip. */
+function SignedIn() {
+  const { me, signOut } = useSession();
+  return (
+    <div className="signedin small" aria-label="Signed in">
+      Signed in as <strong>{me.display_name}</strong> <span className="muted">({me.roles.join(", ")})</span>{" "}
+      <button type="button" className="quiet" onClick={signOut}>
+        Sign out
+      </button>
     </div>
   );
 }
@@ -159,6 +189,7 @@ function Shell({ children }: { children: ReactNode }) {
               )}
             </div>
           </header>
+          <SignedIn />
           {run && <RunStrip run={run} dataset={dataset} />}
           {reason && (
             <div className="banner" role="status">
@@ -171,7 +202,7 @@ function Shell({ children }: { children: ReactNode }) {
           <footer className="bottom">
             Investigation signals are not proof of misconduct. Synthetic data only; no production accuracy claim.
             <br />
-            Local profile: reviewer names are free text, not an authenticated identity.
+            Every note and decision is recorded under the signed-in reviewer. This instance uses the development login.
           </footer>
         </div>
       </div>
@@ -180,6 +211,52 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
+  const [session, setSession] = useState<{ me: Me | null; checked: boolean }>({ me: null, checked: false });
+  useEffect(() => {
+    let live = true;
+    api.me().then(
+      (me) => {
+        setCsrfToken(me.csrf_token);
+        if (live) setSession({ me, checked: true });
+      },
+      () => live && setSession({ me: null, checked: true }),
+    );
+    const ended = () => {
+      setCsrfToken(null);
+      setSession({ me: null, checked: true });
+    };
+    window.addEventListener(SIGNED_OUT_EVENT, ended);
+    return () => {
+      live = false;
+      window.removeEventListener(SIGNED_OUT_EVENT, ended);
+    };
+  }, []);
+  if (!session.checked) return <p className="muted">Checking sign-in...</p>;
+  if (!session.me) {
+    return (
+      <SignIn
+        onSignedIn={(me) => {
+          setCsrfToken(me.csrf_token);
+          setSession({ me, checked: true });
+        }}
+      />
+    );
+  }
+  const me = session.me;
+  const signOut = () => {
+    api.logout().finally(() => {
+      setCsrfToken(null);
+      setSession({ me: null, checked: true });
+    });
+  };
+  return (
+    <SessionContext.Provider value={{ me, can: (permission) => me.permissions.includes(permission as Me["permissions"][number]), signOut }}>
+      <Workbench />
+    </SessionContext.Provider>
+  );
+}
+
+function Workbench() {
   const match = useMatch("/runs/:runId/*");
   const loaded = useLoad(async () => {
     const [health, runs, experiments, datasets] = await Promise.all([
@@ -208,7 +285,6 @@ export default function App() {
 
   return (
     <WorkspaceContext.Provider value={workspace}>
-      <ReviewerProvider>
       <Shell>
         <Routes>
           <Route path="/" element={<Navigate to="/overview" replace />} />
@@ -232,7 +308,6 @@ export default function App() {
           />
         </Routes>
       </Shell>
-      </ReviewerProvider>
     </WorkspaceContext.Provider>
   );
 }

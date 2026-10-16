@@ -218,3 +218,10 @@ button.quiet { background: transparent; border: 1px solid var(--line); color: #2
 td small.history { font-style: italic; }
 td small.history.decided { color: var(--ink-2); font-style: normal; font-weight: 600; }
 tr.current td { background: var(--page); }
+/* sign-in and the signed-in line (contract 1.16.0) */
+.signin { max-width: 760px; margin: 48px auto; padding: 0 16px; }
+.signin .brand { color: var(--ink); margin-bottom: 16px; }
+.signin-users { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.signin-users button { display: flex; flex-direction: column; align-items: flex-start; min-width: 150px; }
+.signin-users button small { font-weight: 400; opacity: 0.85; margin-top: 2px; }
+.signedin { display: flex; justify-content: flex-end; align-items: center; gap: 6px; padding: 6px 24px 0; }

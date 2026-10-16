@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiError, api, queueExportUrl, type Customer, type CustomerFilters } from "../api";
-import { useReviewer, useWorkspace } from "../App";
+import { useSession, useWorkspace } from "../App";
 import { CustomerTable, SCORE_HELP, TAGS, tagLabel } from "../components/CustomerTable";
 import { Callout, ErrorBox, PageTitle, Panel, number, percent, useLoad } from "../components/ui";
 import { GATE_HELP, GATE_LABEL, HISTORY_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, snapshotDate } from "../derive";
@@ -14,23 +14,23 @@ const COMPARISONS: Record<CustomerFilters["comparison"], string> = {
 };
 const EMPTY: CustomerFilters = {
   review_only: true, eligibility: "all", search: "", evidence: "", disposition: "all", comparison: "all", wardrobing: "all", community: "all",
-  community_id: "", tier: "all", gate: "all", state: "all", exclude_reviewer: "", history: "all",
+  community_id: "", tier: "all", gate: "all", state: "all", history: "all",
 };
 
 /** Cases a second person must decide, without the ones this reviewer opened. */
 function ApprovalBand({ runId }: { runId: string }) {
-  const { name } = useReviewer();
+  const { can } = useSession();
   const { fallback } = useWorkspace();
-  const band = useLoad(() => api.customers(runId, { ...EMPTY, review_only: false, state: "awaiting_approval", exclude_reviewer: name.trim() }, null, 20), [runId, name]);
+  const band = useLoad(() => api.customers(runId, { ...EMPTY, review_only: false, state: "awaiting_approval", exclude_mine: true }, null, 20), [runId]);
   const items = band.data?.items ?? [];
-  if (!items.length) return null;
+  if (!items.length || !can("decide")) return null;
   return (
     <div className="band" role="region" aria-label="Awaiting a second reviewer">
       <h3>
         Awaiting your approval: {number(items.length)}
         {band.data?.next_cursor ? "+" : ""} case(s) another reviewer opened
       </h3>
-      <p className="small">A case is decided by someone other than the person who opened it. {name.trim() ? `Cases ${name.trim()} opened are not listed.` : "Enter your name in the run strip to hide the cases you opened."}</p>
+      <p className="small">A case is decided by someone other than the person who opened it. Cases you opened are not listed.</p>
       <CustomerTable runId={runId} customers={items} fallback={fallback} compact />
     </div>
   );
@@ -39,6 +39,7 @@ function ApprovalBand({ runId }: { runId: string }) {
 export function CustomerQueue() {
   const { runId = "" } = useParams();
   const { run, fallback } = useWorkspace();
+  const canExport = useSession().can("export"); // reviewers and above (contract 1.16.0)
   const [params, setParams] = useSearchParams();
   const comparison = (params.get("comparison") ?? "all") as CustomerFilters["comparison"];
   // the queue opens on the review set; a comparison view, a community, a cleared view or a state filter needs every customer
@@ -266,7 +267,7 @@ export function CustomerQueue() {
             ? ` / heavy means a raw return rate at or above ${percent(run.heavy_returner_cutoff, 0)}, this run's 90th percentile`
             : ""}
         </p>
-        {!error && run && run.run_id === runId && (
+        {!error && run && run.run_id === runId && canExport && (
           <p className="actions">
             <a className="button" href={queueExportUrl(runId, filters)} download>
               Export this view as CSV

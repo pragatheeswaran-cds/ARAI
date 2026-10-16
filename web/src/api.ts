@@ -33,6 +33,8 @@ export type Returner = StyleDetail["returners"][number];
 export type ApiErrorBody = S["Error"];
 export type Page<T> = { items: T[]; next_cursor: string | null };
 export type Disposition = Review["disposition"];
+export type Me = S["Me"];
+export type DevUsers = S["DevUsers"];
 
 export const API = "/api/v1";
 
@@ -47,6 +49,14 @@ export class ApiError extends Error {
 
 type Query = Record<string, string | number | boolean | null | undefined>;
 
+// the session's CSRF token (contract 1.16.0, AM-69): kept in memory only, sent on every POST and DELETE
+let csrfToken: string | null = null;
+export const setCsrfToken = (token: string | null) => {
+  csrfToken = token;
+};
+/** Fired when the API answers 401 outside the sign-in routes: the session has ended and the app shows the sign-in page. */
+export const SIGNED_OUT_EVENT = "arai:signed-out";
+
 async function request<T>(path: string, init?: RequestInit, query?: Query): Promise<T> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query ?? {})) {
@@ -54,8 +64,10 @@ async function request<T>(path: string, init?: RequestInit, query?: Query): Prom
   }
   const url = API + path + (params.size ? "?" + params : "");
   let response: Response;
+  const headers = new Headers(init?.headers);
+  if ((init?.method ?? "GET").toUpperCase() !== "GET" && csrfToken) headers.set("X-CSRF-Token", csrfToken);
   try {
-    response = await fetch(url, init);
+    response = await fetch(url, { ...init, headers, credentials: "same-origin" });
   } catch {
     throw new ApiError(0, { error_code: "network", message: "The API could not be reached.", request_id: "", details: [] });
   }
@@ -66,6 +78,7 @@ async function request<T>(path: string, init?: RequestInit, query?: Query): Prom
   } catch {
     body = null;
   }
+  if (response.status === 401 && !path.startsWith("/auth/") && path !== "/me") window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
   if (!response.ok) throw new ApiError(response.status, body as ApiErrorBody | null);
   return body as T;
 }
@@ -90,7 +103,9 @@ export type CustomerFilters = {
   tier: "all" | Tier;
   gate: "all" | GateOutcome;
   state: "all" | WorkflowState;
-  exclude_reviewer: string;
+  exclude_reviewer?: string;
+  // contract 1.16.0: the cases the signed-in user did not open, by user id
+  exclude_mine?: boolean;
   // contract 1.13.0: the cleared heavy returners view, filtered by the server rather than page by page in the browser
   cleared_heavy?: boolean;
   // contract 1.15.0: the customer against earlier snapshots of its world
@@ -108,6 +123,10 @@ export function queueExportUrl(runId: string, filters: Partial<CustomerFilters>)
 }
 
 export const api = {
+  me: () => request<Me>("/me"),
+  devUsers: () => request<DevUsers>("/auth/dev-users"),
+  devLogin: (user: string) => request<Me>("/auth/dev-login", json({ user })),
+  logout: () => request<null>("/auth/logout", { method: "POST" }),
   health: () => request<Health>("/health"),
   datasets: (cursor?: string | null) => request<Page<Dataset>>("/datasets", undefined, { cursor, limit: 100 }),
   registerDataset: (form: FormData) => request<Dataset>("/datasets", { method: "POST", body: form }),

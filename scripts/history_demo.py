@@ -9,6 +9,9 @@ in the September queue too:
 - W5401-C05428, a ring member at rank 23 in August: opened and sent for approval, not yet decided.
 
 Each request carries a fixed idempotency key, so running the script again changes nothing. Nothing here touches a score.
+Since contract 1.16.0 every action goes through a signed-in session of the development login: the snapshots are
+registered and scored as Admin, and each outcome is written by its reviewer's own session (Asha, Meera, Ravi), so the
+server records who did what.
 
 With --load it first registers the world's snapshots from the artifact folder (the world itself and every
 `worlds/<world>.as-of-<date>` folder `arai snapshot` wrote), through the same upload the browser makes, and scores each
@@ -25,6 +28,7 @@ and is not uploaded twice; one already scored is not scored again. So on a lapto
 from __future__ import annotations
 
 import argparse
+import http.cookiejar
 import json
 import sys
 import time
@@ -60,18 +64,49 @@ STORY = [
 ]
 
 
-def call(base: str, path: str, body: dict | None = None, raw: bytes | None = None, content_type: str = "application/json") -> dict:
+class Session:
+    """One person signed in through the development login (contract 1.16.0, AM-69): its own cookie and CSRF token. The
+    server takes every action's author from this session, never from a name in the request."""
+
+    def __init__(self, base: str, user: str):
+        self.url, self.user = base, user
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        self.csrf = None
+        me = call(self, "/auth/dev-login", {"user": user})
+        self.csrf = me["csrf_token"]
+
+
+_sessions: dict = {}
+
+
+def session(base: str, user: str) -> Session:
+    if (base, user) not in _sessions:
+        _sessions[(base, user)] = Session(base, user)
+    return _sessions[(base, user)]
+
+
+def call(who: Session, path: str, body: dict | None = None, raw: bytes | None = None, content_type: str = "application/json") -> dict:
     data = raw if raw is not None else None if body is None else json.dumps(body).encode()
-    request = urllib.request.Request(base + "/api/v1" + path, method="POST" if data is not None else "GET", data=data,
-                                     headers={"content-type": content_type})
+    headers = {"content-type": content_type}
+    if data is not None and who.csrf:
+        headers["X-CSRF-Token"] = who.csrf
+    request = urllib.request.Request(who.url + "/api/v1" + path, method="POST" if data is not None else "GET", data=data, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=600) as response:
+        with who.opener.open(request, timeout=600) as response:
             return json.loads(response.read())
     except urllib.error.HTTPError as error:
-        raise SystemExit(f"{path}: HTTP {error.code} {error.read().decode()[:300]}") from None
+        text = error.read().decode()
+        code = (json.loads(text) if text.startswith("{") else {}).get("error_code")
+        raise ApiFailure(error.code, code, f"{path} as {who.user}: HTTP {error.code} {text[:300]}") from None
 
 
-def register(base: str, operational: Path) -> dict:
+class ApiFailure(Exception):
+    def __init__(self, status: int, code: str | None, message: str):
+        super().__init__(message)
+        self.status, self.code = status, code
+
+
+def register(base: Session, operational: Path) -> dict:
     """Upload one snapshot folder as the browser does (a manifest field and seven CSV files)."""
     boundary = uuid.uuid4().hex
     parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="manifest"\r\n\r\n'.encode()
@@ -83,7 +118,7 @@ def register(base: str, operational: Path) -> dict:
     return call(base, "/datasets", raw=body, content_type=f"multipart/form-data; boundary={boundary}")
 
 
-def all_runs(base: str) -> list:
+def all_runs(base: Session) -> list:
     runs, cursor = [], None
     while True:
         page = call(base, "/runs?limit=100" + (f"&cursor={cursor}" if cursor else ""))
@@ -93,7 +128,7 @@ def all_runs(base: str) -> list:
             return runs
 
 
-def load(base: str, world: str, artifact_root: Path) -> None:
+def load(base: Session, world: str, artifact_root: Path) -> None:
     """Register every snapshot of `world` found under the artifact root and score the ones with no succeeded run."""
     folders = sorted(artifact_root.glob(f"worlds/{world}.as-of-*/operational")) + [artifact_root / "worlds" / world / "operational"]
     for operational in folders:
@@ -115,7 +150,7 @@ def load(base: str, world: str, artifact_root: Path) -> None:
         print(f"{label}: scored, run {run['run_id']}, {run['selected_count']} selected of {run['eligible_count']} eligible")
 
 
-def snapshot_run(base: str, world: str, as_of: str) -> dict:
+def snapshot_run(base: Session, world: str, as_of: str) -> dict:
     """The newest succeeded run on the snapshot of `world` whose cutoff date is `as_of`."""
     cursor = None
     while True:
@@ -135,20 +170,30 @@ def main() -> int:
     parser.add_argument("--as-of", default="2026-08-09", help="the earlier snapshot's cutoff date")
     parser.add_argument("--load", action="store_true", help="first register and score the world's snapshots from the artifact folder")
     parser.add_argument("--artifact-root", type=Path, default=None, help="default: the experiment's artifacts folder")
+    parser.add_argument("--admin", default="Admin", help="the development-login user who registers and scores (admin role)")
     args = parser.parse_args()
+    admin = session(args.base_url, args.admin)
     if args.load:
         # only --load reads the artifact folder
         from arai import paths
-        load(args.base_url, args.world, args.artifact_root or paths.ARTIFACT_ROOT)
-    run = snapshot_run(args.base_url, args.world, args.as_of)
+        load(admin, args.world, args.artifact_root or paths.ARTIFACT_ROOT)
+    run = snapshot_run(admin, args.world, args.as_of)
     print(f"{args.world} snapshot {args.as_of}: run {run['run_id']}")
     for customer, events in STORY:
         for step, (reviewer, kind, reading, note) in enumerate(events):
-            review = call(args.base_url, f"/runs/{run['run_id']}/customers/{customer}/reviews",
-                          {"reviewer_name": reviewer, "kind": kind, "disposition": reading, "note": note,
-                           "idempotency_key": f"history-demo-{args.as_of}-{customer}-{step}"})
+            # each outcome is written by its reviewer's own session: the author is who signed in
+            try:
+                review = call(session(args.base_url, reviewer), f"/runs/{run['run_id']}/customers/{customer}/reviews",
+                              {"kind": kind, "disposition": reading, "note": note,
+                               "idempotency_key": f"history-demo-{args.as_of}-{customer}-{step}"})
+            except ApiFailure as failure:
+                if failure.code != "idempotency_conflict":
+                    raise
+                # recorded by an earlier run of this script, before sign-in existed (a typed name, no user id): kept as it is
+                print(f"  {customer}: {kind} by {reviewer} already recorded earlier (unverified name)")
+                continue
             print(f"  {customer}: {kind} by {reviewer} ({review['review_id']})")
-    latest = max((r for r in all_runs(args.base_url) if r["world_id"] == args.world and r["status"] == "succeeded"),
+    latest = max((r for r in all_runs(admin) if r["world_id"] == args.world and r["status"] == "succeeded"),
                  key=lambda r: r["cutoff"])
     previous = latest["previous_snapshot"]
     if previous:
@@ -158,4 +203,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except ApiFailure as failure:
+        raise SystemExit(str(failure)) from None

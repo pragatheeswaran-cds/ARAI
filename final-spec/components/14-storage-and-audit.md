@@ -18,6 +18,8 @@ Contract 1.14.0 (AM-67): refund totals are aggregates over run_timeline (amount_
 
 Contract 1.15.0 (AM-68), migration 0011: datasets is unique on (world_id, cutoff) instead of world_id; reviews gains dataset_id (the snapshot of the origin run, backfilled from runs, not null) with an index on (world_id, customer_id, dataset_id, kind, created_at, id), and the workflow state is the latest workflow event of the customer in that snapshot; experiments gains truth_cutoff, read at ingest from the truth world's own manifest. Reviews stay append only and span the snapshots of a world.
 
+Contract 1.16.0 (AM-69), migration 0012: users (issuer and subject unique together, display name, status), user_roles (role and its source, refreshed at every sign-in), sessions (SHA-256 of the cookie and of its CSRF token, last seen, expiry, end and its reason), auth_events (append only: sign_in, sign_out, session_ended, refused, export, user_disabled) and reviews.author_user_id (null for reviews written before sign-in existed). The second-reviewer rule reads author_user_id within the snapshot.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Dataset/job/model/experiment/review events.

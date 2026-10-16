@@ -32,7 +32,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from arai import bundles
 from arai.operational import TABLES
 from arai.paths import SPEC_ROOT
-from arai.service import datasets, scoring, views, worker
+from arai.service import auth, datasets, scoring, views, worker
 from arai.service.config import ServiceConfig, from_env
 from arai.service.store import Conflict, NotFound, Store, request_hash
 
@@ -67,12 +67,27 @@ class RunRequest(BaseModel):
 
 class ReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    reviewer_name: str = Field(min_length=1, max_length=100)
+    # contract 1.16.0 (AM-69): the author is the signed-in user; a reviewer_name sent by an older client is accepted and ignored
+    reviewer_name: str | None = Field(None, max_length=100)
     kind: Literal["note", "open", "request_approval", "approve", "reject", "feedback"] = "note"
     disposition: Literal["needs_investigation", "likely_legitimate", "unresolved"]
     note: str = Field(min_length=1, max_length=4000)
     idempotency_key: str = Field(min_length=1, max_length=128)
     _clean = field_validator("reviewer_name", "note", "idempotency_key")(_no_nul)
+
+
+class DevLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user: str = Field(min_length=1, max_length=100)
+    _clean = field_validator("user")(_no_nul)
+
+
+SESSION_ENDED = {
+    "idle": "Your session ended after a period without activity. Sign in again.",
+    "max_age": "Your session reached its maximum length. Sign in again.",
+    "disabled": "This account is disabled.",
+}
+NEEDED_ROLE = {"read": "viewer", "export": "reviewer", "review": "reviewer", "decide": "approver", "manage": "admin"}
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -117,6 +132,9 @@ def review_body(row: dict) -> dict:
     return {"review_id": row["id"], "world_id": row["world_id"], "customer_id": row["customer_id"], "run_id": row["run_id"],
             "model_id": row["model_id"], "reviewer_name": row["reviewer_name"], "kind": row["kind"], "disposition": row["disposition"],
             "note": row["note"], "created_at": _iso(row["created_at"]),
+            # contract 1.16.0 (AM-69): who wrote it, verified when it was written by a signed-in user
+            "author": {"user_id": row.get("author_user_id"), "display_name": row["reviewer_name"],
+                       "verified": row.get("author_user_id") is not None},
             # contract 1.15.0 (AM-68): notes follow the customer across snapshots; each says which snapshot it was written on
             "dataset_id": row["dataset_id"], "snapshot_cutoff": _iso(row["snapshot_cutoff"])}
 
@@ -126,6 +144,7 @@ class Service:
 
     def __init__(self, config: ServiceConfig):
         self.config, self.store = config, Store(config.database_url)
+        self.auth = auth.Auth(config, self.store)
         self._active_cache: tuple | None = None
         self.worker_thread = None
 
@@ -208,8 +227,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
 
     app = FastAPI(title="ARAI development API", version="1.12.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service = service
-    app.add_middleware(CORSMiddleware, allow_origins=list(config.ui_origins), allow_methods=["GET", "POST"],
-                       allow_headers=["content-type"], allow_credentials=False)
+    app.add_middleware(CORSMiddleware, allow_origins=list(config.ui_origins), allow_methods=["GET", "POST", "DELETE"],
+                       allow_headers=["content-type", auth.CSRF_HEADER], allow_credentials=True)
 
     def error_response(status: int, code: str, message: str, request_id: str, details: list | None = None, headers=None):
         return JSONResponse(status_code=status, headers=headers, content={
@@ -268,7 +287,37 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         message = {404: "Unknown resource.", 405: "Method not allowed."}.get(error.status_code, "Request refused.")
         return error_response(error.status_code, code, message, getattr(request.state, "request_id", uuid.uuid4().hex))
 
-    api = APIRouter(prefix=PREFIX)
+    def authorize(request: Request):
+        """Every route's permission, before anything else (AM-69): public routes pass, others need a live session, a POST or
+        DELETE also needs the session's CSRF token, and the user's roles must grant the route's permission. A route missing
+        from auth.ROUTE_PERMISSIONS is refused."""
+        path = getattr(request.scope.get("route"), "path", "")
+        needed = auth.ROUTE_PERMISSIONS.get((request.method, path))
+        if needed is None:
+            raise ApiError(403, "forbidden", "This route has no declared permission.")
+        if needed == auth.PUBLIC:
+            return None
+        token = request.cookies.get(auth.SESSION_COOKIE)
+        user, reason = service.auth.resolve(token)
+        if user is None:
+            if token:
+                service.auth.log("refused", None, request.state.request_id, {"status": 401, "reason": reason, "path": path})
+            raise ApiError(401, "authentication_required", SESSION_ENDED.get(reason, "Sign in first."))
+        if request.method in ("POST", "DELETE") and not auth.Auth.csrf_ok(token, request.headers.get(auth.CSRF_HEADER)):
+            service.auth.log("refused", user.id, request.state.request_id, {"status": 403, "reason": "csrf", "path": path})
+            raise ApiError(403, "csrf_required", "The request lacks this session's X-CSRF-Token header.")
+        if needed != auth.SIGNED_IN and not user.can(needed):
+            service.auth.log("refused", user.id, request.state.request_id, {"status": 403, "permission": needed, "path": path})
+            raise ApiError(403, "forbidden", f"This needs the {NEEDED_ROLE[needed]} role.")
+        request.state.user = user
+        return user
+
+    def me_body(user, token: str) -> dict:
+        return {"user_id": user.id, "display_name": user.display_name, "email": user.email, "roles": list(user.roles),
+                "permissions": sorted(user.permissions), "auth_mode": config.mode, "csrf_token": auth.csrf_for(token),
+                "session_expires_at": _iso(user.expires_at), "idle_minutes": config.session_idle_minutes}
+
+    api = APIRouter(prefix=PREFIX, dependencies=[Depends(authorize)])
     limit_query = Query(50, ge=1, le=100)
 
     # ------------------------------------------------------------------ health and contract
@@ -284,6 +333,42 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                 # the worker may be another process: a growing queue with no recent heartbeat means nothing is scoring
                 "queue_depth": service.store.queue_depth(),
                 "worker_seconds_since_seen": service.store.worker_seconds_since_seen()}
+
+    # ------------------------------------------------------------------ sign-in (AM-69)
+    @api.get("/auth/dev-users")
+    def dev_users():
+        if config.mode != "dev":
+            raise ApiError(404, "not_found", "The development login is off on this instance.")
+        return {"auth_mode": "dev", "users": service.auth.dev_users()}
+
+    @api.post("/auth/dev-login")
+    def dev_login(body: DevLoginRequest, request: Request, response: Response):
+        if config.mode != "dev":
+            raise ApiError(404, "not_found", "The development login is off on this instance.")
+        signed = service.auth.sign_in_dev(body.user, request.state.request_id)
+        if signed is None:
+            raise ApiError(422, "invalid_request", "Not a user of the development login.")
+        user, token = signed
+        response.set_cookie(auth.SESSION_COOKIE, token, max_age=config.session_max_hours * 3600, path="/", httponly=True,
+                            samesite="lax", secure=config.profile == "vm")
+        return me_body(user, token)
+
+    @api.get("/auth/login")
+    def oidc_login():
+        if config.mode != "oidc":
+            raise ApiError(404, "not_found", "Single sign-on is off on this instance; use the development login.")
+        raise ApiError(503, "single_sign_on_unavailable", "Keycloak single sign-on arrives in step 2 of the authentication design.")
+
+    @api.post("/auth/logout", status_code=204)
+    def logout(request: Request):
+        service.auth.sign_out(request.state.user, request.state.request_id)
+        response = Response(status_code=204)
+        response.delete_cookie(auth.SESSION_COOKIE, path="/")
+        return response
+
+    @api.get("/me")
+    def me(request: Request):
+        return me_body(request.state.user, request.cookies.get(auth.SESSION_COOKIE))
 
     @api.get("/openapi.json", include_in_schema=False)
     def contract():
@@ -393,7 +478,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         return service.run_body(service.store.request_cancel(run_id))
 
     # ------------------------------------------------------------------ customers
-    def queue_filters(review_only: bool = True,
+    def queue_filters(request: Request, review_only: bool = True,
                       eligibility: Literal["all", "eligible", "insufficient_history"] = "all", search: str | None = None,
                       evidence: str | None = None,
                       disposition: Literal["all", "unreviewed", "needs_investigation", "likely_legitimate", "unresolved"] = "all",
@@ -405,7 +490,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
                       state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
                       exclude_reviewer: str | None = Query(None, max_length=100), cleared_heavy: bool = False,
-                      history: Literal["all", "new_in_queue", "repeat_in_queue", "decided_before"] = "all") -> dict:
+                      history: Literal["all", "new_in_queue", "repeat_in_queue", "decided_before"] = "all",
+                      exclude_mine: bool = False) -> dict:
         """The queue's filters, shared by the list and its export. Filters choose what is shown, never a score or a selection."""
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
@@ -414,7 +500,9 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                 "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing,
                 "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate,
                 "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None, "cleared_heavy": cleared_heavy,
-                "history": history}
+                "history": history,
+                # contract 1.16.0: leave out the cases the signed-in user opened (the approval band), by user id, not by name
+                "exclude_user_id": getattr(request.state, "user", None).id if exclude_mine and getattr(request.state, "user", None) else None}
 
     @api.get("/runs/{run_id}/customers")
     def list_customers(run_id: str, cursor: str | None = None, limit: int = limit_query, filters: dict = Depends(queue_filters)):
@@ -425,9 +513,11 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         return {"items": items, "next_cursor": views.encode_cursor(context, following) if following is not None else None}
 
     @api.get("/runs/{run_id}/customers/export")
-    def export_customers(run_id: str, filters: dict = Depends(queue_filters)):
+    def export_customers(request: Request, run_id: str, filters: dict = Depends(queue_filters)):
         """The filtered queue as CSV for a hand-off to the returns-policy or service team: every row, in queue order."""
         run = service.succeeded_run(run_id)
+        service.auth.log("export", request.state.user.id, request.state.request_id,
+                         {"run_id": run_id, "filters": {k: v for k, v in filters.items() if v not in (None, False, "all", "")}})
         buffer = io.StringIO()
         writer = csv.writer(buffer, lineterminator="\r\n")
         writer.writerow(views.EXPORT_COLUMNS)
@@ -467,21 +557,24 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         return {"items": [review_body(r) for r in rows[:limit]], "next_cursor": following}
 
     @api.post("/runs/{run_id}/customers/{customer_id}/reviews", status_code=201)
-    def append_review(run_id: str, customer_id: str, body: ReviewRequest):
+    def append_review(request: Request, run_id: str, customer_id: str, body: ReviewRequest):
+        user = request.state.user
+        if body.kind in ("approve", "reject") and not user.can("decide"):
+            service.auth.log("refused", user.id, request.state.request_id, {"status": 403, "permission": "decide"})
+            raise ApiError(403, "forbidden", "Approving or rejecting needs the approver role.")
         run, customer = _case_customer(run_id, customer_id)
         if body.kind in ("approve", "reject") and body.disposition == "unresolved":
             raise ApiError(422, "invalid_request", "A decision carries a reading: approve or reject with needs_investigation or "
                                                    "likely_legitimate, not unresolved.",
                            [{"rule_id": "request.decision_disposition", "table": None, "row_key": "disposition", "count": 1}])
+        # the author is the signed-in user (AM-69); the stored name is the user's display name at the time of writing
         review = {"world_id": run["world_id"], "dataset_id": run["dataset_id"], "customer_id": customer_id, "run_id": run_id,
-                  "model_id": run["model_id"],
-                  "reviewer_name": body.reviewer_name.strip(), "disposition": body.disposition, "note": body.note, "kind": body.kind}
-        if not review["reviewer_name"]:
-            raise ApiError(422, "invalid_request", "A reviewer name is required.")
+                  "model_id": run["model_id"], "reviewer_name": user.display_name, "author_user_id": user.id,
+                  "disposition": body.disposition, "note": body.note, "kind": body.kind}
         if not body.note.strip():
             raise ApiError(422, "invalid_request", "A note is required.")
         row, _ = service.store.append_review(review, body.idempotency_key, request_hash(
-            {"reviewer_name": body.reviewer_name, "disposition": body.disposition, "note": body.note, "kind": body.kind}),
+            {"author": user.id, "disposition": body.disposition, "note": body.note, "kind": body.kind}),
             in_queue=bool(customer["selected_for_review"]))
         return review_body(row)
 

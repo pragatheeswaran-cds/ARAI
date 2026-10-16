@@ -34,7 +34,10 @@ Three characters carry the demo:
 | Arjun, first-line reviewer | Works the queue, writes notes, opens cases | Customer queue, Customer case |
 | Meera, second reviewer | Approves or rejects cases she did not open | Decision panel, second-reviewer rule |
 
-Use any names you like; the UI's reviewer name is free text typed into the header.
+Each character is a person of the development login with the matching role (since API contract 1.16.0): Priya is a
+viewer, Arjun a reviewer, Meera a reviewer and approver; Asha and Ravi (reviewers and approvers) wrote the August
+history, and Admin registers and scores. Sign in as the character whose part you are playing; every note and decision
+is recorded under the person signed in. `AUTH_DEV_USERS` changes the list (RUNBOOK section 2.5).
 
 ---
 
@@ -139,9 +142,11 @@ defaults.
    `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` once, then with the instance up
    `uv run --no-sync python scripts\history_demo.py --load`). The Overview must then show
    **Since the previous snapshot of W5401 (09 Aug 2026)**: 249, 35, 22 and 2.
-3. Type your first reviewer name (Arjun) in the header. The name is kept in the browser only.
+3. Sign in as **Arjun** on the sign-in page. Signing out and in as another character takes two clicks (**Sign out**
+   at the top right).
 4. Know the state the walkthrough leaves behind: the top-ranked case W5401-C03245 is already **in review**, opened
-   by "Walkthrough reviewer", with a few walkthrough notes on it. That is useful (section 4.4 uses it); do not
+   by "Walkthrough reviewer" before sign-in existed, with a few walkthrough notes on it (newer ones by Ravi), and each
+   walkthrough run since opens one more case as Ravi. That is useful (section 4.4 uses it); do not
    wipe it unless you want to open the case live.
 5. Investigation memos read **Memo unavailable: no API key** unless `ANTHROPIC_API_KEY` is set in the environment
    the server runs in. Decide beforehand which version you are showing (section 4.3).
@@ -281,17 +286,22 @@ customer is shown anywhere.
 **Linked accounts tab.** This customer has none. Say: "Links are shown only when the record supports them: a
 shared device, payment instrument or address, and only with the evidence. We will see a ring in a minute."
 
-**Notes tab and the Decision panel.** The case is already **in review**, opened by "Walkthrough reviewer". Notes
-are append only and each one says which run it was written on.
+**Notes tab and the Decision panel.** The case is already **in review**, opened by "Walkthrough reviewer" before sign-in
+existed, so that note carries an **unverified name** marker; notes written since say **(signed in)**. Notes are append
+only and each one says which snapshot and run it was written on.
 
 Now the second-reviewer rule, two ways:
 
-- *Refusal.* Type the opener's name ("Walkthrough reviewer") into the header, write a note, press **Approve**.
-  The server refuses with its own words, shown on the page: "You opened this case. A different reviewer must
-  approve or reject it." (screenshot `07b-case-refusal.png`). Say: "The rule lives in the server, not in the
-  button."
-- *Approval.* Change the header name to Meera, write a note such as "Reviewed the timing evidence; agree it needs
-  the policy team", press **Approve**. The status tile turns to Approved with both names and times.
+- *Roles.* Signed in as Arjun (a reviewer), the Decision panel offers Open, Request approval and notes but no
+  Approve or Reject: "Approving or rejecting needs the approver role." Open the next case marked **New** (queue,
+  Status: New), write a note, press **Open case**, then **Request approval**.
+- *Refusal.* Sign out and sign in as **Meera** (reviewer and approver). On a case Meera opens herself, **Approve** is
+  refused in the server's own words: "You opened this case. A different reviewer must approve or reject it."
+  (screenshot `07b-case-refusal.png`). Say: "The rule compares who signed in, not a typed name, and it lives in the
+  server, not in the button."
+- *Approval.* On the case Arjun opened, Meera writes "Reviewed the timing evidence; agree it needs the policy team"
+  and presses **Approve**. The status tile turns to Approved with both names and times, each recorded under the
+  person who signed in.
 
 Press **Download case summary** at the top of the case: a plain-text hand-off with the evidence, every return
 line with its status and refund, and the notes, for whoever acts on the decision.
@@ -438,7 +448,7 @@ step is the same pipeline on a real month of returns, with the same evaluation p
 | Is the score a probability that this customer is abusing returns? | No. It is a percentile against the training worlds. The page says so wherever the score appears, and no screen uses the words fraud or confidence. |
 | Why is every customer in the queue "High"? | Tiers are anchored to the review budget: High is the queue, Medium is a score of 90 or above outside it, Low is the rest. Switch **Show** to All customers to see Medium and Low. |
 | What decides Escalate against Hold? | A stated rule over the results, printed on hover: selected and in a ring, or with the wardrobing indicator elevated, is Escalate. It is not a model output and changes no rank. |
-| Who can approve a case? | Anyone except the reviewer who opened it; the server enforces it. Reviewer names are free text in this build, not an authenticated identity. |
+| Who can approve a case? | A signed-in approver who did not open it; the server compares user ids, so one person cannot approve their own case under another name. On a laptop the people come from the development login; a shared deployment signs in through Keycloak single sign-on, with roles from Keycloak groups (step 2 of `docs/design/authentication-and-roles.md`). |
 | Where do the memos come from? | A drafting model called after the run, only when an API key is configured, with each draft checked against the case's own numbers before it is stored. Without a key the panel says so and shows nothing else. |
 | Why are the bundle ids different from the experiment record? | The manifest hashes the dependency lock and library versions as well as the code and seeds. Scores, ranks and selections reproduce exactly; the ids differ when the environment does. |
 | Can this run on our data? | The data contract (manifest plus seven tables) is the interface; the pipeline, the evaluation page and the final-test discipline are the same. The results on this page are from a simulator and say nothing yet about real returns. |

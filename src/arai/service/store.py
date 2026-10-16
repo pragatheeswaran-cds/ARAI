@@ -56,11 +56,11 @@ WORKFLOW_JOINS = """LEFT JOIN LATERAL (SELECT w.kind, w.reviewer_name, w.created
                                       WHERE w.world_id = %s AND w.dataset_id = %s AND w.customer_id = c.customer_id
                                         AND w.kind IN ('open', 'request_approval', 'approve', 'reject')
                                       ORDER BY w.created_at DESC, w.id DESC LIMIT 1) wf ON true
-                   LEFT JOIN LATERAL (SELECT o.reviewer_name, o.created_at FROM reviews o
+                   LEFT JOIN LATERAL (SELECT o.reviewer_name, o.author_user_id, o.created_at FROM reviews o
                                       WHERE o.world_id = %s AND o.dataset_id = %s AND o.customer_id = c.customer_id AND o.kind = 'open'
                                       ORDER BY o.created_at DESC, o.id DESC LIMIT 1) opened ON true"""
 WORKFLOW_FIELDS = ("wf.kind AS workflow_kind, wf.reviewer_name AS workflow_reviewer, wf.created_at AS workflow_at, "
-                   "opened.reviewer_name AS opened_by, opened.created_at AS opened_at")
+                   "opened.reviewer_name AS opened_by, opened.author_user_id AS opened_by_user_id, opened.created_at AS opened_at")
 # the state rule as SQL (views.workflow is the same rule in Python): with no event, a customer the gate leaves at LOW or
 # WARNING (eligible and not selected) is auto_logged and every other customer is new
 _NO_EVENT = "wf.kind IS NULL"
@@ -573,18 +573,21 @@ class Store:
                         raise Conflict("case_decided", CASE_DECIDED_MESSAGE)
                     if kind == "request_approval" and state == "request_approval":
                         raise Conflict("case_already_open", APPROVAL_ALREADY_REQUESTED_MESSAGE)
-                    opened = db.execute("""SELECT reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s AND dataset_id = %s
+                    opened = db.execute("""SELECT reviewer_name, author_user_id FROM reviews WHERE world_id = %s AND customer_id = %s AND dataset_id = %s
                                            AND kind = 'open' ORDER BY created_at DESC, id DESC LIMIT 1""",
                                         (review["world_id"], review["customer_id"], snapshot)).fetchone()
-                    if kind != "request_approval" and same_reviewer(opened["reviewer_name"], review["reviewer_name"]):
+                    # the same person by user id (AM-69); an open written before sign-in existed has no user id, so its name decides
+                    same = (opened["author_user_id"] == review.get("author_user_id") if opened["author_user_id"]
+                            else same_reviewer(opened["reviewer_name"], review["reviewer_name"]))
+                    if kind != "request_approval" and same:
                         raise Conflict("second_reviewer_required", SECOND_REVIEWER_MESSAGE)
             row = db.execute("""WITH added AS (
                                     INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind,
-                                                         dataset_id)
+                                                         dataset_id, author_user_id)
                                     VALUES (%(id)s, %(world_id)s, %(customer_id)s, %(run_id)s, %(model_id)s, %(reviewer_name)s,
-                                            %(disposition)s, %(note)s, %(kind)s, %(dataset_id)s) RETURNING *)
+                                            %(disposition)s, %(note)s, %(kind)s, %(dataset_id)s, %(author_user_id)s) RETURNING *)
                                 SELECT added.*, d.cutoff AS snapshot_cutoff FROM added JOIN datasets d ON d.id = added.dataset_id""",
-                             dict(review, id=new_id("rev"))).fetchone()
+                             dict({"author_user_id": None, **review}, id=new_id("rev"))).fetchone()
             db.execute("INSERT INTO idempotency (scope, key, request_hash, response_ref) VALUES (%s, %s, %s, %s)",
                        (scope, idempotency_key, body_hash, row["id"]))
             return row, True
@@ -622,6 +625,9 @@ class Store:
         if filters.get("exclude_reviewer"):
             clauses.append("coalesce(opened.reviewer_name, '') <> %s")
             values.append(filters["exclude_reviewer"])
+        if filters.get("exclude_user_id"):                      # the cases the signed-in user did not open (AM-69)
+            clauses.append("coalesce(opened.author_user_id, '') <> %s")
+            values.append(filters["exclude_user_id"])
         for name, table in (("tier", TIER_SQL), ("gate", GATE_SQL), ("history", HISTORY_SQL)):
             if filters.get(name, "all") != "all":
                 clause = table[filters[name]]

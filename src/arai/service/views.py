@@ -183,7 +183,8 @@ def workflow(row: dict, summary: dict) -> dict:
     else:
         state = {"open": "in_review", "request_approval": "awaiting_approval", "approve": "approved", "reject": "rejected"}[kind]
     decided = kind in ("approve", "reject")
-    return {"state": state, "opened_by": row.get("opened_by"), "opened_at": _iso(row.get("opened_at")),
+    return {"state": state, "opened_by": row.get("opened_by"), "opened_by_user_id": row.get("opened_by_user_id"),
+            "opened_at": _iso(row.get("opened_at")),
             "decided_by": row.get("workflow_reviewer") if decided else None, "decided_at": _iso(row.get("workflow_at")) if decided else None}
 
 

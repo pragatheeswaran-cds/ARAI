@@ -1,6 +1,7 @@
 # Design: authentication, roles and verified reviewer identity
 
-Status: **proposal, decisions 1 to 4 and 6 taken, 5 open** (16 Oct 2026). Branch `auth-design`, cut from `gap3-customer-history` (API contract
+Status: **decided; step 1 built** (16 Oct 2026): development login, roles on every route, CSRF, session limits, review
+authors and the second-reviewer rule by user id, contract 1.16.0 (AM-69). Steps 2 (Keycloak) and later are not built yet. Branch `auth-design`, cut from `gap3-customer-history` (API contract
 1.15.0). Nothing here is built yet; this document is for review before any code.
 
 ## 1. Why
@@ -82,9 +83,9 @@ browser            ARAI server                          identity provider
 
 | User | Roles |
 |---|---|
-| Asha | reviewer |
-| Ravi | approver (and reviewer) |
-| Meera | reviewer |
+| Asha, Ravi, Meera | reviewer and approver |
+| Arjun | reviewer |
+| Priya | viewer |
 | Admin | admin |
 
 Choosing one creates a session exactly as single sign-on would, so everything downstream is the same code. The
@@ -173,7 +174,7 @@ credentials only for the configured development origin.
 | 2 | Where roles live | **Keycloak groups** (recommended): mapped to ARAI roles at each sign-in |
 | 3 | Viewers and export | **Reviewers and above only** export the queue or download a case summary (as proposed) |
 | 4 | Admin and reviewing | **Admin stays separate** from reviewing (as proposed) |
-| 5 | Session lengths | **Open**: options in 6.2 |
+| 5 | Session lengths | **Option B**: 60 minutes idle, 10 hours at most (see 6.2) |
 | 6 | Basic auth at the proxy | **Kept** as an extra outer layer after single sign-on, see 6.3 |
 
 ### 6.1 Keycloak setup this implies
@@ -193,7 +194,7 @@ credentials only for the configured development origin.
   Compose profile, so the sign-in can be rehearsed end to end without a company Keycloak; the laptop demo keeps the
   development login.
 
-### 6.2 Session lengths (open)
+### 6.2 Session lengths (decided: option B)
 
 Two limits apply to an ARAI session. **Idle timeout**: after this long without any request, the user is signed out
 (it protects a screen left open on a shared desk). **Maximum age**: even while active, the user signs in again after

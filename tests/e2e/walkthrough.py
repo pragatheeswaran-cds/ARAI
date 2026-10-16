@@ -48,6 +48,18 @@ def shot(page, name: str) -> None:
     page.screenshot(path=str(OUT / f"{name}.png"), full_page=True)
 
 
+def sign_in_as(page, name: str) -> None:
+    """The development login (contract 1.16.0): sign out if someone is signed in, then choose `name` on the sign-in page."""
+    if page.get_by_role("button", name="Sign out").count():
+        page.get_by_role("button", name="Sign out").click()
+    page.get_by_role("button", name=re.compile(rf"^{re.escape(name)}\b")).click()
+    page.wait_for_function(f"document.body.innerText.includes('Signed in as') && document.body.innerText.includes('{name}')", timeout=15000)
+    # the workspace reloads its runs after a sign-in; the queue link points at a run once they are in (a network-idle wait
+    # does not see requests made after the page's first load)
+    page.wait_for_function("document.querySelector('nav a[href*=\"/runs/\"]') !== null", timeout=60000)
+    settle(page)
+
+
 with sync_playwright() as pw:
     # ARAI_BROWSER names a Chromium executable (a cloud container's pre-installed one); otherwise the machine's Edge is used
     executable = os.environ.get("ARAI_BROWSER")
@@ -58,10 +70,22 @@ with sync_playwright() as pw:
     page.on("pageerror", lambda e: console_errors.append(str(e)))
     page.on("response", lambda r: failed_requests.append(f"{r.status} {r.url}") if r.status >= 400 else None)
 
+    # ---- sign-in (contract 1.16.0): every action is recorded under the person who signed in
+    page.goto(BASE + "/")
+    page.wait_for_selector("text=Development login", timeout=15000)
+    text = page.locator("main").inner_text()
+    check("the sign-in page lists the development login's people with their roles",
+          all(w in text for w in ("Asha", "Ravi", "Meera", "Arjun", "Priya", "Admin")) and "approver" in text and "viewer" in text, text[:120])
+    shot(page, "00-sign-in")
+    sign_in_as(page, "Admin")                              # Admin operates: registering and scoring are the admin's
+
     # ---- overview
     page.goto(BASE + "/")
     settle(page)
     check("root redirects to the overview", page.url.endswith("/overview"), page.url)
+    check("the header says who is signed in and offers sign out",
+          "Signed in as Admin" in " ".join(page.locator(".signedin").inner_text().split())
+          and page.get_by_role("button", name="Sign out").count() == 1)
     text = main_text(page)
     check("overview shows eligible, selected and excluded counts", all(w in text for w in ("Eligible customers", "Selected for review", "Insufficient history")))
     check("overview compares model and rule with neutral wording", "Selected by the model, not by the return-rate rule" in text and "caught" not in text.lower())
@@ -84,6 +108,10 @@ with sync_playwright() as pw:
     shot(page, "02-datasets-and-runs")
 
     check("every scored run offers its results", page.get_by_role("link", name="View results").count() >= 1)
+    sign_in_as(page, "Ravi")                               # Ravi reviews and approves; he cannot register or score
+    check("a reviewer sees no registration or scoring control",
+          "Registering and scoring snapshots need the admin role" in main_text(page)
+          and page.get_by_role("button", name="Score with the active bundle").count() == 0)
 
     # ---- customer queue, by keyboard: the workspace's queue is the newest run of the latest snapshot (AM-68)
     page.get_by_role("link", name="Customer queue", exact=True).click()
@@ -137,31 +165,36 @@ with sync_playwright() as pw:
             check("return behaviour shows reason codes, never free text", "Reason code" in main_text(page) or "No return request" in main_text(page))
         shot(page, f"06-case-{tab.replace(' ', '-')}")
     stamp = str(int(time.time()))
-    page.get_by_label("Reviewer name").fill("Walkthrough reviewer")                       # the run strip; the decision panel reads it
     page.get_by_label("Your reading").select_option("unresolved")
     page.get_by_label("Note (required with every action)").fill(f"Walkthrough note {stamp}: checked timeline and links.")
     page.get_by_role("button", name="Add a note only").focus()
     page.keyboard.press("Enter")
     page.wait_for_function(f"document.querySelector('main').innerText.includes('Walkthrough note {stamp}')", timeout=15000)
-    check("note appended and shown with its origin run", f"Walkthrough note {stamp}" in main_text(page) and "written on the" in main_text(page) and "(this run)" in main_text(page))
+    check("note appended under the signed-in reviewer, with its origin run",
+          f"Walkthrough note {stamp}" in main_text(page) and "Ravi (signed in)" in main_text(page) and "(this run)" in main_text(page))
     page.reload()
     settle(page)
     check("note persists after reload", f"Walkthrough note {stamp}" in main_text(page))
     shot(page, "07-case-notes")
-    # the second-person rule, on stage: the reviewer who opens a case cannot approve it; the server's words are shown
-    if page.get_by_role("button", name="Open case").count():       # an earlier walkthrough may have left the case in review
-        page.get_by_label("Note (required with every action)").fill(f"Walkthrough open {stamp}.")
-        page.get_by_role("button", name="Open case").click()
-        page.wait_for_function("document.querySelector('main').innerText.includes('In review')", timeout=15000)
+    # the second-person rule, on stage: the reviewer who opens a case cannot approve it; the server's words are shown.
+    # The case is one nobody has opened yet in this snapshot, so the opener is the signed-in reviewer himself: the lowest-ranked
+    # on the first page of the customers new to this month's queue, which keeps it clear of the demo's own cases (the ring
+    # W5401-C08645, W5401-C05428 and W5401-C07084 are repeat customers). With a single snapshot every queued customer is new.
+    run_path = page.url.split("/customers/")[0]
+    page.goto(run_path + "/customers?state=new&history=new_in_queue")
+    settle(page)
+    page.locator("main table tbody tr a.link").last.click()
+    settle(page)
+    refusal_case = page.url.rsplit("/", 1)[-1]
+    page.get_by_label("Note (required with every action)").fill(f"Walkthrough open {stamp}.")
+    page.get_by_role("button", name="Open case").click()
+    page.wait_for_function("document.querySelector('main').innerText.includes('In review')", timeout=15000)
     page.get_by_label("Note (required with every action)").fill(f"Walkthrough approve {stamp}.")
     page.get_by_role("button", name="Approve", exact=True).click()
     page.wait_for_function("document.querySelector('main').innerText.includes('second_reviewer_required')", timeout=15000)
     check("approving one's own case is refused in the server's words",
           "A different reviewer must approve or reject it" in main_text(page) and "second_reviewer_required" in main_text(page))
     shot(page, "07b-case-refusal")
-    page.go_back()
-    page.go_back()
-    settle(page)
 
     # ---- history across monthly snapshots of the same world (contract 1.15.0; RUNBOOK 4.3 loads the July and August snapshots)
     page.get_by_role("link", name="Overview").click()
@@ -259,6 +292,19 @@ with sync_playwright() as pw:
     page.goto(BASE + "/nowhere")
     check("unknown page offers the overview", "Unknown page" in main_text(page))
 
+    # ---- roles (contract 1.16.0): what a reviewer without the approver role and an admin may do on the same case
+    sign_in_as(page, "Arjun")
+    page.goto(run_path + "/customers/" + refusal_case)
+    settle(page)
+    check("a reviewer without the approver role is not offered approve or reject",
+          "Approving or rejecting needs the approver role" in main_text(page) and page.get_by_role("button", name="Approve", exact=True).count() == 0)
+    sign_in_as(page, "Admin")
+    page.goto(run_path + "/customers/" + refusal_case)
+    settle(page)
+    check("an admin reads the case but does not review it",
+          "you can read this case" in main_text(page) and page.get_by_role("button", name="Add a note only").count() == 0)
+    shot(page, "18-case-admin-reads")
+
     # ---- narrow screen
     page.set_viewport_size({"width": 420, "height": 900})
     page.goto(BASE + "/overview")
@@ -269,10 +315,12 @@ with sync_playwright() as pw:
 
     # the unknown run's 404 and the staged second-reviewer 409 are the two refusals this walkthrough asks for
     # plus the curves refused for a run on an earlier snapshot, whose customers had acted less than the published truth says
-    expected_failures = [r for r in failed_requests if "run-does-not-exist" in r or (r.startswith("409 ") and (r.endswith("/reviews") or "/curves?" in r))]
+    # and the first look for a session, before anyone signed in
+    expected_failures = [r for r in failed_requests if "run-does-not-exist" in r or (r.startswith("409 ") and (r.endswith("/reviews") or "/curves?" in r))
+                         or (r.startswith("401 ") and r.endswith("/api/v1/me"))]
     unexpected = [r for r in failed_requests if r not in expected_failures]
     check("no unexpected failed request", not unexpected, unexpected[:3])
-    real_errors = [e for e in console_errors if "run-does-not-exist" not in e and "404" not in e and "409" not in e]
+    real_errors = [e for e in console_errors if "run-does-not-exist" not in e and "404" not in e and "409" not in e and "401" not in e]
     check("no console error", not real_errors, real_errors[:3])
     browser_version = browser.version
     browser.close()

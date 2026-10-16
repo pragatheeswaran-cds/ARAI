@@ -42,6 +42,10 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Everything demo state holds, all worlds or one | `uv run arai db-clean --all --yes`; `--all --world W5401 --yes` | 2.4 |
 | The rehearsal's database | `uv run arai db-clean --instance rehearsal --all --yes` | 2.4 |
 | Full reset of a stopped instance | `uv run arai db-clean --reset --yes`; `--instance rehearsal --reset --yes` | 2.4 |
+| **Sign in** | | |
+| Sign in on a laptop | the first page of http://127.0.0.1:8000: choose a person of the development login | 2.5 |
+| Other people or roles | `$env:AUTH_DEV_USERS = "Asha=reviewer,approver;Kabir=reviewer;Admin=admin"` before `uv run arai local` | 2.5 |
+| Sign in from a script or `curl.exe` | `curl.exe -c arai-cookies.txt -X POST .../api/v1/auth/dev-login` with `{"user":"Admin"}`, then the CSRF token on every POST | 2.5 |
 | **Load data** | | |
 | Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
@@ -49,7 +53,7 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Register and score the three snapshots, then record the August review outcomes (instance up) | `uv run --no-sync python scripts\history_demo.py --load` | 4.1 |
 | Only the August review outcomes | `uv run --no-sync python scripts\history_demo.py` | 4.1 |
 | Validate a snapshot without registering it | `uv run arai validate <folder>` | 5 |
-| Export the queue as CSV (any filters of the list) | queue page **Export this view as CSV**, or `curl.exe -s -o queue.csv "http://127.0.0.1:8000/api/v1/runs/<run_id>/customers/export?review_only=true"` | 5 |
+| Export the queue as CSV (any filters of the list; reviewers and above) | queue page **Export this view as CSV**, or `curl.exe -s -b arai-cookies.txt -o queue.csv "http://127.0.0.1:8000/api/v1/runs/<run_id>/customers/export?review_only=true"` after signing in (2.5) | 5 |
 | **Check** | | |
 | Health of an instance | `curl.exe -s http://127.0.0.1:8000/api/v1/health` (8011 for the rehearsal) | 5 |
 | Latest run | `curl.exe -s http://127.0.0.1:8000/api/v1/runs` | 5 |
@@ -232,8 +236,8 @@ uv run arai local                       # wait for the health line in section 5
 ```
 
 Open http://127.0.0.1:8011 in one browser tab and http://127.0.0.1:8000 in another. The demo script starts on the
-8011 tab (cold open, ninety seconds) and switches to 8000 for the rest. Type the reviewer name in the 8000 tab's
-header before the audience arrives. Stop both with Ctrl+C in each terminal; the order does not matter.
+8011 tab (cold open, ninety seconds) and switches to 8000 for the rest. Sign in on the 8000 tab (development login,
+section 2.5) before the audience arrives. Stop both with Ctrl+C in each terminal; the order does not matter.
 
 If only one terminal is available, start the rehearsal in the background and the product in the foreground; stop
 the rehearsal by port afterwards (section 2.2):
@@ -273,6 +277,36 @@ uv run arai baseline-rehearsal --fresh                  # rehearsal reset plus a
 The next start rebuilds an empty database. Nothing under `data\EXP-20261005-04\artifacts` except `datasets` is
 touched by any of these: bundles, worlds and the experiment report stay.
 
+### 2.5 Signing in (development login)
+
+Since API contract 1.16.0 (decision AM-69, `docs/design/authentication-and-roles.md`) every page and API call needs a
+signed-in person; only `/api/v1/health` stays open. On a laptop the instance uses the **development login**: the
+first page lists the people below, and choosing one signs in. Every note and decision is recorded under that person,
+and the second-reviewer rule compares people, not typed names.
+
+| Person | Roles | May |
+|---|---|---|
+| Asha, Ravi, Meera | reviewer, approver | read, export, write notes, open cases, request approval, approve or reject cases they did not open |
+| Arjun | reviewer | read, export, write notes, open cases, request approval |
+| Priya | viewer | read every screen |
+| Admin | admin | read, export, register and delete snapshots, start and cancel runs (no reviewing) |
+
+- **Session:** signed out after 60 minutes without a request, and after 10 hours in any case; **Sign out** is at the top
+  right. Change with `SESSION_IDLE_MINUTES` and `SESSION_MAX_HOURS`.
+- **Other people or roles:** `AUTH_DEV_USERS="Asha=reviewer,approver;Kabir=reviewer;Admin=admin"` before `uv run arai local`.
+- **Shared deployments** (`APP_PROFILE=vm`) refuse the development login and use Keycloak single sign-on
+  (`AUTH_MODE=oidc`), which is step 2 of the design; until it lands, a vm instance answers sign-in with 503.
+- **Scripts and `curl.exe`** sign in through the same login and send the session's CSRF token on every POST and DELETE:
+
+```powershell
+$me = curl.exe -s -c arai-cookies.txt -X POST http://127.0.0.1:8000/api/v1/auth/dev-login -H "content-type: application/json" `
+  -d '{\"user\":\"Admin\"}' | ConvertFrom-Json
+curl.exe -s -b arai-cookies.txt http://127.0.0.1:8000/api/v1/me                         # who is signed in
+# every POST and DELETE: -b arai-cookies.txt -H "X-CSRF-Token: $($me.csrf_token)"
+```
+
+Reviews written before sign-in existed keep their typed name and show **unverified name**; nothing is rewritten.
+
 ---
 
 ## 3. Docker Compose: start, stop
@@ -307,11 +341,14 @@ Only needed on an empty database of the product instance; the baseline rehearsal
 **Validate and register**, then **Score with the active bundle**. Scoring 10,000 customers takes about 12
 seconds; the page updates by itself.
 
-**From the terminal** (same thing through the API; change the port to 8080 for Docker):
+**From the terminal** (same thing through the API, signed in as Admin as in section 2.5; change the port to 8080 for
+Docker):
 
 ```powershell
+$me = curl.exe -s -c arai-cookies.txt -X POST http://127.0.0.1:8000/api/v1/auth/dev-login -H "content-type: application/json" `
+  -d '{\"user\":\"Admin\"}' | ConvertFrom-Json
 $d = "data\EXP-20261005-04\artifacts\worlds\W5401\operational"
-curl.exe -s -X POST http://127.0.0.1:8000/api/v1/datasets `
+curl.exe -s -b arai-cookies.txt -H "X-CSRF-Token: $($me.csrf_token)" -X POST http://127.0.0.1:8000/api/v1/datasets `
   -F "manifest=<$d\manifest.json" `
   -F "customer_master=@$d\customer_master.csv" -F "sku_master=@$d\sku_master.csv" `
   -F "reason_code=@$d\reason_code.csv" -F "sales_order=@$d\sales_order.csv" `
@@ -319,7 +356,7 @@ curl.exe -s -X POST http://127.0.0.1:8000/api/v1/datasets `
   -F "return_order_line=@$d\return_order_line.csv"
 
 # use the dataset_id from the answer; the key can be any text you have not used for this dataset before
-curl.exe -s -X POST http://127.0.0.1:8000/api/v1/runs -H "content-type: application/json" `
+curl.exe -s -b arai-cookies.txt -H "X-CSRF-Token: $($me.csrf_token)" -X POST http://127.0.0.1:8000/api/v1/runs -H "content-type: application/json" `
   -d '{\"dataset_id\":\"ds-27bd9b52167d935eaf7a\",\"idempotency_key\":\"demo-1\"}'
 ```
 
@@ -398,7 +435,7 @@ Expected:
 curl.exe -s http://127.0.0.1:8000/api/v1/runs       # the latest run should be "succeeded"
 ```
 
-Then open http://127.0.0.1:8000: the Overview should show 5,676 eligible customers and 284 selected for world
+Then open http://127.0.0.1:8000, sign in (section 2.5, for example as Ravi): the Overview should show 5,676 eligible customers and 284 selected for world
 W5401 (the 9 September snapshot), and with the snapshots of section 4.1 the panel comparing it with 9 August.
 
 ### Full check before a demonstration
@@ -407,14 +444,14 @@ Run these in order. Each line says what a good result looks like.
 
 ```powershell
 # 1. Python tests. They start their own temporary PostgreSQL; the running server is not touched.
-uv run --no-sync pytest -q                          # "221 passed" in about 8 minutes
+uv run --no-sync pytest -q                          # "227 passed" in about 8 minutes
 
 # 2. Front-end tests and type check
 cd web; npm test; npx tsc --noEmit; cd ..            # "28 passed"; tsc prints nothing
 
 # 3. Browser walkthrough of the running application (needs the server up with W5401 and its snapshots of section 4.1
-#    scored; uses Edge, headless)
-uv run --no-sync python tests\e2e\walkthrough.py     # "61 of 61 checks passed"
+#    scored; uses Edge, headless; it signs in as Admin, Ravi and Arjun through the development login)
+uv run --no-sync python tests\e2e\walkthrough.py     # "66 of 66 checks passed"
 
 # 4. Baseline-fallback check (starts its own temporary instance on port 8011: stop the baseline rehearsal first)
 uv run --no-sync python tests\e2e\fallback_check.py  # "11 of 11 checks passed"
@@ -423,8 +460,9 @@ uv run --no-sync python tests\e2e\fallback_check.py  # "11 of 11 checks passed"
 Use `uv run --no-sync` while the server is running: plain `uv run` may try to refresh the environment and fail
 with "file is being used by another process".
 
-The walkthrough writes one review note on the top-ranked customer each time it runs and stages the second-reviewer
-refusal, so it also opens that case. Notes are append only, so they accumulate; that is expected. The fallback check
+The walkthrough writes one review note on the top-ranked customer each time it runs (as Ravi), and stages the
+second-reviewer refusal on the first case still marked New, which it opens as Ravi; so each run leaves one more case in
+review. Notes are append only, so they accumulate; that is expected. The fallback check
 scores W2001 where that world exists and W5401 otherwise (or the world named on its command line).
 
 Screenshots and results from steps 3 and 4 are written to `reports\ui\<today's date>\`.

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiError, api, newKey, type Case, type Community, type Curves, type Disposition, type ReviewKind, type ScoreDistribution, type Signal } from "../api";
-import { useReviewer, useWorkspace } from "../App";
+import { useSession, useWorkspace } from "../App";
 import { Chips, GateBadge, SCORE_HELP, StateBadge, TierBadge, workflowNote } from "../components/CustomerTable";
 import { Badge, Callout, CopyId, ErrorBox, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, rupees, shortId, useLoad } from "../components/ui";
 import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_LABEL, caseSummary, clearedHeavyReturner, earlierDecisionNote, historyNote, notObserved, rawRate, snapshotDate } from "../derive";
@@ -499,7 +499,7 @@ function MemoPanel({ data }: { data: Case }) {
 
 // ---------------------------------------------------------------- decision
 function Decision({ data, runId, onChanged }: { data: Case; runId: string; onChanged: () => void }) {
-  const { name, setName } = useReviewer();
+  const { me, can } = useSession();
   const w = data.customer.workflow;
   const selected = data.customer.selected_for_review;
   const [disposition, setDisposition] = useState<Disposition>("needs_investigation");
@@ -507,12 +507,10 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
   const [busy, setBusy] = useState<ReviewKind | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const mine = !!name.trim() && w.opened_by === name.trim();
+  // the opener by user id (contract 1.16.0); an open written before sign-in existed has only its typed name
+  const mine = w.opened_by_user_id ? w.opened_by_user_id === me.user_id : !!w.opened_by && w.opened_by === me.display_name;
+  const decide = can("decide");
   const act = async (kind: ReviewKind, override?: Disposition, text?: string) => {
-    if (!name.trim()) {
-      setError(new ApiError(422, { error_code: "reviewer_required", message: "Enter your name in the run strip first.", request_id: "", details: [] }));
-      return;
-    }
     const body = text ?? note.trim();
     if (!body) {
       setError(new ApiError(422, { error_code: "note_required", message: "A note is required with every action.", request_id: "", details: [] }));
@@ -526,7 +524,7 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
     setError(null);
     setDone(null);
     try {
-      await api.appendReview(runId, data.customer.customer_id, { reviewer_name: name.trim(), kind, disposition: override ?? disposition, note: body, idempotency_key: newKey() });
+      await api.appendReview(runId, data.customer.customer_id, { kind, disposition: override ?? disposition, note: body, idempotency_key: newKey() });
       setNote("");
       setDone(kind);
       onChanged();
@@ -549,6 +547,11 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
       {mine && (w.state === "in_review" || w.state === "awaiting_approval") && (
         <Callout>You opened this case. A different reviewer must approve or reject it.</Callout>
       )}
+      {!can("review") ? (
+        <p className="muted">
+          Signed in as {me.display_name} ({me.roles.join(", ")}): you can read this case. Notes and decisions need the reviewer or approver role.
+        </p>
+      ) : (
       <form
         className="decision"
         onSubmit={(event: FormEvent) => {
@@ -556,10 +559,9 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
         }}
       >
         <div className="filters">
-          <label>
-            Reviewer
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" maxLength={100} />
-          </label>
+          <p className="small">
+            Acting as <strong>{me.display_name}</strong>
+          </p>
           <label>
             Your reading
             <select value={disposition} onChange={(e) => setDisposition(e.target.value as Disposition)}>
@@ -585,7 +587,7 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
                 Request approval
               </button>
             )}
-            {(w.state === "in_review" || w.state === "awaiting_approval") && (
+            {(w.state === "in_review" || w.state === "awaiting_approval") && decide && (
               <>
                 <button type="button" className="primary" disabled={busy !== null} onClick={() => act("approve")} title={mine ? "The server will refuse: you opened this case" : undefined}>
                   Approve
@@ -595,6 +597,7 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
                 </button>
               </>
             )}
+            {(w.state === "in_review" || w.state === "awaiting_approval") && !decide && <p className="small">Approving or rejecting needs the approver role.</p>}
           </>
         ) : (
           <>
@@ -614,6 +617,7 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
           {busy ? " Saving..." : done ? ` Recorded (${label(done)}).` : ""}
         </span>
       </form>
+      )}
       {error && <ErrorBox error={error} />}
       <p className="small">
         <b>What a decision means.</b> Open takes the case into review. Approve records a second reviewer's sign-off on the case with the reading
@@ -773,15 +777,16 @@ function Notes({ data, runId }: { data: Case; runId: string }) {
   return (
     <Panel title={data.reviews.length ? `${data.reviews.length} entr(ies), oldest first` : "No entry yet"}>
       <p className="muted">
-        Entries are append only and stay with this customer across runs and snapshots of the same world. To correct one, add another. The reviewer
-        name is free text, not a verified identity.
+        Entries are append only and stay with this customer across runs and snapshots of the same world. To correct one, add another. Each is
+        recorded under the person who was signed in; entries from before sign-in existed carry a typed, unverified name.
       </p>
       {data.reviews.map((review) => (
         <article className="note" key={review.review_id}>
           <Badge text={review.kind} tone={review.kind === "approve" ? "green" : review.kind === "reject" ? "amber" : "gray"} /> <Badge text={review.disposition} tone="green" />
           <p>{review.note}</p>
           <small>
-            {review.reviewer_name} / {ist(review.created_at)} / written on the {snapshotDate(review.snapshot_cutoff)} snapshot
+            {review.reviewer_name} {review.author.verified ? "(signed in)" : <Badge text="unverified name" tone="gray" />} / {ist(review.created_at)} / written on the{" "}
+            {snapshotDate(review.snapshot_cutoff)} snapshot
             {review.dataset_id === data.dataset_id ? (review.run_id === runId ? " (this run)" : " (another run of this snapshot)") : " (an earlier or later snapshot)"} / run{" "}
             {shortId(review.run_id, 12)} / bundle {shortId(review.model_id, 14)}
           </small>
@@ -795,6 +800,7 @@ function Notes({ data, runId }: { data: Case; runId: string }) {
 export function CustomerCase() {
   const { runId = "", customerId = "" } = useParams();
   const { fallback, run, experiment, dataset } = useWorkspace();
+  const { can } = useSession();
   const [params, setParams] = useSearchParams();
   const tab = (TABS as readonly string[]).includes(params.get("tab") ?? "") ? (params.get("tab") as Tab) : "evidence";
   const state = useLoad(() => api.customerCase(runId, customerId), [runId, customerId]);
@@ -817,6 +823,7 @@ export function CustomerCase() {
       <LoadState state={state} />
       {data && c && (
         <>
+          {can("export") && (
           <p className="actions">
             <button
               type="button"
@@ -833,6 +840,7 @@ export function CustomerCase() {
               Download case summary
             </button>
           </p>
+          )}
           <ClearedHeader data={data} />
           {c.earlier_decision && (
             <Callout>

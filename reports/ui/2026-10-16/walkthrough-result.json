@@ -3,9 +3,19 @@
   "browser": "chromium 141.0.7390.37",
   "checks": [
     {
+      "check": "the sign-in page lists the development login's people with their roles",
+      "ok": true,
+      "detail": "ARAI.\nARAI / SIGN IN\nSign in\n\nEvery note and decision is recorded under the person who signed in.\n\nDevelopment login: ch"
+    },
+    {
       "check": "root redirects to the overview",
       "ok": true,
       "detail": "http://127.0.0.1:8000/overview"
+    },
+    {
+      "check": "the header says who is signed in and offers sign out",
+      "ok": true,
+      "detail": ""
     },
     {
       "check": "overview shows eligible, selected and excluded counts",
@@ -54,6 +64,11 @@
     },
     {
       "check": "every scored run offers its results",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a reviewer sees no registration or scoring control",
       "ok": true,
       "detail": ""
     },
@@ -153,7 +168,7 @@
       "detail": "http://127.0.0.1:8000/runs/run-020e5490d88f48c28e8c/customers/W5401-C03245?tab=notes"
     },
     {
-      "check": "note appended and shown with its origin run",
+      "check": "note appended under the signed-in reviewer, with its origin run",
       "ok": true,
       "detail": ""
     },
@@ -293,6 +308,16 @@
       "detail": ""
     },
     {
+      "check": "a reviewer without the approver role is not offered approve or reject",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "an admin reads the case but does not review it",
+      "ok": true,
+      "detail": ""
+    },
+    {
       "check": "no horizontal page scroll on a phone-width screen",
       "ok": true,
       "detail": "0"
@@ -308,6 +333,6 @@
       "detail": "[]"
     }
   ],
-  "passed": 61,
+  "passed": 66,
   "failed": 0
 }

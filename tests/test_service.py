@@ -39,6 +39,45 @@ def conforms(schema_name: str, body) -> None:
     assert not errors, f"{schema_name}: " + "; ".join(f"{list(e.path)}: {e.message}" for e in errors[:5])
 
 
+# the development login's people in tests (AM-69): Tester operates and reviews; the others are named in the review tests
+TEST_USERS = (("Tester", ("admin", "reviewer", "approver")), ("Asha", ("reviewer", "approver")), ("Ravi", ("reviewer", "approver")),
+              ("Meera", ("reviewer", "approver")), ("A", ("reviewer",)), ('=HYPERLINK("x")', ("reviewer",)),
+              *((f"R{i}", ("reviewer", "approver")) for i in range(1, 5)), ("Viewer", ("viewer",)), ("Reviewer", ("reviewer",)),
+              ("Admin", ("admin",)))
+TEST_NAMES = {name.casefold(): name for name, _ in TEST_USERS}
+
+
+class SignedInClient(TestClient):
+    """A test client with a real session from the development login: every POST and DELETE carries the session's CSRF token.
+    A review posted with the reviewer_name of a test user goes through that user's own signed-in client, so the server takes
+    the author from that user's session; any other reviewer_name is sent as is and ignored by the server."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user, self.csrf, self.others = None, None, {}
+
+    def sign_in(self, name: str = "Tester") -> "SignedInClient":
+        response = super().request("POST", f"{API}/auth/dev-login", json={"user": name})
+        assert response.status_code == 200, response.text
+        self.user, self.csrf = response.json()["display_name"], response.json()["csrf_token"]
+        return self
+
+    def as_user(self, name: str) -> "SignedInClient":
+        if name not in self.others:
+            self.others[name] = SignedInClient(self.app).sign_in(name)
+        return self.others[name]
+
+    def request(self, method, url, **kwargs):
+        body = kwargs.get("json")
+        if method.upper() == "POST" and str(url).endswith("/reviews") and isinstance(body, dict):
+            named = TEST_NAMES.get(str(body.get("reviewer_name") or "").strip().casefold())
+            if named and named != self.user:
+                return self.as_user(named).request(method, url, **kwargs)
+        if method.upper() in ("POST", "DELETE") and self.csrf:
+            kwargs["headers"] = {"X-CSRF-Token": self.csrf, **(kwargs.get("headers") or {})}
+        return super().request(method, url, **kwargs)
+
+
 @pytest.fixture
 def env(trained, database_url, tmp_path):
     """A serving root with the baseline and one model bundle, the model promoted, and an empty database."""
@@ -49,14 +88,14 @@ def env(trained, database_url, tmp_path):
     baseline_id = bundles.build_baseline_bundle(experiment, root, feature_quantiles=quantiles)
     model_id = bundles.build_model_bundle(experiment, "logreg_c1", root, feature_quantiles=quantiles)
     bundles.activate(model_id, baseline_id, "selected", "EXP-TEST", None, root)
-    config = ServiceConfig(database_url=database_url, artifact_root=root, ui_origins=("http://localhost:5173",))
+    config = ServiceConfig(database_url=database_url, artifact_root=root, ui_origins=("http://localhost:5173",), dev_users=TEST_USERS)
     return {"config": config, "root": root, "baseline_id": baseline_id, "model_id": model_id, "experiment": experiment}
 
 
 @pytest.fixture
 def client(env):
-    with TestClient(create_app(env["config"])) as test_client:
-        yield test_client
+    with SignedInClient(create_app(env["config"])) as test_client:
+        yield test_client.sign_in("Tester")
 
 
 def upload_parts(written, **overrides) -> dict:
@@ -315,7 +354,9 @@ def test_notes_are_append_only_idempotent_and_cross_runs(client, env, written):
     assert client.post(url_a, json=note).json()["review_id"] == created.json()["review_id"]     # repeat: the same note
     assert client.post(url_a, json=dict(note, note="changed")).status_code == 409
     assert client.post(url_a, json=dict(note, disposition="fraud", idempotency_key="n2")).status_code == 422
-    assert client.post(url_a, json=dict(note, reviewer_name="", idempotency_key="n3")).status_code == 422
+    ignored = client.post(url_a, json=dict(note, reviewer_name="Somebody else", idempotency_key="n3"))
+    assert ignored.status_code == 201 and ignored.json()["reviewer_name"] == "Tester"      # the author is the signed-in user
+    assert ignored.json()["author"]["verified"] and ignored.json()["author"]["user_id"]
 
     run_b = scored_run(client, env, written, key="b", model_id=env["baseline_id"])             # a second run of the same world
     assert run_b["run_id"] != run_a["run_id"] and run_b["model_kind"] == "baseline_fallback"
@@ -328,11 +369,11 @@ def test_notes_are_append_only_idempotent_and_cross_runs(client, env, written):
     assert correction.status_code == 201
     notes = client.get(url_b).json()
     conforms("ReviewPage", notes)
-    assert [n["reviewer_name"] for n in notes["items"]] == ["Asha", "Ravi"]                    # the first note is visible from run B
+    assert [n["reviewer_name"] for n in notes["items"]] == ["Asha", "Tester", "Ravi"]          # the first notes are visible from run B
     assert notes["items"][0]["run_id"] == run_a["run_id"] and notes["items"][0]["model_id"] == env["model_id"]   # origin kept
-    assert notes["items"][1]["run_id"] == run_b["run_id"] and notes["items"][1]["model_id"] == env["baseline_id"]
+    assert notes["items"][2]["run_id"] == run_b["run_id"] and notes["items"][2]["model_id"] == env["baseline_id"]
     case = client.get(f"{API}/runs/{run_a['run_id']}/customers/{customer}").json()
-    assert len(case["reviews"]) == 2 and case["customer"]["latest_disposition"] == "likely_legitimate"
+    assert len(case["reviews"]) == 3 and case["customer"]["latest_disposition"] == "likely_legitimate"
     reviewed = all_pages(client, f"{API}/runs/{run_a['run_id']}/customers", {"review_only": "false", "disposition": "likely_legitimate"})
     assert [c["customer_id"] for c in reviewed] == [customer]
     unreviewed = all_pages(client, f"{API}/runs/{run_a['run_id']}/customers", {"review_only": "false", "disposition": "unreviewed"})
@@ -631,8 +672,9 @@ def test_artifacts_move_to_another_root_without_stored_paths(client, env, writte
     store = Store(env["config"].database_url)
     assert store.get_dataset(run["dataset_id"])["artifact_key"] == f"datasets/{run['dataset_id']}"      # no absolute path stored
     assert store.get_run(run["run_id"])["output_key"] is None                                           # results are rows, not files
-    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=relocated)
-    with TestClient(create_app(config)) as moved:
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=relocated, dev_users=TEST_USERS)
+    with SignedInClient(create_app(config)) as moved:
+        moved.sign_in()
         assert moved.get(f"{API}/health").json()["promoted_model_ready"]
         assert moved.get(f"{API}/runs/{run['run_id']}/customers", params={"limit": 20}).json() == first
         again = moved.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "after-move"})
@@ -794,7 +836,8 @@ def test_the_published_experiment_matches_the_contract_and_the_offline_reports(e
     (published / "experiment.json").write_text(json.dumps(report))
     shutil.copyfile(REAL_EXPERIMENT / "published" / "truth.parquet", published / "truth.parquet")
     store = Store(env["config"].database_url)
-    with TestClient(create_app(env["config"])) as served:
+    with SignedInClient(create_app(env["config"])) as served:
+        served.sign_in()
         assert served.get(f"{API}/experiments").json()["items"] == []       # published files are not served until they are loaded
         assert ingest.sync_published(env["config"], store) == [EXPERIMENT_ID]           # the worker does this at startup
         listing = served.get(f"{API}/experiments").json()
@@ -899,8 +942,9 @@ def test_a_database_dump_restores_to_another_database_and_artifact_root(client, 
     relocated = tmp_path / "restored somewhere else" / "artifacts"
     shutil.copytree(env["root"], relocated)
 
-    config = ServiceConfig(database_url=restored_url, artifact_root=relocated)
-    with TestClient(create_app(config)) as restored:
+    config = ServiceConfig(database_url=restored_url, artifact_root=relocated, dev_users=TEST_USERS)
+    with SignedInClient(create_app(config)) as restored:
+        restored.sign_in()
         assert restored.get(f"{API}/health").json()["promoted_model_ready"]
         after = {"queue": restored.get(url, params={"limit": 40}).json(), "case": restored.get(f"{url}/{customer}").json(),
                  "run": restored.get(f"{API}/runs/{run['run_id']}").json(), "styles": restored.get(f"{API}/runs/{run['run_id']}/styles").json()}
@@ -1278,7 +1322,8 @@ def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_de
     # before any review: the queue is new, every eligible customer outside it is auto-logged, the unranked are new
     for c in everyone:
         expected = "auto_logged" if c["gate_outcome"] in ("LOW", "WARNING") else "new"
-        assert c["workflow"] == {"state": expected, "opened_by": None, "opened_at": None, "decided_by": None, "decided_at": None}
+        assert c["workflow"] == {"state": expected, "opened_by": None, "opened_by_user_id": None, "opened_at": None,
+                                  "decided_by": None, "decided_at": None}
     assert {c["workflow"]["state"] for c in queue} == {"new"} and any(c["workflow"]["state"] == "auto_logged" for c in everyone)
     first, second = queue[0]["customer_id"], queue[1]["customer_id"]
     reviews = lambda customer: f"{url}/{customer}/reviews"  # noqa: E731
@@ -1306,6 +1351,11 @@ def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_de
     assert [c["customer_id"] for c in band] == [first]
     assert all_pages(client, url, {"state": "awaiting_approval", "exclude_reviewer": "Asha"}) == []
     assert [c["customer_id"] for c in all_pages(client, url, {"state": "awaiting_approval", "exclude_reviewer": "Ravi"})] == [first]
+    # contract 1.16.0: the same band by the signed-in user's id, not a typed name
+    asha, ravi = client.as_user("Asha"), client.as_user("Ravi")
+    assert all_pages(asha, url, {"state": "awaiting_approval", "exclude_mine": "true"}) == []
+    assert [c["customer_id"] for c in all_pages(ravi, url, {"state": "awaiting_approval", "exclude_mine": "true"})] == [first]
+    assert client.get(f"{url}/{first}").json()["customer"]["workflow"]["opened_by_user_id"] == asha.get(f"{API}/me").json()["user_id"]
     decided = post(first, "k4", kind="approve", reviewer_name="Ravi", disposition="likely_legitimate")
     assert decided.status_code == 201
     state = client.get(f"{url}/{first}").json()["customer"]["workflow"]
@@ -1862,3 +1912,155 @@ def test_evaluation_truth_applies_only_to_the_snapshot_it_describes(client, env,
     refused = client.get(f"{API}/experiments/EXP-TEST/curves", params={"run_id": first["run_id"]})
     assert refused.status_code == 409 and refused.json()["error_code"] == "world_mismatch" and "snapshot" in refused.json()["message"]
     assert client.get(f"{API}/experiments/EXP-TEST/curves", params={"run_id": second["run_id"]}).status_code == 200
+
+
+# ------------------------------------------------------------------ authentication and roles (contract 1.16.0, AM-69)
+def _fill(path: str) -> str:
+    return path.replace("{run_id}", "run-x").replace("{customer_id}", "C-x").replace("{dataset_id}", "ds-x") \
+               .replace("{style_id}", "S-x").replace("{experiment_id}", "E-x")
+
+
+def test_every_route_declares_a_permission_and_refuses_a_request_without_a_session(client):
+    from arai.service import auth
+    anonymous = TestClient(client.app)
+    for path, operations in CONTRACT["paths"].items():
+        for method in operations:
+            if method not in ("get", "post", "delete"):
+                continue
+            needed = auth.ROUTE_PERMISSIONS.get((method.upper(), f"{API}{path}"))
+            assert needed is not None, (method, path)                                   # no route without a declared permission
+            if needed == auth.PUBLIC:
+                continue
+            response = anonymous.request(method.upper(), f"{API}{_fill(path)}", json={} if method == "post" else None)
+            assert response.status_code == 401, (method, path, response.status_code)
+            conforms("Error", response.json())
+            assert response.json()["error_code"] == "authentication_required"
+    assert anonymous.get(f"{API}/health").status_code == 200                              # monitoring needs no session
+
+
+def test_roles_decide_what_each_person_may_do(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    customer = client.get(url, params={"limit": 1}).json()["items"][0]["customer_id"]
+    note = lambda key, **body: {"disposition": "needs_investigation", "note": "n", "idempotency_key": key, **body}  # noqa: E731
+    viewer, reviewer, admin = (client.as_user(name) for name in ("Viewer", "Reviewer", "Admin"))
+    me = viewer.get(f"{API}/me").json()
+    conforms("Me", me)
+    assert me["roles"] == ["viewer"] and me["permissions"] == ["read"] and me["idle_minutes"] == 60
+    # a viewer reads everything and changes nothing; export is for reviewers and above
+    assert viewer.get(url).status_code == 200 and viewer.get(f"{url}/{customer}").status_code == 200
+    for refused in (viewer.get(f"{url}/export"), viewer.post(f"{url}/{customer}/reviews", json=note("v1")),
+                    viewer.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "v"})):
+        assert refused.status_code == 403 and refused.json()["error_code"] == "forbidden", refused.text
+        conforms("Error", refused.json())
+    assert "reviewer role" in viewer.get(f"{url}/export").json()["message"]
+    # a reviewer notes, opens and exports, but does not decide or operate
+    assert reviewer.get(f"{url}/export").status_code == 200
+    assert reviewer.post(f"{url}/{customer}/reviews", json=note("r1", kind="open")).status_code == 201
+    decide = reviewer.post(f"{url}/{customer}/reviews", json=note("r2", kind="approve"))
+    assert decide.status_code == 403 and "approver role" in decide.json()["message"]
+    assert reviewer.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "r"}).status_code == 403
+    # an admin operates and exports, and does not review
+    assert admin.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "a"}).status_code == 202
+    assert admin.get(f"{url}/export").status_code == 200
+    assert admin.post(f"{url}/{customer}/reviews", json=note("a1")).status_code == 403
+    # every refusal and every export is in the audit log
+    with Store(env["config"].database_url).transaction() as db:
+        kinds = [r["kind"] for r in db.execute("SELECT kind FROM auth_events ORDER BY id").fetchall()]
+    assert kinds.count("export") == 2 and kinds.count("refused") >= 6 and "sign_in" in kinds
+
+
+def test_a_post_or_delete_needs_the_session_csrf_token(client, env, written):
+    dataset = register(client, written)
+    raw = TestClient(client.app)
+    raw.cookies.set("arai_session", client.cookies.get("arai_session"))                  # the session without its token
+    body = {"dataset_id": dataset["dataset_id"], "idempotency_key": "csrf"}
+    for headers in ({}, {"X-CSRF-Token": "not-the-token"}):
+        refused = raw.post(f"{API}/runs", json=body, headers=headers)
+        assert refused.status_code == 403 and refused.json()["error_code"] == "csrf_required"
+    assert raw.delete(f"{API}/datasets/{dataset['dataset_id']}").json()["error_code"] == "csrf_required"
+    assert raw.post(f"{API}/runs", json=body, headers={"X-CSRF-Token": client.csrf}).status_code == 202
+
+
+def test_a_session_ends_when_idle_too_long_past_its_maximum_age_signed_out_or_disabled(client, env):
+    store = Store(env["config"].database_url)
+    def session(name):
+        return SignedInClient(client.app).sign_in(name)
+    def age(signed, column, interval):
+        with store.transaction() as db:
+            db.execute(f"UPDATE sessions SET {column} = now() - interval '{interval}' WHERE user_id = %s AND ended_at IS NULL",
+                       (signed.get(f"{API}/me").json()["user_id"],))
+    idle = session("Meera")
+    age(idle, "last_seen_at", "59 minutes")
+    assert idle.get(f"{API}/me").status_code == 200                                        # 59 minutes idle: still in, and touched
+    age(idle, "last_seen_at", "61 minutes")
+    gone = idle.get(f"{API}/me")
+    assert gone.status_code == 401 and "without activity" in gone.json()["message"]
+    assert idle.get(f"{API}/me").json()["message"] == "Sign in first."                     # ended once; a dead cookie stays dead
+    old = session("Meera")
+    with store.transaction() as db:
+        db.execute("UPDATE sessions SET expires_at = now() - interval '1 second' WHERE ended_at IS NULL AND user_id = "
+                   "(SELECT id FROM users WHERE display_name = 'Meera')")
+    assert "maximum length" in old.get(f"{API}/me").json()["message"]
+    out = session("Meera")
+    assert out.post(f"{API}/auth/logout").status_code == 204
+    assert out.get(f"{API}/me").status_code == 401
+    disabled = session("Ravi")
+    client.app.state.service.auth.disable(disabled.get(f"{API}/me").json()["user_id"])
+    assert "disabled" in disabled.get(f"{API}/me").json()["message"]                     # at once, not at the next sign-in
+    with store.transaction() as db:
+        reasons = sorted(r["ended_reason"] for r in db.execute("SELECT ended_reason FROM sessions WHERE ended_reason IS NOT NULL"))
+    assert reasons == ["disabled", "idle", "max_age", "sign_out"]
+
+
+def test_the_development_login_is_for_laptops_and_single_sign_on_is_step_two(client, env):
+    users = client.get(f"{API}/auth/dev-users").json()
+    conforms("DevUsers", users)
+    assert {"display_name": "Admin", "roles": ["admin"]} in users["users"]
+    unknown = TestClient(client.app).post(f"{API}/auth/dev-login", json={"user": "Mallory"})
+    assert unknown.status_code == 422
+    with pytest.raises(ValueError, match="refused with APP_PROFILE=vm"):
+        ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", auth_mode="dev")
+    defaults = ServiceConfig(database_url="x", artifact_root=env["root"]).dev_users
+    assert ("Admin", ("admin",)) in defaults and ("Arjun", ("reviewer",)) in defaults and ("Priya", ("viewer",)) in defaults   # admin does not review
+    sso = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], auth_mode="oidc", dev_users=TEST_USERS)
+    with TestClient(create_app(sso)) as served:
+        assert served.post(f"{API}/auth/dev-login", json={"user": "Tester"}).status_code == 404
+        assert served.get(f"{API}/auth/dev-users").status_code == 404
+        later = served.get(f"{API}/auth/login")
+        assert later.status_code == 503 and later.json()["error_code"] == "single_sign_on_unavailable"
+    signed = client.post(f"{API}/auth/dev-login", json={"user": "tester"})                # names compare without regard to case
+    conforms("Me", signed.json())
+    cookie = signed.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=lax" in cookie and "secure" not in cookie   # Secure on the vm profile only
+
+
+def test_the_second_reviewer_rule_compares_user_ids_and_names_only_for_older_reviews(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    first, second = [c["customer_id"] for c in client.get(url, params={"limit": 2}).json()["items"]]
+    asha, ravi = client.as_user("Asha"), client.as_user("Ravi")
+    body = lambda key, kind, reading="needs_investigation": {"kind": kind, "disposition": reading, "note": "n", "idempotency_key": key}  # noqa: E731
+    store = Store(env["config"].database_url)
+    assert asha.post(f"{url}/{first}/reviews", json=body("o", "open")).status_code == 201
+    # the same person under another name is still the opener
+    with store.transaction() as db:
+        db.execute("UPDATE users SET display_name = 'Asha Kumar' WHERE display_name = 'Asha'")
+    refused = asha.post(f"{url}/{first}/reviews", json=body("a1", "approve"))
+    assert refused.status_code == 409 and refused.json()["error_code"] == "second_reviewer_required"
+    # a different person who happens to carry the opener's old name is a second reviewer
+    with store.transaction() as db:
+        db.execute("UPDATE users SET display_name = 'Asha' WHERE display_name = 'Ravi'")
+    decided = ravi.post(f"{url}/{first}/reviews", json=body("a2", "approve", "likely_legitimate"))
+    assert decided.status_code == 201 and decided.json()["reviewer_name"] == "Asha" and decided.json()["author"]["verified"]
+    # an open written before sign-in existed has no user id: its typed name decides, and it reads as unverified
+    run_row = store.get_run(run["run_id"])
+    with store.transaction() as db:
+        db.execute("""INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind, dataset_id)
+                      VALUES ('rev-legacy', %s, %s, %s, %s, 'Meera', 'unresolved', 'typed name', 'open', %s)""",
+                   (run_row["world_id"], second, run["run_id"], run_row["model_id"], run_row["dataset_id"]))
+    legacy = [r for r in client.get(f"{url}/{second}/reviews").json()["items"] if r["review_id"] == "rev-legacy"][0]
+    assert legacy["author"] == {"user_id": None, "display_name": "Meera", "verified": False}
+    meera = client.as_user("Meera")
+    assert meera.post(f"{url}/{second}/reviews", json=body("m1", "approve")).json()["error_code"] == "second_reviewer_required"
+    assert client.as_user("R1").post(f"{url}/{second}/reviews", json=body("r1", "approve", "likely_legitimate")).status_code == 201
