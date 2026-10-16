@@ -49,8 +49,9 @@ TEST_NAMES = {name.casefold(): name for name, _ in TEST_USERS}
 
 class SignedInClient(TestClient):
     """A test client with a real session from the development login: every POST and DELETE carries the session's CSRF token.
-    A review posted with the reviewer_name of a test user goes through that user's own signed-in client, so the server takes
-    the author from that user's session; any other reviewer_name is sent as is and ignored by the server."""
+    A review written in a test with the reviewer_name of a test user goes through that user's own signed-in client, so the
+    server takes the author from that user's session. The name only routes the request: since contract 2.0.0 the server
+    refuses a body that carries reviewer_name, so it is taken out before sending (the header X-Test-Raw keeps it)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -69,10 +70,12 @@ class SignedInClient(TestClient):
 
     def request(self, method, url, **kwargs):
         body = kwargs.get("json")
-        if method.upper() == "POST" and str(url).endswith("/reviews") and isinstance(body, dict):
+        send_raw = (kwargs.get("headers") or {}).get("X-Test-Raw") == "1"
+        if method.upper() == "POST" and str(url).endswith("/reviews") and isinstance(body, dict) and not send_raw:
             named = TEST_NAMES.get(str(body.get("reviewer_name") or "").strip().casefold())
             if named and named != self.user:
                 return self.as_user(named).request(method, url, **kwargs)
+            kwargs["json"] = {k: v for k, v in body.items() if k != "reviewer_name"}
         if method.upper() in ("POST", "DELETE") and self.csrf:
             kwargs["headers"] = {"X-CSRF-Token": self.csrf, **(kwargs.get("headers") or {})}
         return super().request(method, url, **kwargs)
@@ -354,9 +357,12 @@ def test_notes_are_append_only_idempotent_and_cross_runs(client, env, written):
     assert client.post(url_a, json=note).json()["review_id"] == created.json()["review_id"]     # repeat: the same note
     assert client.post(url_a, json=dict(note, note="changed")).status_code == 409
     assert client.post(url_a, json=dict(note, disposition="fraud", idempotency_key="n2")).status_code == 422
-    ignored = client.post(url_a, json=dict(note, reviewer_name="Somebody else", idempotency_key="n3"))
-    assert ignored.status_code == 201 and ignored.json()["reviewer_name"] == "Tester"      # the author is the signed-in user
-    assert ignored.json()["author"]["verified"] and ignored.json()["author"]["user_id"]
+    # contract 2.0.0: a typed author name is refused, not ignored; the author is the signed-in user
+    typed = client.post(url_a, json=dict(note, reviewer_name="Somebody else", idempotency_key="n3"), headers={"X-Test-Raw": "1"})
+    assert typed.status_code == 422 and typed.json()["details"][0]["row_key"] == "body.reviewer_name"
+    mine = client.post(url_a, json={**{k: v for k, v in note.items() if k != "reviewer_name"}, "idempotency_key": "n3"})
+    assert mine.status_code == 201 and mine.json()["reviewer_name"] == "Tester"
+    assert mine.json()["author"]["verified"] and mine.json()["author"]["user_id"]
 
     run_b = scored_run(client, env, written, key="b", model_id=env["baseline_id"])             # a second run of the same world
     assert run_b["run_id"] != run_a["run_id"] and run_b["model_kind"] == "baseline_fallback"
@@ -1349,9 +1355,10 @@ def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_de
     # the approval band: awaiting cases, without the ones this reviewer opened
     band = all_pages(client, url, {"state": "awaiting_approval"})
     assert [c["customer_id"] for c in band] == [first]
-    assert all_pages(client, url, {"state": "awaiting_approval", "exclude_reviewer": "Asha"}) == []
-    assert [c["customer_id"] for c in all_pages(client, url, {"state": "awaiting_approval", "exclude_reviewer": "Ravi"})] == [first]
-    # contract 1.16.0: the same band by the signed-in user's id, not a typed name
+    # contract 2.0.0: the typed-name filter is refused, so no band silently shows the cases the reviewer opened
+    removed = client.get(url, params={"state": "awaiting_approval", "exclude_reviewer": "Asha"})
+    assert removed.status_code == 422 and "exclude_mine" in removed.json()["message"]
+    # the band by the signed-in user's id
     asha, ravi = client.as_user("Asha"), client.as_user("Ravi")
     assert all_pages(asha, url, {"state": "awaiting_approval", "exclude_mine": "true"}) == []
     assert [c["customer_id"] for c in all_pages(ravi, url, {"state": "awaiting_approval", "exclude_mine": "true"})] == [first]
@@ -2301,3 +2308,75 @@ def test_the_keycloak_realm_export_matches_the_role_map():
     people = {u["username"]: sorted(roles[g.lstrip("/")] for g in u["groups"]) for u in realm["users"]}
     assert people == {"asha": ["approver", "reviewer"], "ravi": ["approver", "reviewer"], "meera": ["approver", "reviewer"],
                       "arjun": ["reviewer"], "priya": ["viewer"], "admin": ["admin"]}
+
+
+# ------------------------------------------------------------------ people and access (contract 2.0.0, AM-71)
+def test_admins_see_people_disable_enable_and_end_sessions_and_nobody_else_can(client):
+    admin, asha, reviewer_ = client.as_user("Admin"), client.as_user("Asha"), client.as_user("Reviewer")
+    users = admin.get(f"{API}/admin/users")
+    assert users.status_code == 200, users.text
+    conforms("AdminUserList", users.json())
+    people = {u["display_name"]: u for u in users.json()["items"]}
+    assert people["Asha"]["roles"] == [{"role": "approver", "source": "dev"}, {"role": "reviewer", "source": "dev"}]
+    assert people["Reviewer"]["sign_in"] == "development_login" and people["Reviewer"]["status"] == "active"
+    assert people["Reviewer"]["open_sessions"] == 1 and people["Reviewer"]["last_sign_in_at"]
+    assert "administer" in admin.get(f"{API}/me").json()["permissions"]
+    # reviewers and approvers do not administer, and the routes need the session's CSRF token like every POST
+    for route in ("/admin/users", "/admin/auth-events"):
+        assert asha.get(f"{API}{route}").json()["error_code"] == "forbidden"
+    target = f"{API}/admin/users/{people['Reviewer']['user_id']}"
+    assert asha.post(f"{target}/disable").status_code == 403
+    assert TestClient(client.app, cookies=admin.cookies).post(f"{target}/disable").json()["error_code"] == "csrf_required"
+    assert admin.post(f"{API}/admin/users/usr-nobody/disable").status_code == 404
+    me = admin.get(f"{API}/me").json()["user_id"]
+    assert admin.post(f"{API}/admin/users/{me}/disable").json()["error_code"] == "cannot_disable_self"
+    # disable: the session ends now, signing in again is refused, and enabling does not bring the old session back
+    disabled = admin.post(f"{target}/disable", json={"reason": "left the team"})
+    conforms("AdminUser", disabled.json())
+    assert disabled.json()["status"] == "disabled" and disabled.json()["open_sessions"] == 0
+    gone = reviewer_.get(f"{API}/me")
+    assert gone.status_code == 401 and "disabled" in gone.json()["message"]
+    refused = TestClient(client.app).post(f"{API}/auth/dev-login", json={"user": "Reviewer"})
+    assert refused.status_code == 403 and refused.json()["error_code"] == "user_disabled"
+    assert admin.post(f"{target}/enable").json()["status"] == "active"
+    assert reviewer_.get(f"{API}/me").status_code == 401
+    assert SignedInClient(client.app).sign_in("Reviewer").get(f"{API}/me").status_code == 200
+    # end sessions: signed out everywhere, may sign in again
+    asha_id = people["Asha"]["user_id"]
+    second = SignedInClient(client.app).sign_in("Asha")
+    assert admin.post(f"{API}/admin/users/{asha_id}/end-sessions").json()["open_sessions"] == 0
+    for ended in (asha, second):
+        assert "administrator ended" in ended.get(f"{API}/me").json()["message"]
+    assert SignedInClient(client.app).sign_in("Asha").get(f"{API}/me").status_code == 200
+    # the sign-in log: newest first, filtered, paged, with who did what and why
+    log = admin.get(f"{API}/admin/auth-events", params={"kind": "user_disabled"}).json()
+    conforms("AuthEventPage", log)
+    assert [e["display_name"] for e in log["items"]] == ["Reviewer"]
+    assert log["items"][0]["detail"] == {"by": me, "by_name": "Admin", "sessions_ended": 1, "reason": "left the team"}
+    kinds = [e["kind"] for e in admin.get(f"{API}/admin/auth-events", params={"user_id": asha_id, "limit": 100}).json()["items"]]
+    assert kinds[0] == "sign_in" and "sessions_ended" in kinds and kinds[-1] == "sign_in"
+    first = admin.get(f"{API}/admin/auth-events", params={"limit": 2}).json()
+    after = admin.get(f"{API}/admin/auth-events", params={"limit": 2, "cursor": first["next_cursor"]}).json()
+    assert first["next_cursor"] and after["items"][0]["event_id"] < first["items"][-1]["event_id"]
+    assert admin.get(f"{API}/admin/auth-events", params={"kind": "nonsense"}).status_code == 422
+    assert admin.get(f"{API}/admin/auth-events", params={"cursor": "x1"}).json()["error_code"] == "invalid_cursor"
+
+
+def test_keycloak_role_changes_are_logged_and_a_disabled_person_cannot_sign_in(sso):
+    browser, fake = sso["browser"], sso["fake"]
+    assert _sign_in(browser, fake).status_code == 302
+    asha = browser.get(f"{API}/me").json()["user_id"]
+    auth_ = sso["app"].state.service.auth
+    assert [(r["role"], r["source"]) for r in auth_.users(asha)[0]["roles"]] == [("approver", "keycloak_group"), ("reviewer", "keycloak_group")]
+    assert _sign_in(browser, fake, groups=("arai-viewers",)).status_code == 302
+    change = auth_.events(asha, "role_change")[0]["detail"]
+    assert change == {"from": ["approver (keycloak_group)", "reviewer (keycloak_group)"], "to": ["viewer (keycloak_group)"]}
+    # a bootstrap admin's role says where it comes from
+    assert _sign_in(browser, fake, sub="kc-boss", email="boss@example.com", groups=()).status_code == 302
+    boss = browser.get(f"{API}/me").json()["user_id"]
+    assert [(r["role"], r["source"]) for r in auth_.users(boss)[0]["roles"]] == [("admin", "bootstrap")]
+    # disabled in ARAI: Keycloak may still sign the person in, ARAI does not
+    auth_.disable(asha)
+    browser.cookies.clear()
+    refused = _sign_in(browser, fake)
+    assert refused.headers["location"] == "/?signin_error=user_disabled" and "set-cookie" not in refused.headers

@@ -47,6 +47,7 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Other people or roles | `$env:AUTH_DEV_USERS = "Asha=reviewer,approver;Kabir=reviewer;Admin=admin"` before `uv run arai local` | 2.5 |
 | Sign in from a script or `curl.exe` | `curl.exe -c arai-cookies.txt -X POST .../api/v1/auth/dev-login` with `{"user":"Admin"}`, then the CSRF token on every POST | 2.5 |
 | Sign in through Keycloak (single sign-on), rehearse it with the development Keycloak | `AUTH_MODE=oidc` and the `OIDC_*` settings; `docker compose --profile sso up -d keycloak` | 2.6 |
+| See who has signed in, disable a person, end their sessions, read the sign-in log (admin) | **People & access** in the navigation | 2.7 |
 | **Load data** | | |
 | Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
@@ -378,6 +379,27 @@ curl.exe -s -H "Authorization: Bearer $t" http://127.0.0.1:8000/api/v1/me
 
 Behind the vm profile's shared login a bearer request passes the shared login and is checked by ARAI itself.
 
+### 2.7 People & access (admins)
+
+Since API contract 2.0.0 (decision AM-71) an admin sees **People & access** in the navigation (sign in as Admin on a
+laptop). It lists everyone who has signed in, each role with where it comes from (Keycloak group, bootstrap admin or
+the development list), status, last sign-in, last activity and open sessions. **Roles are not edited here**: they come
+from Keycloak groups (or `AUTH_DEV_USERS` on a laptop) and are read at every sign-in.
+
+| Action | What it does |
+|---|---|
+| **Disable** | Ends every session of the person now, stops their bearer tokens and refuses their next sign-in. Use it when someone leaves or a laptop is lost. An admin cannot disable themselves. |
+| **Enable** | Lets a disabled person sign in again; the sessions ended by the disable stay ended. |
+| **End sessions** | Signs the person out everywhere now; they may sign in again, with their roles read afresh. Use it after changing someone's Keycloak groups so the change applies at once. |
+
+Each action asks first and takes an optional reason. Below the list is the **sign-in log**: sign-ins, sign-outs,
+ended sessions, refused requests, exports, role changes and these admin actions, newest first, filtered by kind and
+person. The same is available to scripts as `GET /api/v1/admin/users` and `GET /api/v1/admin/auth-events`.
+
+Contract 2.0.0 also removed two typed-name fields that 1.16.0 already ignored: a review that still sends
+`reviewer_name`, or a queue request with `exclude_reviewer`, now gets a 422 that names the field (use the signed-in
+session, and `exclude_mine=true`).
+
 ---
 
 ## 3. Docker Compose: start, stop
@@ -515,10 +537,10 @@ Run these in order. Each line says what a good result looks like.
 
 ```powershell
 # 1. Python tests. They start their own temporary PostgreSQL; the running server is not touched.
-uv run --no-sync pytest -q                          # "232 passed" in about 10 minutes
+uv run --no-sync pytest -q                          # "234 passed" in about 10 minutes
 
 # 2. Front-end tests and type check
-cd web; npm test; npx tsc --noEmit; cd ..            # "29 passed"; tsc prints nothing
+cd web; npm test; npx tsc --noEmit; cd ..            # "30 passed"; tsc prints nothing
 
 # 3. Browser walkthrough of the running application (needs the server up with W5401 and its snapshots of section 4.1
 #    scored; uses Edge, headless; it signs in as Admin, Ravi and Arjun through the development login)

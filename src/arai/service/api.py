@@ -67,14 +67,19 @@ class RunRequest(BaseModel):
 
 
 class ReviewRequest(BaseModel):
+    # contract 2.0.0 (AM-71): the author is the signed-in user; reviewer_name, ignored since 1.16.0, is gone and refused (422)
     model_config = ConfigDict(extra="forbid")
-    # contract 1.16.0 (AM-69): the author is the signed-in user; a reviewer_name sent by an older client is accepted and ignored
-    reviewer_name: str | None = Field(None, max_length=100)
     kind: Literal["note", "open", "request_approval", "approve", "reject", "feedback"] = "note"
     disposition: Literal["needs_investigation", "likely_legitimate", "unresolved"]
     note: str = Field(min_length=1, max_length=4000)
     idempotency_key: str = Field(min_length=1, max_length=128)
-    _clean = field_validator("reviewer_name", "note", "idempotency_key")(_no_nul)
+    _clean = field_validator("note", "idempotency_key")(_no_nul)
+
+
+class AdminActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str | None = Field(None, max_length=500)
+    _clean = field_validator("reason")(_no_nul)
 
 
 class DevLoginRequest(BaseModel):
@@ -86,13 +91,28 @@ class DevLoginRequest(BaseModel):
 SESSION_ENDED = {
     "idle": "Your session ended after a period without activity. Sign in again.",
     "max_age": "Your session reached its maximum length. Sign in again.",
-    "disabled": "This account is disabled.",
+    "disabled": "This account is disabled. Ask an administrator.",
+    "ended_by_admin": "An administrator ended your session. Sign in again.",
 }
-NEEDED_ROLE = {"read": "viewer", "export": "reviewer", "review": "reviewer", "decide": "approver", "manage": "admin"}
+NEEDED_ROLE = {"read": "viewer", "export": "reviewer", "review": "reviewer", "decide": "approver", "manage": "admin", "administer": "admin"}
+AUTH_EVENT_KINDS = ("sign_in", "sign_out", "session_ended", "refused", "export", "role_change", "user_disabled", "user_enabled",
+                    "sessions_ended")
 
 
 def _iso(value: datetime | None) -> str | None:
     return None if value is None else value.isoformat().replace("+00:00", "Z")
+
+
+def admin_user_body(row: dict) -> dict:
+    return {"user_id": row["id"], "display_name": row["display_name"], "email": row["email"],
+            "sign_in": "development_login" if row["issuer"] == auth.DEV_ISSUER else "keycloak", "status": row["status"],
+            "roles": [{"role": r["role"], "source": r["source"]} for r in row["roles"]], "open_sessions": int(row["open_sessions"]),
+            "created_at": _iso(row["created_at"]), "last_sign_in_at": _iso(row["last_sign_in_at"]), "last_seen_at": _iso(row["last_seen_at"])}
+
+
+def auth_event_body(row: dict) -> dict:
+    return {"event_id": row["id"], "at": _iso(row["at"]), "kind": row["kind"], "user_id": row["user_id"],
+            "display_name": row["display_name"], "request_id": row["request_id"], "detail": row["detail"] or {}}
 
 
 def dataset_body(row: dict) -> dict:
@@ -363,7 +383,10 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     def dev_login(body: DevLoginRequest, request: Request, response: Response):
         if config.mode != "dev":
             raise ApiError(404, "not_found", "The development login is off on this instance.")
-        signed = service.auth.sign_in_dev(body.user, request.state.request_id)
+        try:
+            signed = service.auth.sign_in_dev(body.user, request.state.request_id)
+        except auth.SignInRefused:
+            raise ApiError(403, "user_disabled", "This account is disabled. Ask an administrator.") from None
         if signed is None:
             raise ApiError(422, "invalid_request", "Not a user of the development login.")
         user, token = signed
@@ -408,6 +431,51 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         response = Response(status_code=204)
         response.delete_cookie(auth.SESSION_COOKIE, path="/")
         return response
+
+    # ------------------------------------------------------------------ people and access (contract 2.0.0, AM-71; admin only)
+    def admin_user(user_id: str) -> dict:
+        rows = service.auth.users(user_id)
+        if not rows:
+            raise ApiError(404, "not_found", "Unknown user.")
+        return admin_user_body(rows[0])
+
+    @api.get("/admin/users")
+    def admin_users():
+        """Everyone who has signed in. Roles are read-only here: they come from Keycloak groups or the development list."""
+        return {"items": [admin_user_body(r) for r in service.auth.users()]}
+
+    @api.post("/admin/users/{user_id}/disable")
+    def admin_disable(request: Request, user_id: str, body: AdminActionRequest | None = None):
+        admin_user(user_id)
+        if user_id == request.state.user.id:
+            raise ApiError(409, "cannot_disable_self", "An admin cannot disable their own account.")
+        service.auth.disable(user_id, request.state.user, request.state.request_id, body.reason if body else None)
+        return admin_user(user_id)
+
+    @api.post("/admin/users/{user_id}/enable")
+    def admin_enable(request: Request, user_id: str, body: AdminActionRequest | None = None):
+        admin_user(user_id)
+        service.auth.enable(user_id, request.state.user, request.state.request_id, body.reason if body else None)
+        return admin_user(user_id)
+
+    @api.post("/admin/users/{user_id}/end-sessions")
+    def admin_end_sessions(request: Request, user_id: str, body: AdminActionRequest | None = None):
+        admin_user(user_id)
+        service.auth.end_sessions(user_id, request.state.user, request.state.request_id, body.reason if body else None)
+        return admin_user(user_id)
+
+    @api.get("/admin/auth-events")
+    def admin_auth_events(user_id: str | None = Query(None, max_length=100), kind: str | None = Query(None, max_length=40),
+                          cursor: str | None = Query(None, max_length=40), limit: int = limit_query):
+        """The sign-in log, newest first. The cursor is the last event id of the page before."""
+        if kind is not None and kind not in AUTH_EVENT_KINDS:
+            raise ApiError(422, "invalid_request", "Unknown event kind.",
+                           [{"rule_id": "request.kind", "table": None, "row_key": kind, "count": 1}])
+        if cursor is not None and not cursor.isdigit():
+            raise ApiError(422, "invalid_cursor", "The cursor is not one this list issued.")
+        rows = service.auth.events(user_id, kind, int(cursor) if cursor else None, limit + 1)
+        following = str(rows[limit - 1]["id"]) if len(rows) > limit else None
+        return {"items": [auth_event_body(r) for r in rows[:limit]], "next_cursor": following}
 
     @api.get("/me")
     def me(request: Request):
@@ -532,17 +600,21 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                       tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
                       state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
-                      exclude_reviewer: str | None = Query(None, max_length=100), cleared_heavy: bool = False,
+                      cleared_heavy: bool = False,
                       history: Literal["all", "new_in_queue", "repeat_in_queue", "decided_before"] = "all",
                       exclude_mine: bool = False) -> dict:
         """The queue's filters, shared by the list and its export. Filters choose what is shown, never a score or a selection."""
+        if "exclude_reviewer" in request.query_params:
+            # contract 2.0.0 (AM-71): a typed name is not an identity; refused rather than ignored, so no band shows the wrong cases
+            raise ApiError(422, "invalid_request", "exclude_reviewer was removed in contract 2.0.0; use exclude_mine=true.",
+                           [{"rule_id": "request.removed_parameter", "table": None, "row_key": "query.exclude_reviewer", "count": 1}])
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
                            [{"rule_id": "request.evidence", "table": None, "row_key": evidence, "count": 1}])
         return {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
                 "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing,
                 "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate,
-                "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None, "cleared_heavy": cleared_heavy,
+                "state": state, "cleared_heavy": cleared_heavy,
                 "history": history,
                 # contract 1.16.0: leave out the cases the signed-in user opened (the approval band), by user id, not by name
                 "exclude_user_id": getattr(request.state, "user", None).id if exclude_mine and getattr(request.state, "user", None) else None}

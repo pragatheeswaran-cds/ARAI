@@ -132,16 +132,21 @@ class Oidc:
         return endpoint + "?" + urlencode({"client_id": self.config.oidc_client_id, "post_logout_redirect_uri": home})
 
     # ------------------------------------------------------------------ roles
-    def roles(self, claims: dict) -> list:
+    def grants(self, claims: dict) -> list:
+        """[(role, source)] for a token: each ARAI group it carries ("keycloak_group"), and admin for a bootstrap e-mail
+        address that has no admin group ("bootstrap")."""
         groups = claims.get(self.config.oidc_role_claim) or []
         if isinstance(groups, str):
             groups = [groups]
         names = {str(g).lstrip("/") for g in groups}
-        roles = sorted({role for group, role in self.config.oidc_role_map if group in names})
+        out = sorted({(role, "keycloak_group") for group, role in self.config.oidc_role_map if group in names})
         email = str(claims.get("email") or "").casefold()
-        if email and email in self.config.bootstrap_admins and "admin" not in roles:
-            roles.append("admin")
-        return roles
+        if email and email in self.config.bootstrap_admins and all(role != "admin" for role, _ in out):
+            out.append(("admin", "bootstrap"))
+        return out
+
+    def roles(self, claims: dict) -> list:
+        return sorted(role for role, _ in self.grants(claims))
 
 
 def display_name(claims: dict) -> str:

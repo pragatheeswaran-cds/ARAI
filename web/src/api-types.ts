@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Contract 1.17.0 (AM-70). Keycloak single sign-on (AUTH_MODE=oidc). Redirects the browser to the realm's sign-in page with the authorization code flow, PKCE (S256), a fresh state and a nonce; the attempt is kept for ten minutes. 404 with the development login; 503 single_sign_on_unavailable when Keycloak cannot be reached. */
+        /** @description Contract 1.17.0 (AM-70). Keycloak single sign-on (AUTH_MODE=oidc). Redirects the browser to the realm's sign-in page with the authorization code flow, PKCE (S256), a fresh state and a nonce; the attempt is kept for ten minutes. 404 with the development login. When Keycloak cannot be reached it redirects to /?signin_error=single_sign_on_unavailable instead, so the sign-in page can say so. */
         get: operations["singleSignOn"];
         put?: never;
         post?: never;
@@ -62,7 +62,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Contract 1.17.0 (AM-70). Keycloak's answer. The state must be one this server issued in the last ten minutes and is accepted once; the code is exchanged over the back channel with the client secret and the PKCE verifier; the ID token is checked against the realm's published keys (RS256, PS256 or ES256), issuer, audience (the client), expiry and the attempt's nonce. Roles come from the token's groups claim through AUTH_ROLE_MAP; a person with no ARAI group is refused. Success sets the arai_session cookie and redirects to return_to; a refusal redirects to /?signin_error=<code> (sign_in_expired, sign_in_failed, invalid_token, no_role, single_sign_on_unavailable). */
+        /** @description Contract 1.17.0 (AM-70). Keycloak's answer. The state must be one this server issued in the last ten minutes and is accepted once; the code is exchanged over the back channel with the client secret and the PKCE verifier; the ID token is checked against the realm's published keys (RS256, PS256 or ES256), issuer, audience (the client), expiry and the attempt's nonce. Roles come from the token's groups claim through AUTH_ROLE_MAP; a person with no ARAI group is refused. Success sets the arai_session cookie and redirects to return_to; a refusal redirects to /?signin_error=<code> (sign_in_expired, sign_in_failed, invalid_token, no_role, single_sign_on_unavailable; since contract 2.0.0 also user_disabled). */
         get: operations["singleSignOnCallback"];
         put?: never;
         post?: never;
@@ -98,6 +98,91 @@ export interface paths {
         };
         /** @description Contract 1.16.0 (AM-69). The signed-in user, roles, permissions, the session's CSRF token and its limits. */
         get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 2.0.0 (AM-71). Admin only. Everyone who has signed in (at most 1000, by name), with each role and where it comes from (keycloak_group, bootstrap, dev), status, open sessions and last activity. Roles are read-only in ARAI; they change in Keycloak or the development list and apply at the next sign-in. */
+        get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{user_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 2.0.0 (AM-71). Admin only. Ends every open session of the person now, stops their bearer tokens and refuses their next sign-in (403 user_disabled, or /?signin_error=user_disabled) until enabled. Logged with the admin and the optional reason. 409 cannot_disable_self for the admin's own account. */
+        post: operations["disableUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{user_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 2.0.0 (AM-71). Admin only. Lets a disabled person sign in again; sessions ended by the disable stay ended. Logged with the admin and the optional reason. */
+        post: operations["enableUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{user_id}/end-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 2.0.0 (AM-71). Admin only. Signs the person out everywhere now (they may sign in again, with roles read afresh). A bearer token stays valid until it expires; disable the person to stop scripts. */
+        post: operations["endUserSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/auth-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 2.0.0 (AM-71). Admin only. The append-only sign-in log, newest first - sign-ins, sign-outs, ended sessions, refused requests, exports, role changes and the admin actions above. */
+        get: operations["listAuthEvents"];
         put?: never;
         post?: never;
         delete?: never;
@@ -391,8 +476,8 @@ export interface components {
             display_name: string;
             email: string | null;
             roles: ("viewer" | "reviewer" | "approver" | "admin")[];
-            /** @description read (every screen), export (CSV and case summary), review (notes, open, request approval), decide (approve, reject), manage (datasets and runs). Admin manages and does not review. */
-            permissions: ("read" | "export" | "review" | "decide" | "manage")[];
+            /** @description read (every screen), export (CSV and case summary), review (notes, open, request approval), decide (approve, reject), manage (datasets and runs), administer (people and access, contract 2.0.0). Admin manages and does not review. */
+            permissions: ("read" | "export" | "review" | "decide" | "manage" | "administer")[];
             /** @enum {string} */
             auth_mode: "dev" | "oidc";
             /** @description Send as the X-CSRF-Token header on every POST and DELETE of this session. Empty for a request authenticated by a bearer token, which needs none. */
@@ -413,6 +498,54 @@ export interface components {
                 display_name: string;
                 roles: string[];
             }[];
+        };
+        AdminActionRequest: {
+            /** @description Why, for the sign-in log. */
+            reason?: string;
+        };
+        AdminUser: {
+            user_id: string;
+            display_name: string;
+            email: string | null;
+            /** @enum {string} */
+            sign_in: "keycloak" | "development_login";
+            /** @enum {string} */
+            status: "active" | "disabled";
+            /** @description Read at the person's last sign-in. keycloak_group is a mapped Keycloak group, bootstrap is ARAI_BOOTSTRAP_ADMINS, dev is the development list. */
+            roles: {
+                /** @enum {string} */
+                role: "viewer" | "reviewer" | "approver" | "admin";
+                source: string;
+            }[];
+            /** @description Sessions that are neither ended, expired nor idle. */
+            open_sessions: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_sign_in_at: string | null;
+            /** Format: date-time */
+            last_seen_at: string | null;
+        };
+        AdminUserList: {
+            items: components["schemas"]["AdminUser"][];
+        };
+        AuthEvent: {
+            event_id: number;
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            kind: "sign_in" | "sign_out" | "session_ended" | "refused" | "export" | "role_change" | "user_disabled" | "user_enabled" | "sessions_ended";
+            user_id: string | null;
+            display_name: string | null;
+            request_id: string | null;
+            /** @description What happened, by kind (for example reason and path of a refusal, from and to of a role change, by and by_name of an admin action). Never a token or a password. */
+            detail: {
+                [key: string]: unknown;
+            };
+        };
+        AuthEventPage: {
+            items: components["schemas"]["AuthEvent"][];
+            next_cursor: string | null;
         };
         DevLoginRequest: {
             user: string;
@@ -661,9 +794,8 @@ export interface components {
                 decided_at: string | null;
             };
         };
+        /** @description Contract 2.0.0 (AM-71) removed reviewer_name (ignored since 1.16.0); a body that carries it is a 422. The author is the signed-in user. */
         ReviewRequest: {
-            /** @description Contract 1.16.0 (AM-69). Ignored - the author is the signed-in user. Accepted so older clients keep working; removed in 2.0.0. */
-            reviewer_name?: string;
             /**
              * @description What the review does. note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; request_approval asks for a second person; approve and reject decide it. The rules, checked under one lock per customer - open needs a case that is not open (409 case_already_open while it is in review or awaiting approval); request_approval, approve and reject need an open case (409 case_not_open) that is not yet decided (409 case_decided; reopen first), and approval cannot be requested twice (409 case_already_open); approve and reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed message the UI shows as it is, names compared without regard to case or spacing; the four workflow kinds apply only to a customer selected for review and feedback only to the others (409 out_of_scope). approve and reject carry a reading, needs_investigation or likely_legitimate (422 request.decision_disposition). Every kind needs a note, and no text may hold a NUL byte.
              * @default note
@@ -1219,6 +1351,15 @@ export interface operations {
                     "application/json": components["schemas"]["Me"];
                 };
             };
+            /** @description Contract 2.0.0 (AM-71). The person is disabled by an admin (user_disabled) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description The development login is off on this instance */
             404: {
                 headers: {
@@ -1251,7 +1392,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description To Keycloak's sign-in page */
+            /** @description To Keycloak's sign-in page, or to /?signin_error=single_sign_on_unavailable */
             302: {
                 headers: {
                     [name: string]: unknown;
@@ -1260,15 +1401,6 @@ export interface operations {
             };
             /** @description Single sign-on is off on this instance */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Single sign-on is not available yet */
-            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1356,6 +1488,265 @@ export interface operations {
             };
             /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserList"];
+                };
+            };
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    disableUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description An admin cannot disable their own account */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    enableUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    endUserSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAuthEvents: {
+        parameters: {
+            query?: {
+                user_id?: string;
+                kind?: "sign_in" | "sign_out" | "session_ended" | "refused" | "export" | "role_change" | "user_disabled" | "user_enabled" | "sessions_ended";
+                /** @description The next_cursor of the page before. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthEventPage"];
+                };
+            };
+            /** @description Not signed in (no live session; on the vm profile also the proxy's shared login) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown kind or cursor */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2079,9 +2470,7 @@ export interface operations {
                 gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
                 /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
                 state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
-                /** @description Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer only the cases another person opened. */
-                exclude_reviewer?: string;
-                /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Replaces exclude_reviewer, which compares a typed name. */
+                /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
                 exclude_mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
@@ -2191,9 +2580,7 @@ export interface operations {
                 gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
                 /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
                 state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
-                /** @description Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer only the cases another person opened. */
-                exclude_reviewer?: string;
-                /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Replaces exclude_reviewer, which compares a typed name. */
+                /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
                 exclude_mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;

@@ -1,11 +1,11 @@
 # Design: authentication, roles and verified reviewer identity
 
-Status: **decided; steps 1 and 2 built** (16 Oct 2026). Step 1: development login, roles on every route, CSRF, session
-limits, review authors and the second-reviewer rule by user id, contract 1.16.0 (AM-69). Step 2: Keycloak single sign-on
-(authorization code flow with PKCE, ID token checked against the realm's keys), roles from Keycloak groups, bootstrap
-admins, bearer tokens for scripts, a development realm and a Compose profile, contract 1.17.0 (AM-70). Later steps (an
-admin screen for users and roles; removing `reviewer_name` from requests) are not built. Branch `auth-design`, cut from
-`gap3-customer-history` (API contract 1.15.0).
+Status: **decided; built** (16 Oct 2026). Step 1: development login, roles on every route, CSRF, session limits, review
+authors and the second-reviewer rule by user id, contract 1.16.0 (AM-69). Step 2: Keycloak single sign-on (authorization
+code flow with PKCE, ID token checked against the realm's keys), roles from Keycloak groups, bootstrap admins, bearer
+tokens for scripts, a development realm and a Compose profile, contract 1.17.0 (AM-70). Later steps: People & access for
+admins (roles read-only, disable, enable, end sessions, the sign-in log) and the removal of typed reviewer names from
+requests, contract 2.0.0 (AM-71). Branches `auth-design` (steps 1 and 2) and `auth-admin` (later steps).
 
 ## 1. Why
 
@@ -106,7 +106,7 @@ Four roles, cumulative from left to right except admin, which is separate:
 | Add a note or feedback; open a case; request approval | no | yes | yes | no |
 | Approve or reject a case (never one they opened) | no | no | yes | no |
 | Register or delete a dataset; start or cancel a run | no | no | no | yes |
-| Manage users and roles (step 2) | no | no | no | yes |
+| See people and the sign-in log; disable, enable, end sessions (roles change in Keycloak) | no | no | no | yes |
 
 - **Where roles come from:** a claim in the identity provider's token (for example the `groups` or `roles` claim),
   mapped by configuration (`AUTH_ROLE_MAP="arai-viewers=viewer,arai-reviewers=reviewer,arai-approvers=approver,
@@ -167,7 +167,7 @@ credentials only for the configured development origin.
 | 2 (built, AM-70) | OpenID Connect sign-in and bearer tokens, JWKS cache, role mapping from claims, bootstrap admins; tests with a fake provider; realm export and Compose profile | Yes: shared deployments get single sign-on |
 | 3 | UI: signed-in header, role-aware actions, 401 and 403 handling, verified markers; the walkthrough signs in as two users | With step 1 |
 | 4 | Contract 1.16.0, AM-69, components, RUNBOOK (setting up an identity provider), demo script; Basic auth made optional | With steps 1 to 3 |
-| Later | Admin screen for users and roles; contract 2.0.0 removes `reviewer_name` from requests | - |
+| Later (built, AM-71) | People & access for admins (roles read-only, as roles live in Keycloak groups; disable, enable, end sessions; the sign-in log); contract 2.0.0 removes `reviewer_name` and `exclude_reviewer` from requests | - |
 
 ## 6. Decisions (answered 16 Oct 2026)
 

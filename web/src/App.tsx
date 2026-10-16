@@ -8,6 +8,7 @@ import { CustomerQueue } from "./pages/CustomerQueue";
 import { Datasets } from "./pages/Datasets";
 import { Evaluation } from "./pages/Evaluation";
 import { Overview } from "./pages/Overview";
+import { PeopleAndAccess } from "./pages/People";
 import { StyleDetailPage, StyleQueue } from "./pages/Styles";
 
 type Workspace = {
@@ -39,6 +40,8 @@ export function signInMessage(code: string): string {
       return "Keycloak did not complete the sign-in. Please try again.";
     case "invalid_token":
       return "Keycloak's answer could not be verified, so nobody was signed in. If this happens again, tell the administrator.";
+    case "user_disabled":
+      return "Your ARAI account is disabled. Ask an administrator to enable it.";
     case "single_sign_on_unavailable":
       return "Keycloak cannot be reached right now. Try again in a minute; if it persists, tell the administrator.";
     default:
@@ -170,6 +173,7 @@ export function fallbackReason(health: Health | null, experiment: ExperimentSumm
 
 function Shell({ children }: { children: ReactNode }) {
   const { run, dataset, health, experiment } = useWorkspace();
+  const { can } = useSession();
   const location = useLocation();
   useEffect(() => {
     document.getElementById("main")?.focus();
@@ -194,6 +198,7 @@ function Shell({ children }: { children: ReactNode }) {
             <NavLink to={runLink("customers")}>Customer queue</NavLink>
             <NavLink to={runLink("styles")}>Style investigation</NavLink>
             <NavLink to={experiment ? `/experiments/${experiment.experiment_id}` : "/experiments/none"}>Evaluation</NavLink>
+            {can("administer") && <NavLink to="/admin/people">People &amp; access</NavLink>}
           </nav>
           <div className="footnote">
             Indian apparel / INR
@@ -331,6 +336,7 @@ function Workbench() {
           <Route path="/runs/:runId/styles" element={<StyleQueue />} />
           <Route path="/runs/:runId/styles/:styleId" element={<StyleDetailPage />} />
           <Route path="/experiments/:experimentId" element={<Evaluation />} />
+          <Route path="/admin/people" element={<PeopleAndAccess />} />
           <Route
             path="*"
             element={

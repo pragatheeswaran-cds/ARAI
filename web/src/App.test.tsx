@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import type { Customer, ExperimentSummary, Health } from "./api";
 import { fallbackReason, signInMessage } from "./App";
+import { eventDetail } from "./pages/People";
 import { CustomerTable } from "./components/CustomerTable";
 import { ist, percent } from "./components/ui";
 
@@ -109,6 +110,20 @@ describe("single sign-on refusals", () => {
     expect(signInMessage("no_role")).toContain("none of the ARAI groups");
     expect(signInMessage("sign_in_expired")).toContain("ten minutes");
     expect(signInMessage("single_sign_on_unavailable")).toContain("cannot be reached");
+    expect(signInMessage("user_disabled")).toContain("disabled");
     expect(signInMessage("something_new")).toBe("The sign-in did not complete. Please try again.");
+  });
+});
+
+describe("the sign-in log", () => {
+  it("says what happened in words, from the entry's detail", () => {
+    expect(eventDetail({ kind: "user_disabled", detail: { by: "u1", by_name: "Admin", sessions_ended: 2, reason: "left the team" } })).toBe(
+      "by Admin / 2 sessions ended / reason: left the team",
+    );
+    expect(eventDetail({ kind: "role_change", detail: { from: ["reviewer (keycloak_group)"], to: [] } })).toBe("from reviewer (keycloak_group) to no role");
+    expect(eventDetail({ kind: "refused", detail: { status: 403, permission: "administer", path: "/api/v1/admin/users" } })).toBe(
+      "403 / needs administer / /api/v1/admin/users",
+    );
+    expect(eventDetail({ kind: "session_ended", detail: { reason: "max_age" } })).toBe("max age");
   });
 });

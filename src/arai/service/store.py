@@ -622,9 +622,6 @@ class Store:
         rules = rules or {}
         if filters.get("state", "all") != "all":
             clauses.append(STATE_SQL[filters["state"]])
-        if filters.get("exclude_reviewer"):
-            clauses.append("coalesce(opened.reviewer_name, '') <> %s")
-            values.append(filters["exclude_reviewer"])
         if filters.get("exclude_user_id"):                      # the cases the signed-in user did not open (AM-69)
             clauses.append("coalesce(opened.author_user_id, '') <> %s")
             values.append(filters["exclude_user_id"])

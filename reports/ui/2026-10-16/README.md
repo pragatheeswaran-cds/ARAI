@@ -1,11 +1,13 @@
-# Complete walkthrough, 16 Oct 2026 (branch auth-design)
+# Complete walkthrough, 16 Oct 2026 (branches auth-design and auth-admin)
 
-Screenshots of one complete run of the browser walkthrough (`tests/e2e/walkthrough.py`, **66 of 66 checks passed**) and of
+Screenshots of the browser walkthrough (`tests/e2e/walkthrough.py`) and of
 the baseline-fallback check (`tests/e2e/fallback_check.py`, **11 of 11 passed**), taken in headless Chromium 141 at
 1440 px width against `arai local` on http://127.0.0.1:8000. Every check, with its detail, is in
 `walkthrough-result.json` and `fallback-result.json`.
 
-State of the instance: API contract 1.16.0 with the development login (the walkthrough signs in as Admin, then Ravi,
+The latest run, on branch `auth-admin` at API contract 2.0.0, passed **71 of 71 checks** (`walkthrough-result.json`); its
+screenshot 19 is new and the others are kept from the earlier run at contract 1.16.0 (66 of 66), whose screens are
+unchanged. State of the instance at that earlier run: API contract 1.16.0 with the development login (the walkthrough signs in as Admin, then Ravi,
 then Arjun and Admin again), the selected model `m-4faf6b8a2475c708f15608b1`, and world W5401 with three
 snapshots of the same customers (9 July, 9 August and 9 September 2026), each scored, plus the three August review
 outcomes of `scripts/history_demo.py`. The workspace opens on the latest snapshot's run, `run-020e5490d88f48c28e8c`
@@ -35,3 +37,4 @@ simulated.
 | `16-queue-history.png` | Customer queue, History filter "Decided on an earlier snapshot" | W5401-C08645 "rejected on the 09 Aug 2026 snapshot by Ravi" and W5401-C07084 "approved ... by Asha", each back in the September queue as a new case |
 | `17-case-history.png` | Customer case W5401-C08645, History tab | Rank 11, 4 and 4 across July, August and September; the August review rejected; the callout that this snapshot's review starts on its own |
 | `18-case-admin-reads.png` | Customer case, signed in as Admin | An admin reads the case but is offered no notes or decisions (admin operates, does not review) |
+| `19-people-and-access.png` | People & access, signed in as Admin (contract 2.0.0) | Everyone who has signed in with each role and where it comes from, status, last sign-in, open sessions, Disable and End sessions; the sign-in log below |

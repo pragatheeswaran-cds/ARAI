@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.17.0
+  version: 2.0.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -47,6 +47,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Me'
+        '403':
+          description: Contract 2.0.0 (AM-71). The person is disabled by an admin (user_disabled)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: The development login is off on this instance
           content:
@@ -95,7 +101,7 @@ paths:
         (the client), expiry and the attempt's nonce. Roles come from the token's groups claim through AUTH_ROLE_MAP; a
         person with no ARAI group is refused. Success sets the arai_session cookie and redirects to return_to; a refusal
         redirects to /?signin_error=<code> (sign_in_expired, sign_in_failed, invalid_token, no_role,
-        single_sign_on_unavailable).
+        single_sign_on_unavailable; since contract 2.0.0 also user_disabled).
       parameters:
       - name: code
         in: query
@@ -150,6 +156,234 @@ paths:
                 $ref: '#/components/schemas/Me'
         '401':
           description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/users:
+    get:
+      operationId: listUsers
+      description: Contract 2.0.0 (AM-71). Admin only. Everyone who has signed in (at most 1000, by name), with each role
+        and where it comes from (keycloak_group, bootstrap, dev), status, open sessions and last activity. Roles are
+        read-only in ARAI; they change in Keycloak or the development list and apply at the next sign-in.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserList'
+        '401':
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not an admin, or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/users/{user_id}/disable:
+    post:
+      operationId: disableUser
+      description: Contract 2.0.0 (AM-71). Admin only. Ends every open session of the person now, stops their bearer tokens
+        and refuses their next sign-in (403 user_disabled, or /?signin_error=user_disabled) until enabled. Logged with the
+        admin and the optional reason. 409 cannot_disable_self for the admin's own account.
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminActionRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUser'
+        '401':
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not an admin, or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: An admin cannot disable their own account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/users/{user_id}/enable:
+    post:
+      operationId: enableUser
+      description: Contract 2.0.0 (AM-71). Admin only. Lets a disabled person sign in again; sessions ended by the disable stay
+        ended. Logged with the admin and the optional reason.
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminActionRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUser'
+        '401':
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not an admin, or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/users/{user_id}/end-sessions:
+    post:
+      operationId: endUserSessions
+      description: Contract 2.0.0 (AM-71). Admin only. Signs the person out everywhere now (they may sign in again, with roles
+        read afresh). A bearer token stays valid until it expires; disable the person to stop scripts.
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminActionRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUser'
+        '401':
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not an admin, or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/auth-events:
+    get:
+      operationId: listAuthEvents
+      description: Contract 2.0.0 (AM-71). Admin only. The append-only sign-in log, newest first - sign-ins, sign-outs, ended
+        sessions, refused requests, exports, role changes and the admin actions above.
+      parameters:
+      - name: user_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: &auth_event_kinds
+          - sign_in
+          - sign_out
+          - session_ended
+          - refused
+          - export
+          - role_change
+          - user_disabled
+          - user_enabled
+          - sessions_ended
+      - name: cursor
+        in: query
+        required: false
+        description: The next_cursor of the page before.
+        schema:
+          type: string
+          maxLength: 40
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 100
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEventPage'
+        '401':
+          description: Not signed in (no live session; on the vm profile also the proxy's shared login)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not an admin, or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Unknown kind or cursor
           content:
             application/json:
               schema:
@@ -831,19 +1065,11 @@ paths:
           - approved
           - rejected
           - auto_logged
-      - name: exclude_reviewer
-        in: query
-        required: false
-        description: Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer
-          only the cases another person opened.
-        schema:
-          type: string
-          maxLength: 100
       - name: exclude_mine
         in: query
         required: false
         description: Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval
-          band). Replaces exclude_reviewer, which compares a typed name.
+          band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422.
         schema:
           type: boolean
           default: false
@@ -1057,19 +1283,11 @@ paths:
           - approved
           - rejected
           - auto_logged
-      - name: exclude_reviewer
-        in: query
-        required: false
-        description: Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer
-          only the cases another person opened.
-        schema:
-          type: string
-          maxLength: 100
       - name: exclude_mine
         in: query
         required: false
         description: Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval
-          band). Replaces exclude_reviewer, which compares a typed name.
+          band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422.
         schema:
           type: boolean
           default: false
@@ -1795,7 +2013,8 @@ components:
         permissions:
           type: array
           description: read (every screen), export (CSV and case summary), review (notes, open, request approval), decide
-            (approve, reject), manage (datasets and runs). Admin manages and does not review.
+            (approve, reject), manage (datasets and runs), administer (people and access, contract 2.0.0). Admin manages
+            and does not review.
           items:
             type: string
             enum:
@@ -1804,6 +2023,7 @@ components:
             - review
             - decide
             - manage
+            - administer
         auth_mode:
           type: string
           enum:
@@ -1852,6 +2072,139 @@ components:
                 type: array
                 items:
                   type: string
+    AdminActionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Why, for the sign-in log.
+    AdminUser:
+      type: object
+      additionalProperties: false
+      required:
+      - user_id
+      - display_name
+      - email
+      - sign_in
+      - status
+      - roles
+      - open_sessions
+      - created_at
+      - last_sign_in_at
+      - last_seen_at
+      properties:
+        user_id:
+          type: string
+        display_name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        sign_in:
+          type: string
+          enum:
+          - keycloak
+          - development_login
+        status:
+          type: string
+          enum:
+          - active
+          - disabled
+        roles:
+          type: array
+          description: Read at the person's last sign-in. keycloak_group is a mapped Keycloak group, bootstrap is
+            ARAI_BOOTSTRAP_ADMINS, dev is the development list.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - role
+            - source
+            properties:
+              role:
+                type: string
+                enum:
+                - viewer
+                - reviewer
+                - approver
+                - admin
+              source:
+                type: string
+        open_sessions:
+          type: integer
+          minimum: 0
+          description: Sessions that are neither ended, expired nor idle.
+        created_at:
+          type: string
+          format: date-time
+        last_sign_in_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminUserList:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
+    AuthEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - event_id
+      - at
+      - kind
+      - user_id
+      - display_name
+      - request_id
+      - detail
+      properties:
+        event_id:
+          type: integer
+        at:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum: *auth_event_kinds
+        user_id:
+          type: string
+          nullable: true
+        display_name:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        detail:
+          type: object
+          additionalProperties: true
+          description: What happened, by kind (for example reason and path of a refusal, from and to of a role change, by
+            and by_name of an admin action). Never a token or a password.
+    AuthEventPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthEvent'
+        next_cursor:
+          type: string
+          nullable: true
     DevLoginRequest:
       type: object
       additionalProperties: false
@@ -2613,16 +2966,13 @@ components:
     ReviewRequest:
       type: object
       additionalProperties: false
+      description: Contract 2.0.0 (AM-71) removed reviewer_name (ignored since 1.16.0); a body that carries it is a 422. The
+        author is the signed-in user.
       required:
       - disposition
       - note
       - idempotency_key
       properties:
-        reviewer_name:
-          type: string
-          maxLength: 100
-          description: Contract 1.16.0 (AM-69). Ignored - the author is the signed-in user. Accepted so older clients keep
-            working; removed in 2.0.0.
         kind:
           type: string
           default: note

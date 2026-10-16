@@ -298,12 +298,27 @@ with sync_playwright() as pw:
     settle(page)
     check("a reviewer without the approver role is not offered approve or reject",
           "Approving or rejecting needs the approver role" in main_text(page) and page.get_by_role("button", name="Approve", exact=True).count() == 0)
+    check("only an admin is offered People & access", page.get_by_role("link", name="People & access").count() == 0)
     sign_in_as(page, "Admin")
     page.goto(run_path + "/customers/" + refusal_case)
     settle(page)
     check("an admin reads the case but does not review it",
           "you can read this case" in main_text(page) and page.get_by_role("button", name="Add a note only").count() == 0)
     shot(page, "18-case-admin-reads")
+
+    # ---- people and access (contract 2.0.0): who signed in, their roles and where they come from, and the sign-in log
+    page.get_by_role("link", name="People & access").click()
+    settle(page)
+    people = main_text(page)
+    check("People & access lists the people with their roles and where they come from",
+          all(name in people for name in ("Ravi", "Arjun", "Admin")) and "development list" in people and "Roles are not edited in ARAI" in people)
+    check("the sign-in log shows the sign-ins", "Sign-in log" in people and "sign in" in people)
+    arjun_row = page.locator("main table tbody tr", has_text="Arjun").first
+    arjun_row.get_by_role("button", name="Disable").click()
+    check("disabling asks first and says what it does", "Ends every session now" in main_text(page))
+    page.get_by_role("button", name="Cancel").click()
+    check("cancelling changes nothing", "Ends every session now" not in main_text(page) and arjun_row.get_by_text("active").count() == 1)
+    shot(page, "19-people-and-access")
 
     # ---- narrow screen
     page.set_viewport_size({"width": 420, "height": 900})

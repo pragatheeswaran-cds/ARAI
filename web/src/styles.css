@@ -225,3 +225,11 @@ tr.current td { background: var(--page); }
 .signin-users button { display: flex; flex-direction: column; align-items: flex-start; min-width: 150px; }
 .signin-users button small { font-weight: 400; opacity: 0.85; margin-top: 2px; }
 .signedin { display: flex; justify-content: flex-end; align-items: center; gap: 6px; padding: 6px 24px 0; }
+
+/* People and access (contract 2.0.0): roles with their source, row actions, the confirm form */
+.role { display: inline-block; margin: 0 10px 6px 0; vertical-align: top; }
+td.row-actions { white-space: nowrap; }
+td.row-actions button { margin: 0 6px 6px 0; padding: 6px 10px; }
+form.confirm { border: 1px solid var(--line); border-radius: 7px; padding: 14px 18px; margin: 14px 0 0; background: #f8faf6; }
+form.confirm label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+form.confirm input { display: block; width: min(100%, 460px); margin-top: 4px; padding: 7px 9px; border: 1px solid #cbd9cf; border-radius: 6px; }

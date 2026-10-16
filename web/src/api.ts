@@ -35,6 +35,9 @@ export type Page<T> = { items: T[]; next_cursor: string | null };
 export type Disposition = Review["disposition"];
 export type Me = S["Me"];
 export type DevUsers = S["DevUsers"];
+export type AdminUser = S["AdminUser"];
+export type AuthEvent = S["AuthEvent"];
+export type AuthEventKind = AuthEvent["kind"];
 
 export const API = "/api/v1";
 
@@ -103,7 +106,6 @@ export type CustomerFilters = {
   tier: "all" | Tier;
   gate: "all" | GateOutcome;
   state: "all" | WorkflowState;
-  exclude_reviewer?: string;
   // contract 1.16.0: the cases the signed-in user did not open, by user id
   exclude_mine?: boolean;
   // contract 1.13.0: the cleared heavy returners view, filtered by the server rather than page by page in the browser
@@ -151,6 +153,12 @@ export const api = {
   experiment: (id: string) => request<Experiment>(`/experiments/${encodeURIComponent(id)}`),
   curves: (id: string, runId: string, maxPoints = 200) =>
     request<Curves>(`/experiments/${encodeURIComponent(id)}/curves`, undefined, { run_id: runId, max_points: maxPoints }),
+  // people and access (contract 2.0.0, AM-71; admin only)
+  adminUsers: () => request<{ items: AdminUser[] }>("/admin/users"),
+  adminAction: (userId: string, action: "disable" | "enable" | "end-sessions", reason?: string) =>
+    request<AdminUser>(`/admin/users/${encodeURIComponent(userId)}/${action}`, json(reason ? { reason } : {})),
+  authEvents: (filters: { user_id?: string; kind?: string }, cursor?: string | null) =>
+    request<Page<AuthEvent>>("/admin/auth-events", undefined, { ...filters, cursor, limit: 50 }),
   truth: (id: string, cursor?: string | null) =>
     request<{ synthetic_only: boolean; world_id: string | null } & Page<TruthExample>>(`/experiments/${encodeURIComponent(id)}/truth`, undefined, { cursor, limit: 100 }),
 };

@@ -22,6 +22,8 @@ Contract 1.16.0 (AM-69), migration 0012: users (issuer and subject unique togeth
 
 Contract 1.17.0 (AM-70), migration 0013: oidc_logins keeps each Keycloak sign-in attempt for ten minutes (SHA-256 of the state as key, the nonce, the PKCE verifier and the return path) and is deleted when the answer arrives. Keycloak users are keyed by the realm's issuer and the token's subject; their roles are rewritten from the groups claim at every sign-in with source oidc. auth_events records a refused Keycloak answer or bearer token with its reason.
 
+Contract 2.0.0 (AM-71), no migration: a sign-in replaces all of the person's roles with those of this sign-in, each with its source (dev, keycloak_group, bootstrap), and logs role_change with the roles before and after when they differ. auth_events adds user_enabled and sessions_ended; user_disabled, user_enabled and sessions_ended carry the admin (by, by_name), the number of sessions ended and the optional reason. Disabling ends the person's open sessions in the same transaction (ended_reason disabled); End sessions uses ended_reason ended_by_admin.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Dataset/job/model/experiment/review events.
