@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.16.0
+  version: 1.17.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -63,19 +63,63 @@ paths:
     get:
       operationId: singleSignOn
       security: []
-      description: Contract 1.16.0 (AM-69). Keycloak single sign-on (AUTH_MODE=oidc). Step 1 of the authentication design
-        answers 503 single_sign_on_unavailable; step 2 redirects to Keycloak. 404 with the development login.
+      description: Contract 1.17.0 (AM-70). Keycloak single sign-on (AUTH_MODE=oidc). Redirects the browser to the realm's
+        sign-in page with the authorization code flow, PKCE (S256), a fresh state and a nonce; the attempt is kept for ten
+        minutes. 404 with the development login. When Keycloak cannot be reached it redirects to
+        /?signin_error=single_sign_on_unavailable instead, so the sign-in page can say so.
+      parameters:
+      - name: return_to
+        in: query
+        required: false
+        description: A path of this site to come back to after signing in; anything else is replaced by /.
+        schema:
+          type: string
+          maxLength: 500
+          default: /
       responses:
         '302':
-          description: To the identity provider (step 2)
+          description: To Keycloak's sign-in page, or to /?signin_error=single_sign_on_unavailable
         '404':
           description: Single sign-on is off on this instance
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '503':
-          description: Single sign-on is not available yet
+  /auth/callback:
+    get:
+      operationId: singleSignOnCallback
+      security: []
+      description: Contract 1.17.0 (AM-70). Keycloak's answer. The state must be one this server issued in the last ten
+        minutes and is accepted once; the code is exchanged over the back channel with the client secret and the PKCE
+        verifier; the ID token is checked against the realm's published keys (RS256, PS256 or ES256), issuer, audience
+        (the client), expiry and the attempt's nonce. Roles come from the token's groups claim through AUTH_ROLE_MAP; a
+        person with no ARAI group is refused. Success sets the arai_session cookie and redirects to return_to; a refusal
+        redirects to /?signin_error=<code> (sign_in_expired, sign_in_failed, invalid_token, no_role,
+        single_sign_on_unavailable).
+      parameters:
+      - name: code
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 4000
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 500
+      - name: error
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+      responses:
+        '302':
+          description: Signed in (to return_to) or refused (to /?signin_error=...)
+        '404':
+          description: Single sign-on is off on this instance
           content:
             application/json:
               schema:
@@ -1732,6 +1776,7 @@ components:
       - csrf_token
       - session_expires_at
       - idle_minutes
+      - sso_logout_url
       properties:
         user_id: *id001
         display_name: *id001
@@ -1766,14 +1811,22 @@ components:
           - oidc
         csrf_token:
           type: string
-          description: Send as the X-CSRF-Token header on every POST and DELETE of this session.
+          description: Send as the X-CSRF-Token header on every POST and DELETE of this session. Empty for a request
+            authenticated by a bearer token, which needs none.
         session_expires_at:
           type: string
+          nullable: true
           format: date-time
-          description: The session's maximum age; it also ends after idle_minutes without a request.
+          description: The session's maximum age; it also ends after idle_minutes without a request. Null for a request
+            authenticated by a bearer token, which has no ARAI session.
         idle_minutes:
           type: integer
           minimum: 1
+        sso_logout_url:
+          type: string
+          nullable: true
+          description: Contract 1.17.0 (AM-70). Keycloak's end-session address; the UI goes there after signing out so the
+            Keycloak session ends too. Null with the development login.
     DevUsers:
       type: object
       additionalProperties: false
@@ -4071,5 +4124,13 @@ components:
       name: arai_session
       description: Contract 1.16.0 (AM-69). The session of a verified sign-in. Roles decide each route (viewer, reviewer,
         approver, admin); a POST or DELETE also sends the session's X-CSRF-Token header.
+    BearerToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Contract 1.17.0 (AM-70). A Keycloak access token of the configured realm whose audience includes the
+        API audience (arai-api by default), for scripts. Checked against the realm's published keys on each request (a
+        result is kept for at most a minute); roles come from its groups claim; no session and no CSRF token.
 security:
 - SessionCookie: []
+- BearerToken: []

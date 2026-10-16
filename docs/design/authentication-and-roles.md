@@ -1,8 +1,11 @@
 # Design: authentication, roles and verified reviewer identity
 
-Status: **decided; step 1 built** (16 Oct 2026): development login, roles on every route, CSRF, session limits, review
-authors and the second-reviewer rule by user id, contract 1.16.0 (AM-69). Steps 2 (Keycloak) and later are not built yet. Branch `auth-design`, cut from `gap3-customer-history` (API contract
-1.15.0). Nothing here is built yet; this document is for review before any code.
+Status: **decided; steps 1 and 2 built** (16 Oct 2026). Step 1: development login, roles on every route, CSRF, session
+limits, review authors and the second-reviewer rule by user id, contract 1.16.0 (AM-69). Step 2: Keycloak single sign-on
+(authorization code flow with PKCE, ID token checked against the realm's keys), roles from Keycloak groups, bootstrap
+admins, bearer tokens for scripts, a development realm and a Compose profile, contract 1.17.0 (AM-70). Later steps (an
+admin screen for users and roles; removing `reviewer_name` from requests) are not built. Branch `auth-design`, cut from
+`gap3-customer-history` (API contract 1.15.0).
 
 ## 1. Why
 
@@ -160,8 +163,8 @@ credentials only for the configured development origin.
 
 | Step | Contents | Can ship alone |
 |---|---|---|
-| 1 | Migration 0012, users and sessions, development login, `GET /me`, the permission table on every route, CSRF, `author_user_id` and the rule by user id; tests | Yes: laptops and demos get real identities and roles |
-| 2 | OpenID Connect sign-in and bearer tokens, JWKS cache, role mapping from claims, bootstrap admins; tests with a fake provider | Yes: shared deployments get single sign-on |
+| 1 (built, AM-69) | Migration 0012, users and sessions, development login, `GET /me`, the permission table on every route, CSRF, `author_user_id` and the rule by user id; tests | Yes: laptops and demos get real identities and roles |
+| 2 (built, AM-70) | OpenID Connect sign-in and bearer tokens, JWKS cache, role mapping from claims, bootstrap admins; tests with a fake provider; realm export and Compose profile | Yes: shared deployments get single sign-on |
 | 3 | UI: signed-in header, role-aware actions, 401 and 403 handling, verified markers; the walkthrough signs in as two users | With step 1 |
 | 4 | Contract 1.16.0, AM-69, components, RUNBOOK (setting up an identity provider), demo script; Basic auth made optional | With steps 1 to 3 |
 | Later | Admin screen for users and roles; contract 2.0.0 removes `reviewer_name` from requests | - |

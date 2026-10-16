@@ -4,6 +4,9 @@
 # UI: http://localhost:8080   API: http://localhost:8080/api/v1/health
 # Only the artifacts folder of the current experiment is mounted (experiment.yaml data_root; ARAI_ARTIFACTS overrides it).
 # Its private folder (simulation truth) is never visible to these containers.
+# Single sign-on (RUNBOOK 2.6): `docker compose --profile sso up keycloak` starts a development Keycloak on
+# http://127.0.0.1:8081 with the realm in deploy/keycloak/arai-realm.json; run ARAI against it with `arai local` and the
+# AUTH_MODE/OIDC_* settings of .env.example.
 services:
   db:
     image: postgres:16
@@ -33,6 +36,14 @@ services:
       BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}      # worker only; without it every investigation memo is unavailable by design
       ARAI_MEMO_MODEL: ${ARAI_MEMO_MODEL:-}
+      AUTH_MODE: ${AUTH_MODE:-}                      # dev (local profile only) or oidc; empty: dev on local, oidc on vm
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_ALLOW_HTTP: ${OIDC_ALLOW_HTTP:-}
+      AUTH_ROLE_MAP: ${AUTH_ROLE_MAP:-}
+      ARAI_BOOTSTRAP_ADMINS: ${ARAI_BOOTSTRAP_ADMINS:-}
     volumes:
       - ${ARAI_ARTIFACTS:-./data/EXP-20261005-04/artifacts}:/data/artifacts
     depends_on:
@@ -59,6 +70,20 @@ services:
       - "127.0.0.1:8080:80"          # loopback only; put a TLS reverse proxy in front for the VM profile
     depends_on:
       - api
+
+  keycloak:
+    # development identity provider for single sign-on; only with `--profile sso`. Not for production: start-dev keeps
+    # its data in the container and serves plain http. Its realm export is checked by tests/test_service.py.
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: ["sso"]
+    command: ["start-dev", "--import-realm", "--http-port=8081"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-kcadmin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-kcadmin-dev}
+    volumes:
+      - ./deploy/keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:8081:8081"        # loopback only; the browser and `arai local` both reach it as 127.0.0.1:8081
 
 volumes:
   pgdata_exp_20261005_04:

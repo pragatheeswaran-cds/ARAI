@@ -1,8 +1,9 @@
 """Who is signed in and what they may do (decision AM-69, docs/design/authentication-and-roles.md).
 
-Identity comes from a verified sign-in, never from a name the browser sends. In step 1 the sign-in is the development
-login (AUTH_MODE=dev, laptops and demos: a fixed list of people with their roles); Keycloak single sign-on (AUTH_MODE=oidc)
-arrives in step 2 and will create the same users and sessions, so everything downstream of `resolve` stays as it is.
+Identity comes from a verified sign-in, never from a name the browser sends: the development login (AUTH_MODE=dev,
+laptops and demos: a fixed list of people with their roles) or Keycloak single sign-on (AUTH_MODE=oidc, AM-70, oidc.py),
+which create the same users and sessions, so everything downstream of `resolve` is the same. With single sign-on a script
+may also send a Keycloak bearer token, checked on each request (`resolve_bearer`), with no session and no CSRF token.
 
 A session is an opaque random cookie (HttpOnly, SameSite=Lax, Secure on the vm profile); the database keeps only its
 SHA-256. Its CSRF token is derived from the cookie value, so it is never stored in clear and needs no extra round trip.
@@ -15,11 +16,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+import time
 from dataclasses import dataclass, field
 
 from psycopg.types.json import Jsonb
 
 from arai.service.config import ServiceConfig
+from arai.service.oidc import Oidc, OidcError, display_name
 from arai.service.store import Store, new_id
 
 SESSION_COOKIE = "arai_session"
@@ -42,6 +45,7 @@ ROUTE_PERMISSIONS = {
     ("GET", f"{P}/auth/dev-users"): PUBLIC,
     ("POST", f"{P}/auth/dev-login"): PUBLIC,
     ("GET", f"{P}/auth/login"): PUBLIC,
+    ("GET", f"{P}/auth/callback"): PUBLIC,
     ("POST", f"{P}/auth/logout"): SIGNED_IN,
     ("GET", f"{P}/me"): SIGNED_IN,
     ("GET", f"{P}/datasets"): "read",
@@ -100,9 +104,72 @@ class User:
         return permission in self.permissions
 
 
+SIGN_IN_MINUTES = 10                     # an answer from Keycloak is accepted this long after the redirect, once
+BEARER_CACHE_SECONDS = 60
+
+
 class Auth:
     def __init__(self, config: ServiceConfig, store: Store):
         self.config, self.store = config, store
+        self.oidc = Oidc(config) if config.mode == "oidc" else None
+        self._bearer: dict = {}                                   # token hash -> (valid until, User)
+
+    # ------------------------------------------------------------------ Keycloak single sign-on (AM-70)
+    def begin_sso(self, return_to: str) -> str:
+        """Where to send the browser: Keycloak's sign-in page, with this attempt's state, nonce and PKCE challenge."""
+        state, nonce, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(32), secrets.token_urlsafe(64)
+        url = self.oidc.authorization_url(state, nonce, verifier)
+        with self.store.transaction() as db:
+            db.execute("DELETE FROM oidc_logins WHERE created_at < now() - make_interval(mins => %s)", (SIGN_IN_MINUTES,))
+            db.execute("INSERT INTO oidc_logins (state_hash, nonce, code_verifier, return_to) VALUES (%s, %s, %s, %s)",
+                       (_hash(state), nonce, verifier, return_to))
+        return url
+
+    def finish_sso(self, state: str, code: str, request_id: str | None = None) -> tuple:
+        """(user, cookie token, return_to) for Keycloak's answer to an attempt begun here; OidcError otherwise."""
+        with self.store.transaction() as db:
+            attempt = db.execute("""DELETE FROM oidc_logins WHERE state_hash = %s RETURNING nonce, code_verifier, return_to,
+                                        created_at > now() - make_interval(mins => %s) AS fresh""",
+                                 (_hash(state or ""), SIGN_IN_MINUTES)).fetchone()
+        if attempt is None or not attempt["fresh"]:
+            raise OidcError("sign_in_expired", "unknown, used or expired state")
+        tokens = self.oidc.exchange(code, attempt["code_verifier"])
+        claims = self.oidc.verify(tokens.get("id_token", ""), audience=self.config.oidc_client_id, nonce=attempt["nonce"])
+        roles = self.oidc.roles(claims)
+        if not roles:
+            self.log("refused", None, request_id, {"status": 403, "reason": "no_role", "subject": claims["sub"]})
+            raise OidcError("no_role", f"{claims['sub']} carries no ARAI group")
+        user_id = self._upsert_user(self.config.oidc_issuer, claims["sub"], display_name(claims), claims.get("email"), roles, "oidc")
+        user, token = self._open_session(user_id, request_id)
+        return user, token, attempt["return_to"]
+
+    def resolve_bearer(self, token: str, request_id: str | None = None) -> tuple:
+        """(user, None) for a valid Keycloak access token meant for this API, else (None, reason). Checked results are
+        kept for a minute (never past the token's expiry), so a script's requests do not each rewrite the user."""
+        if self.oidc is None:
+            return None, "single sign-on is off"
+        key, now = _hash(token), time.time()
+        cached = self._bearer.get(key)
+        if cached and cached[0] > now:
+            return cached[1], None
+        try:
+            claims = self.oidc.verify(token, audience=self.config.oidc_api_audience)
+        except OidcError as error:
+            self.log("refused", None, request_id, {"status": 401, "reason": error.code, "bearer": True})
+            return None, error.code
+        roles = self.oidc.roles(claims)
+        if not roles:
+            return None, "no_role"
+        user_id = self._upsert_user(self.config.oidc_issuer, claims["sub"], display_name(claims), claims.get("email"), roles, "oidc")
+        with self.store.transaction() as db:
+            status = db.execute("SELECT status FROM users WHERE id = %s", (user_id,)).fetchone()["status"]
+        if status != "active":
+            return None, "disabled"
+        user = User(id=user_id, display_name=display_name(claims), email=claims.get("email"), roles=tuple(roles), session_hash="",
+                    expires_at=None)
+        self._bearer = {k: v for k, v in self._bearer.items() if v[0] > now}
+        self._bearer[key] = (min(now + BEARER_CACHE_SECONDS, float(claims["exp"])), user)
+        return user, None
 
     # ------------------------------------------------------------------ the development login
     def dev_users(self) -> list:
@@ -179,9 +246,10 @@ class Auth:
         self.log("sign_out", user.id, request_id, {})
 
     def disable(self, user_id: str, request_id: str | None = None) -> None:
-        """Take a person's access away at once: every open session ends with the next request."""
+        """Take a person's access away at once: every open session ends with the next request, and bearer tokens stop."""
         with self.store.transaction() as db:
             db.execute("UPDATE users SET status = 'disabled' WHERE id = %s", (user_id,))
+        self._bearer = {k: v for k, v in self._bearer.items() if v[1].id != user_id}
         self.log("user_disabled", user_id, request_id, {})
 
     def log(self, kind: str, user_id: str | None, request_id: str | None, detail: dict) -> None:

@@ -620,7 +620,7 @@ def test_cors_allows_only_listed_origins(client):
 def test_vm_profile_requires_the_shared_login(env, monkeypatch):
     monkeypatch.setenv("BASIC_AUTH_USER", "judge")
     monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
-    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=())
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=(), **SSO_SETTINGS)
     with TestClient(create_app(config)) as vm:
         denied = vm.get(f"{API}/health")
         assert denied.status_code == 401 and denied.headers["www-authenticate"].startswith("Basic")
@@ -737,7 +737,7 @@ def test_runs_and_reviews_page_without_gaps_or_duplicates(client, env, written):
 def test_the_login_refusal_is_a_contract_error_body(env, monkeypatch):
     monkeypatch.setenv("BASIC_AUTH_USER", "judge")
     monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
-    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=())
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=(), **SSO_SETTINGS)
     with TestClient(create_app(config)) as vm:
         denied = vm.post(f"{API}/runs", json={"dataset_id": "x", "idempotency_key": "k"})
         assert denied.status_code == 401
@@ -878,7 +878,7 @@ def test_health_reports_the_queue_and_when_a_worker_was_last_seen(client, env, w
 def test_a_login_header_that_is_not_ascii_is_refused_not_crashed(env, monkeypatch):
     monkeypatch.setenv("BASIC_AUTH_USER", "judge")
     monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
-    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=())
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=(), **SSO_SETTINGS)
     with TestClient(create_app(config)) as vm:
         denied = vm.get(f"{API}/health", headers={"Authorization": "Basic caf\u00e9".encode("latin-1")})
         assert denied.status_code == 401
@@ -2013,7 +2013,7 @@ def test_a_session_ends_when_idle_too_long_past_its_maximum_age_signed_out_or_di
     assert reasons == ["disabled", "idle", "max_age", "sign_out"]
 
 
-def test_the_development_login_is_for_laptops_and_single_sign_on_is_step_two(client, env):
+def test_the_development_login_is_for_laptops_and_off_under_single_sign_on(client, env):
     users = client.get(f"{API}/auth/dev-users").json()
     conforms("DevUsers", users)
     assert {"display_name": "Admin", "roles": ["admin"]} in users["users"]
@@ -2023,12 +2023,18 @@ def test_the_development_login_is_for_laptops_and_single_sign_on_is_step_two(cli
         ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", auth_mode="dev")
     defaults = ServiceConfig(database_url="x", artifact_root=env["root"]).dev_users
     assert ("Admin", ("admin",)) in defaults and ("Arjun", ("reviewer",)) in defaults and ("Priya", ("viewer",)) in defaults   # admin does not review
-    sso = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], auth_mode="oidc", dev_users=TEST_USERS)
-    with TestClient(create_app(sso)) as served:
+    import httpx
+    sso = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], auth_mode="oidc", dev_users=TEST_USERS,
+                        **SSO_SETTINGS)
+    app = create_app(sso)
+    def unreachable(request):
+        raise httpx.ConnectError("Keycloak is down")
+    app.state.service.auth.oidc.http = httpx.Client(transport=httpx.MockTransport(unreachable))
+    with TestClient(app) as served:
         assert served.post(f"{API}/auth/dev-login", json={"user": "Tester"}).status_code == 404
         assert served.get(f"{API}/auth/dev-users").status_code == 404
-        later = served.get(f"{API}/auth/login")
-        assert later.status_code == 503 and later.json()["error_code"] == "single_sign_on_unavailable"
+        down = served.get(f"{API}/auth/login", follow_redirects=False)                  # Keycloak unreachable: said on the sign-in page
+        assert down.status_code == 302 and down.headers["location"] == "/?signin_error=single_sign_on_unavailable"
     signed = client.post(f"{API}/auth/dev-login", json={"user": "tester"})                # names compare without regard to case
     conforms("Me", signed.json())
     cookie = signed.headers["set-cookie"].lower()
@@ -2064,3 +2070,234 @@ def test_the_second_reviewer_rule_compares_user_ids_and_names_only_for_older_rev
     meera = client.as_user("Meera")
     assert meera.post(f"{url}/{second}/reviews", json=body("m1", "approve")).json()["error_code"] == "second_reviewer_required"
     assert client.as_user("R1").post(f"{url}/{second}/reviews", json=body("r1", "approve", "likely_legitimate")).status_code == 201
+
+
+# ------------------------------------------------------------------ Keycloak single sign-on (contract 1.17.0, AM-70)
+KC_ISSUER = "https://keycloak.test/realms/arai"
+SSO_SETTINGS = {"oidc_issuer": KC_ISSUER, "oidc_client_id": "arai", "oidc_client_secret": "kc-secret",
+                "oidc_redirect_uri": "https://arai.test/api/v1/auth/callback", "bootstrap_admins": ("boss@example.com",)}
+
+
+class FakeKeycloak:
+    """A realm as Keycloak serves it, in process: discovery, published RSA keys, and a token endpoint that checks the client
+    secret and the PKCE verifier and signs ID tokens with the attempt's nonce. Tokens are real RS256 JWTs."""
+
+    def __init__(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        self.keys = {"k1": rsa.generate_private_key(public_exponent=65537, key_size=2048)}
+        self.published = ["k1"]
+        self.codes = {}
+
+    def jwks(self) -> dict:
+        import jwt
+        return {"keys": [{**json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(self.keys[kid].public_key())), "kid": kid, "use": "sig",
+                          "alg": "RS256"} for kid in self.published]}
+
+    def sign(self, claims: dict, kid: str = "k1", algorithm: str = "RS256") -> str:
+        import jwt
+        return jwt.encode(claims, self.keys[kid], algorithm=algorithm, headers={"kid": kid})
+
+    @staticmethod
+    def claims(sub="kc-asha", groups=("arai-reviewers", "arai-approvers"), aud="arai", **extra) -> dict:
+        import time as clock
+        now = int(clock.time())
+        return {"iss": KC_ISSUER, "sub": sub, "aud": aud, "exp": now + 300, "iat": now, "email": f"{sub}@example.com",
+                "name": sub.replace("kc-", "").title(), "groups": [f"/{g}" for g in groups], **extra}
+
+    def handler(self, request):
+        from urllib.parse import parse_qs
+
+        import httpx
+
+        from arai.service.oidc import pkce_challenge
+        path = request.url.path
+        if path.endswith("/.well-known/openid-configuration"):
+            base = KC_ISSUER + "/protocol/openid-connect"
+            return httpx.Response(200, json={"issuer": KC_ISSUER, "authorization_endpoint": base + "/auth", "token_endpoint": base + "/token",
+                                             "jwks_uri": base + "/certs", "end_session_endpoint": base + "/logout"})
+        if path.endswith("/certs"):
+            return httpx.Response(200, json=self.jwks())
+        if path.endswith("/token"):
+            form = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
+            claims, challenge = self.codes.pop(form.get("code"), (None, None))
+            if claims is None or form.get("client_secret") != "kc-secret" or pkce_challenge(form.get("code_verifier", "")) != challenge:
+                return httpx.Response(400, json={"error": "invalid_grant"})
+            return httpx.Response(200, json={"id_token": self.sign(claims), "access_token": "opaque", "token_type": "Bearer"})
+        return httpx.Response(404)
+
+    def answer(self, location: str, **overrides) -> tuple:
+        """What Keycloak's sign-in page would answer: (state, code), the code standing for claims carrying the attempt's nonce."""
+        from urllib.parse import parse_qs, urlsplit
+        query = {k: v[0] for k, v in parse_qs(urlsplit(location).query).items()}
+        nonce = overrides.pop("nonce", query["nonce"])
+        code = f"code-{len(self.codes)}-{query['state'][:8]}"
+        self.codes[code] = (self.claims(nonce=nonce, **overrides), query["code_challenge"])
+        return query["state"], code
+
+
+@pytest.fixture
+def sso(env):
+    import httpx
+    fake = FakeKeycloak()
+    config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], auth_mode="oidc", **SSO_SETTINGS)
+    app = create_app(config)
+    app.state.service.auth.oidc.http = httpx.Client(transport=httpx.MockTransport(fake.handler))
+    with TestClient(app, follow_redirects=False) as browser:
+        yield {"fake": fake, "browser": browser, "app": app}
+
+
+def _sign_in(browser, fake, return_to="/runs", **claims):
+    from urllib.parse import quote
+    start = browser.get(f"{API}/auth/login?return_to={quote(return_to)}", follow_redirects=False)
+    assert start.status_code == 302, start.text
+    state, code = fake.answer(start.headers["location"], **claims)
+    return browser.get(f"{API}/auth/callback?code={code}&state={state}", follow_redirects=False)
+
+
+def test_keycloak_sign_in_maps_groups_to_roles_and_refreshes_them_at_each_sign_in(sso):
+    from urllib.parse import parse_qs, urlsplit
+    browser, fake = sso["browser"], sso["fake"]
+    start = browser.get(f"{API}/auth/login", follow_redirects=False)
+    target = urlsplit(start.headers["location"])
+    query = {k: v[0] for k, v in parse_qs(target.query).items()}
+    assert f"{target.scheme}://{target.netloc}{target.path}" == KC_ISSUER + "/protocol/openid-connect/auth"
+    assert query["response_type"] == "code" and query["client_id"] == "arai" and "openid" in query["scope"].split()
+    assert query["redirect_uri"] == "https://arai.test/api/v1/auth/callback" and query["code_challenge_method"] == "S256"
+    assert query["state"] and query["nonce"] and query["state"] != query["nonce"]
+    done = _sign_in(browser, fake, return_to="/runs/run-x/customers")
+    assert done.status_code == 302 and done.headers["location"] == "/runs/run-x/customers"
+    assert "httponly" in done.headers["set-cookie"].lower()
+    me = browser.get(f"{API}/me").json()
+    conforms("Me", me)
+    assert me["auth_mode"] == "oidc" and me["display_name"] == "Asha" and me["email"] == "kc-asha@example.com"
+    assert me["roles"] == ["approver", "reviewer"] and "decide" in me["permissions"]
+    assert me["sso_logout_url"].startswith(KC_ISSUER + "/protocol/openid-connect/logout?client_id=arai")
+    assert "post_logout_redirect_uri=https%3A%2F%2Farai.test%2F" in me["sso_logout_url"]
+    assert browser.get(f"{API}/runs").status_code == 200
+    # the groups are read again at the next sign-in: a person moved to viewers is a viewer, the same user
+    again = _sign_in(browser, fake, groups=("arai-viewers",))
+    assert again.status_code == 302
+    viewer = browser.get(f"{API}/me").json()
+    assert viewer["roles"] == ["viewer"] and viewer["user_id"] == me["user_id"]
+    # a CSRF-protected POST works with the session; sign-out ends it
+    assert browser.post(f"{API}/auth/logout", headers={"X-CSRF-Token": viewer["csrf_token"]}).status_code == 204
+    assert browser.get(f"{API}/me").status_code == 401
+    # return_to is a path of this site only
+    assert _sign_in(browser, fake, return_to="//evil.example/x").headers["location"] == "/"
+    assert _sign_in(browser, fake, return_to="https://evil.example/").headers["location"] == "/"
+    # the development login is off
+    assert browser.post(f"{API}/auth/dev-login", json={"user": "Asha"}).status_code == 404
+
+
+def test_keycloak_answers_that_cannot_be_accepted_sign_nobody_in(sso):
+    import time as clock
+    browser, fake = sso["browser"], sso["fake"]
+    def refused(response, code):
+        assert response.status_code == 302 and response.headers["location"] == f"/?signin_error={code}", response.headers.get("location")
+        assert "set-cookie" not in response.headers
+        assert browser.get(f"{API}/me").status_code == 401
+    start = browser.get(f"{API}/auth/login", follow_redirects=False)
+    state, code = fake.answer(start.headers["location"])
+    refused(browser.get(f"{API}/auth/callback?code={code}&state=not-issued-here"), "sign_in_expired")
+    assert browser.get(f"{API}/auth/callback?code={code}&state={state}").headers["location"] == "/"
+    browser.cookies.clear()
+    refused(browser.get(f"{API}/auth/callback?code={code}&state={state}"), "sign_in_expired")      # a state is accepted once
+    refused(browser.get(f"{API}/auth/callback?error=access_denied&state=x", follow_redirects=False), "sign_in_failed")
+    refused(_sign_in(browser, fake, nonce="another-attempt"), "invalid_token")
+    refused(_sign_in(browser, fake, aud="another-client"), "invalid_token")
+    refused(_sign_in(browser, fake, iss="https://keycloak.test/realms/other"), "invalid_token")
+    refused(_sign_in(browser, fake, exp=int(clock.time()) - 120), "invalid_token")         # past the 60 seconds of leeway
+    refused(_sign_in(browser, fake, groups=("marketing",)), "no_role")
+    # an answer whose PKCE verifier does not match: the token endpoint refuses the code
+    start = browser.get(f"{API}/auth/login", follow_redirects=False)
+    state, code = fake.answer(start.headers["location"])
+    fake.codes[code] = (fake.codes[code][0], "another-challenge")
+    refused(browser.get(f"{API}/auth/callback?code={code}&state={state}", follow_redirects=False), "sign_in_failed")
+    # an attempt older than ten minutes is not accepted
+    start = browser.get(f"{API}/auth/login", follow_redirects=False)
+    state, code = fake.answer(start.headers["location"])
+    with Store(sso["app"].state.service.config.database_url).transaction() as db:
+        db.execute("UPDATE oidc_logins SET created_at = now() - interval '11 minutes'")
+    refused(browser.get(f"{API}/auth/callback?code={code}&state={state}", follow_redirects=False), "sign_in_expired")
+    # a bootstrap admin needs no group
+    assert _sign_in(browser, fake, sub="kc-boss", email="boss@example.com", groups=()).status_code == 302
+    assert browser.get(f"{API}/me").json()["roles"] == ["admin"]
+    with Store(sso["app"].state.service.config.database_url).transaction() as db:
+        reasons = [r["detail"].get("reason") for r in db.execute("SELECT detail FROM auth_events WHERE kind = 'refused'").fetchall()]
+    assert "no_role" in reasons
+
+
+def test_scripts_use_keycloak_bearer_tokens_checked_against_the_realm_keys(sso, written, monkeypatch):
+    import time as clock
+
+    from arai.service import oidc
+    browser, fake = sso["browser"], sso["fake"]
+    token = lambda **claims: {"Authorization": "Bearer " + fake.sign(fake.claims(**claims))}  # noqa: E731
+    admin = token(sub="kc-admin", groups=("arai-admins",), aud=["arai-api", "account"])
+    me = browser.get(f"{API}/me", headers=admin).json()
+    conforms("Me", me)
+    assert me["roles"] == ["admin"] and me["csrf_token"] == "" and me["session_expires_at"] is None
+    manifest = (written["operational"] / "manifest.json").read_text(encoding="utf-8")
+    created = browser.post(f"{API}/datasets", data={"manifest": manifest}, files=upload_parts(written), headers=admin)
+    assert created.status_code == 201                                                     # a bearer request needs no CSRF token
+    for headers in (token(groups=("arai-admins",), aud="account"),                       # meant for another application
+                    token(groups=("arai-admins",), aud="arai-api", exp=int(clock.time()) - 120),
+                    {"Authorization": "Bearer not.a.token"}):
+        refused = browser.get(f"{API}/runs", headers=headers)
+        assert refused.status_code == 401 and refused.json()["error_code"] == "authentication_required"
+    reviewer = token(sub="kc-arjun", groups=("arai-reviewers",), aud="arai-api")
+    assert browser.post(f"{API}/runs", json={"dataset_id": created.json()["dataset_id"], "idempotency_key": "b"}, headers=reviewer).status_code == 403
+    # a key rotated in Keycloak is picked up without a restart; an unpublished key is refused
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    fake.keys["k2"] = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    rotated = {"Authorization": "Bearer " + fake.sign(fake.claims(sub="kc-admin", groups=("arai-admins",), aud="arai-api"), kid="k2")}
+    monkeypatch.setattr(oidc, "JWKS_REFETCH_SECONDS", 0)
+    assert browser.get(f"{API}/runs", headers=rotated).status_code == 401                 # k2 not published yet
+    fake.published.append("k2")
+    assert browser.get(f"{API}/runs", headers=rotated).status_code == 200
+    # disabling the person stops their tokens at once, cached or not
+    sso["app"].state.service.auth.disable(me["user_id"])
+    assert browser.get(f"{API}/me", headers=admin).status_code == 401
+
+
+def test_single_sign_on_needs_its_settings_and_passes_bearer_tokens_through_the_shared_login(env, monkeypatch):
+    import httpx
+    base = {"database_url": env["config"].database_url, "artifact_root": env["root"]}
+    with pytest.raises(RuntimeError, match="OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URI"):
+        create_app(ServiceConfig(**base, auth_mode="oidc"))
+    plain = dict(SSO_SETTINGS, oidc_issuer="http://127.0.0.1:8081/realms/arai")
+    assert ServiceConfig(**base, auth_mode="oidc", **plain).oidc_problems()                # http needs an explicit allowance
+    assert not ServiceConfig(**base, auth_mode="oidc", oidc_allow_http=True, **plain).oidc_problems()
+    with pytest.raises(ValueError, match="AUTH_ROLE_MAP"):
+        ServiceConfig(**base, oidc_role_map=(("arai-root", "superuser"),))
+    from arai.service.config import parse_role_map
+    assert parse_role_map("/arai-viewers=viewer, arai-admins=admin") == (("arai-viewers", "viewer"), ("arai-admins", "admin"))
+    # behind the vm profile's shared login: a bearer token passes it and is checked by ARAI; the login alone signs nobody in
+    monkeypatch.setenv("BASIC_AUTH_USER", "judge")
+    monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
+    fake = FakeKeycloak()
+    app = create_app(ServiceConfig(**base, profile="vm", ui_origins=(), **SSO_SETTINGS))
+    app.state.service.auth.oidc.http = httpx.Client(transport=httpx.MockTransport(fake.handler))
+    with TestClient(app) as vm:
+        bearer = {"Authorization": "Bearer " + fake.sign(fake.claims(groups=("arai-viewers",), aud="arai-api"))}
+        assert vm.get(f"{API}/runs", headers=bearer).status_code == 200
+        assert vm.get(f"{API}/runs", auth=("judge", "s3cret")).json()["error_code"] == "authentication_required"
+        assert vm.get(f"{API}/runs").headers["www-authenticate"].startswith("Basic")
+        assert vm.get(f"{API}/runs", headers={"Authorization": "Bearer forged"}).status_code == 401
+
+
+def test_the_keycloak_realm_export_matches_the_role_map():
+    from arai.service.config import DEFAULT_ROLE_MAP
+    realm = json.loads((Path(__file__).resolve().parents[1] / "deploy" / "keycloak" / "arai-realm.json").read_text(encoding="utf-8"))
+    assert realm["realm"] == "arai" and realm["enabled"]
+    assert {g["name"] for g in realm["groups"]} == {group for group, _ in DEFAULT_ROLE_MAP}
+    client = next(c for c in realm["clients"] if c["clientId"] == "arai")
+    assert not client["publicClient"] and client["standardFlowEnabled"] and client["attributes"]["pkce.code.challenge.method"] == "S256"
+    assert "http://127.0.0.1:8000/api/v1/auth/callback" in client["redirectUris"]
+    mappers = {m["protocolMapper"]: m["config"] for m in client["protocolMappers"]}
+    assert mappers["oidc-group-membership-mapper"]["claim.name"] == "groups" and mappers["oidc-group-membership-mapper"]["full.path"] == "false"
+    assert mappers["oidc-audience-mapper"]["included.custom.audience"] == "arai-api"
+    roles = dict(DEFAULT_ROLE_MAP)
+    people = {u["username"]: sorted(roles[g.lstrip("/")] for g in u["groups"]) for u in realm["users"]}
+    assert people == {"asha": ["approver", "reviewer"], "ravi": ["approver", "reviewer"], "meera": ["approver", "reviewer"],
+                      "arjun": ["reviewer"], "priya": ["viewer"], "admin": ["admin"]}

@@ -20,6 +20,8 @@ Contract 1.15.0 (AM-68), migration 0011: datasets is unique on (world_id, cutoff
 
 Contract 1.16.0 (AM-69), migration 0012: users (issuer and subject unique together, display name, status), user_roles (role and its source, refreshed at every sign-in), sessions (SHA-256 of the cookie and of its CSRF token, last seen, expiry, end and its reason), auth_events (append only: sign_in, sign_out, session_ended, refused, export, user_disabled) and reviews.author_user_id (null for reviews written before sign-in existed). The second-reviewer rule reads author_user_id within the snapshot.
 
+Contract 1.17.0 (AM-70), migration 0013: oidc_logins keeps each Keycloak sign-in attempt for ten minutes (SHA-256 of the state as key, the nonce, the PKCE verifier and the return path) and is deleted when the answer arrives. Keycloak users are keyed by the realm's issuer and the token's subject; their roles are rewritten from the groups claim at every sign-in with source oidc. auth_events records a refused Keycloak answer or bearer token with its reason.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Dataset/job/model/experiment/review events.

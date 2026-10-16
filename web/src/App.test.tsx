@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import type { Customer, ExperimentSummary, Health } from "./api";
-import { fallbackReason } from "./App";
+import { fallbackReason, signInMessage } from "./App";
 import { CustomerTable } from "./components/CustomerTable";
 import { ist, percent } from "./components/ui";
 
@@ -101,5 +101,14 @@ describe("formatting", () => {
   });
   it("shows stored UTC times in India Standard Time", () => {
     expect(ist("2026-09-09T18:29:59Z")).toBe("09 Sept 2026, 23:59 IST");
+  });
+});
+
+describe("single sign-on refusals", () => {
+  it("names the cause the server gives, and never shows a bare code", () => {
+    expect(signInMessage("no_role")).toContain("none of the ARAI groups");
+    expect(signInMessage("sign_in_expired")).toContain("ten minutes");
+    expect(signInMessage("single_sign_on_unavailable")).toContain("cannot be reached");
+    expect(signInMessage("something_new")).toBe("The sign-in did not complete. Please try again.");
   });
 });

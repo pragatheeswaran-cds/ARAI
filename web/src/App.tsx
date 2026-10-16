@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
-import { ApiError, SIGNED_OUT_EVENT, allPages, api, setCsrfToken, type Dataset, type ExperimentSummary, type Health, type Me, type Run } from "./api";
+import { API, ApiError, SIGNED_OUT_EVENT, allPages, api, setCsrfToken, type Dataset, type ExperimentSummary, type Health, type Me, type Run } from "./api";
 import { ErrorBox, PageTitle, ist, number, shortId, useLoad } from "./components/ui";
 import { datasetName, latestSnapshotRun } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
@@ -28,12 +28,38 @@ type Session = { me: Me; can: (permission: string) => boolean; signOut: () => vo
 const SessionContext = createContext<Session>({ me: null as unknown as Me, can: () => false, signOut: () => {} });
 export const useSession = () => useContext(SessionContext);
 
-/** The sign-in page: the development login's people (laptops and demos), or Keycloak single sign-on (step 2). */
+/** What the sign-in page says when Keycloak's answer was refused (contract 1.17.0: /?signin_error=<code>). */
+export function signInMessage(code: string): string {
+  switch (code) {
+    case "no_role":
+      return "You signed in to Keycloak, but your account is in none of the ARAI groups. Ask an administrator to add you to arai-viewers, arai-reviewers or arai-approvers.";
+    case "sign_in_expired":
+      return "That sign-in took longer than ten minutes or was already used. Please sign in again.";
+    case "sign_in_failed":
+      return "Keycloak did not complete the sign-in. Please try again.";
+    case "invalid_token":
+      return "Keycloak's answer could not be verified, so nobody was signed in. If this happens again, tell the administrator.";
+    case "single_sign_on_unavailable":
+      return "Keycloak cannot be reached right now. Try again in a minute; if it persists, tell the administrator.";
+    default:
+      return "The sign-in did not complete. Please try again.";
+  }
+}
+
+/** The sign-in page: the development login's people (laptops and demos), or Keycloak single sign-on (AM-70). */
 function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   const users = useLoad(() => api.devUsers(), []);
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const sso = users.error instanceof ApiError && users.error.status === 404;
+  // a refused Keycloak answer comes back as ?signin_error=<code>: read it once, then take it off the address
+  const [refused] = useState(() => new URLSearchParams(window.location.search).get("signin_error"));
+  const here = new URL(window.location.href);
+  here.searchParams.delete("signin_error");
+  const returnTo = here.pathname + here.search;
+  useEffect(() => {
+    if (refused) window.history.replaceState(null, "", returnTo + window.location.hash);
+  }, [refused, returnTo]);
   const signIn = async (name: string) => {
     setBusy(name);
     setError(null);
@@ -51,12 +77,20 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
       <main id="main" className="signin">
         <div className="brand">ARAI.</div>
         <PageTitle title="Sign in">Every note and decision is recorded under the person who signed in.</PageTitle>
-        {sso ? (
-          <p>
-            <a className="button primary" href="/api/v1/auth/login">
-              Sign in with Keycloak
-            </a>
+        {refused && (
+          <p className="error" role="alert">
+            {signInMessage(refused)}
           </p>
+        )}
+        {sso ? (
+          <>
+            <p className="small">Sign in with your organisation account. Your roles come from your Keycloak groups.</p>
+            <p>
+              <a className="button primary" href={`${API}/auth/login?return_to=${encodeURIComponent(returnTo)}`}>
+                Sign in with Keycloak
+              </a>
+            </p>
+          </>
         ) : (
           <>
             <p className="small">Development login: choose who you are. Single sign-on through Keycloak replaces this list on a shared deployment.</p>
@@ -246,7 +280,9 @@ export default function App() {
   const signOut = () => {
     api.logout().finally(() => {
       setCsrfToken(null);
-      setSession({ me: null, checked: true });
+      // under single sign-on, end the Keycloak session too; it sends the browser back to this site's sign-in page
+      if (me.sso_logout_url) window.location.assign(me.sso_logout_url);
+      else setSession({ me: null, checked: true });
     });
   };
   return (

@@ -45,8 +45,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Contract 1.16.0 (AM-69). Keycloak single sign-on (AUTH_MODE=oidc). Step 1 of the authentication design answers 503 single_sign_on_unavailable; step 2 redirects to Keycloak. 404 with the development login. */
+        /** @description Contract 1.17.0 (AM-70). Keycloak single sign-on (AUTH_MODE=oidc). Redirects the browser to the realm's sign-in page with the authorization code flow, PKCE (S256), a fresh state and a nonce; the attempt is kept for ten minutes. 404 with the development login; 503 single_sign_on_unavailable when Keycloak cannot be reached. */
         get: operations["singleSignOn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.17.0 (AM-70). Keycloak's answer. The state must be one this server issued in the last ten minutes and is accepted once; the code is exchanged over the back channel with the client secret and the PKCE verifier; the ID token is checked against the realm's published keys (RS256, PS256 or ES256), issuer, audience (the client), expiry and the attempt's nonce. Roles come from the token's groups claim through AUTH_ROLE_MAP; a person with no ARAI group is refused. Success sets the arai_session cookie and redirects to return_to; a refusal redirects to /?signin_error=<code> (sign_in_expired, sign_in_failed, invalid_token, no_role, single_sign_on_unavailable). */
+        get: operations["singleSignOnCallback"];
         put?: never;
         post?: never;
         delete?: never;
@@ -378,14 +395,16 @@ export interface components {
             permissions: ("read" | "export" | "review" | "decide" | "manage")[];
             /** @enum {string} */
             auth_mode: "dev" | "oidc";
-            /** @description Send as the X-CSRF-Token header on every POST and DELETE of this session. */
+            /** @description Send as the X-CSRF-Token header on every POST and DELETE of this session. Empty for a request authenticated by a bearer token, which needs none. */
             csrf_token: string;
             /**
              * Format: date-time
-             * @description The session's maximum age; it also ends after idle_minutes without a request.
+             * @description The session's maximum age; it also ends after idle_minutes without a request. Null for a request authenticated by a bearer token, which has no ARAI session.
              */
-            session_expires_at: string;
+            session_expires_at: string | null;
             idle_minutes: number;
+            /** @description Contract 1.17.0 (AM-70). Keycloak's end-session address; the UI goes there after signing out so the Keycloak session ends too. Null with the development login. */
+            sso_logout_url: string | null;
         };
         DevUsers: {
             /** @enum {string} */
@@ -1222,14 +1241,17 @@ export interface operations {
     };
     singleSignOn: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A path of this site to come back to after signing in; anything else is replaced by /. */
+                return_to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description To the identity provider (step 2) */
+            /** @description To Keycloak's sign-in page */
             302: {
                 headers: {
                     [name: string]: unknown;
@@ -1247,6 +1269,37 @@ export interface operations {
             };
             /** @description Single sign-on is not available yet */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    singleSignOnCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed in (to return_to) or refused (to /?signin_error=...) */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Single sign-on is off on this instance */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

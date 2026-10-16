@@ -24,7 +24,7 @@ import yaml
 from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -34,6 +34,7 @@ from arai.operational import TABLES
 from arai.paths import SPEC_ROOT
 from arai.service import auth, datasets, scoring, views, worker
 from arai.service.config import ServiceConfig, from_env
+from arai.service.oidc import OidcError
 from arai.service.store import Conflict, NotFound, Store, request_hash
 
 log = logging.getLogger("arai.api")
@@ -205,6 +206,8 @@ class Service:
 def create_app(config: ServiceConfig | None = None, with_worker: bool = False, static_dir: Path | None = None) -> FastAPI:
     """The API, optionally with the single worker and the built UI served from the same origin (local rehearsal)."""
     config = config or from_env()
+    if config.oidc_problems():
+        raise RuntimeError("AUTH_MODE=oidc needs " + ", ".join(config.oidc_problems()))
     service = Service(config)
     credentials = None
     if config.profile == "vm":
@@ -239,7 +242,9 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         request.state.request_id = uuid.uuid4().hex
         if "\x00" in unquote(request.url.path) or "\x00" in unquote(request.url.query):
             return error_response(422, "invalid_request", "The request carries a NUL byte.", request.state.request_id)
-        if credentials and request.method != "OPTIONS":
+        bearer = config.mode == "oidc" and request.headers.get("authorization", "").startswith("Bearer ")
+        # a Keycloak bearer token passes the shared login; authorize() checks the token itself (AM-70)
+        if credentials and request.method != "OPTIONS" and not bearer:
             supplied = request.headers.get("authorization", "").encode("latin-1", errors="replace")
             expected = b"Basic " + base64.b64encode(f"{credentials[0]}:{credentials[1]}".encode())
             if not secrets.compare_digest(supplied, expected):
@@ -298,6 +303,17 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if needed == auth.PUBLIC:
             return None
         token = request.cookies.get(auth.SESSION_COOKIE)
+        header = request.headers.get("authorization", "")
+        if not token and config.mode == "oidc" and header.startswith("Bearer "):
+            # a script with a Keycloak access token for this API: checked on each request, no session, no CSRF token
+            user, reason = service.auth.resolve_bearer(header[7:].strip(), request.state.request_id)
+            if user is None:
+                raise ApiError(401, "authentication_required", "The bearer token is not valid for this API (" + str(reason) + ").")
+            if needed != auth.SIGNED_IN and not user.can(needed):
+                service.auth.log("refused", user.id, request.state.request_id, {"status": 403, "permission": needed, "path": path})
+                raise ApiError(403, "forbidden", f"This needs the {NEEDED_ROLE[needed]} role.")
+            request.state.user = user
+            return user
         user, reason = service.auth.resolve(token)
         if user is None:
             if token:
@@ -312,10 +328,12 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         request.state.user = user
         return user
 
-    def me_body(user, token: str) -> dict:
+    def me_body(user, token: str | None) -> dict:
         return {"user_id": user.id, "display_name": user.display_name, "email": user.email, "roles": list(user.roles),
-                "permissions": sorted(user.permissions), "auth_mode": config.mode, "csrf_token": auth.csrf_for(token),
-                "session_expires_at": _iso(user.expires_at), "idle_minutes": config.session_idle_minutes}
+                "permissions": sorted(user.permissions), "auth_mode": config.mode, "csrf_token": auth.csrf_for(token) if token else "",
+                "session_expires_at": _iso(user.expires_at), "idle_minutes": config.session_idle_minutes,
+                # contract 1.17.0: where signing out also ends the Keycloak session (null with the development login)
+                "sso_logout_url": service.auth.oidc.logout_url() if service.auth.oidc else None}
 
     api = APIRouter(prefix=PREFIX, dependencies=[Depends(authorize)])
     limit_query = Query(50, ge=1, le=100)
@@ -354,10 +372,35 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         return me_body(user, token)
 
     @api.get("/auth/login")
-    def oidc_login():
+    def oidc_login(return_to: str = Query("/", max_length=500)):
+        """Send the browser to Keycloak (AM-70). return_to is a path of this site, never another address."""
         if config.mode != "oidc":
             raise ApiError(404, "not_found", "Single sign-on is off on this instance; use the development login.")
-        raise ApiError(503, "single_sign_on_unavailable", "Keycloak single sign-on arrives in step 2 of the authentication design.")
+        safe = return_to if return_to.startswith("/") and not return_to.startswith("//") and "\\" not in return_to else "/"
+        try:
+            return RedirectResponse(service.auth.begin_sso(safe), status_code=302)
+        except OidcError as error:
+            # a browser navigation, not a script: back to the sign-in page, which says Keycloak cannot be reached
+            log.warning("single sign-on unavailable: %s", error.detail)
+            return RedirectResponse(f"/?signin_error={error.code}", status_code=302)
+
+    @api.get("/auth/callback")
+    def oidc_callback(request: Request, code: str | None = Query(None, max_length=4000), state: str | None = Query(None, max_length=500),
+                      error: str | None = Query(None, max_length=200)):
+        """Keycloak's answer: a session cookie and back to the page the person came from, or the sign-in page with a reason."""
+        if config.mode != "oidc":
+            raise ApiError(404, "not_found", "Single sign-on is off on this instance.")
+        try:
+            if error or not code or not state:
+                raise OidcError("sign_in_failed", f"Keycloak answered {error or 'without a code'}")
+            _, token, return_to = service.auth.finish_sso(state, code, request.state.request_id)
+        except OidcError as failure:
+            log.warning("request_id=%s sign-in refused: %s", request.state.request_id, failure)
+            return RedirectResponse(f"/?signin_error={failure.code}", status_code=302)
+        response = RedirectResponse(return_to, status_code=302)
+        response.set_cookie(auth.SESSION_COOKIE, token, max_age=config.session_max_hours * 3600, path="/", httponly=True,
+                            samesite="lax", secure=config.profile == "vm")
+        return response
 
     @api.post("/auth/logout", status_code=204)
     def logout(request: Request):

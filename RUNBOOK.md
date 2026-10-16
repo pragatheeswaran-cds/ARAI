@@ -46,6 +46,7 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Sign in on a laptop | the first page of http://127.0.0.1:8000: choose a person of the development login | 2.5 |
 | Other people or roles | `$env:AUTH_DEV_USERS = "Asha=reviewer,approver;Kabir=reviewer;Admin=admin"` before `uv run arai local` | 2.5 |
 | Sign in from a script or `curl.exe` | `curl.exe -c arai-cookies.txt -X POST .../api/v1/auth/dev-login` with `{"user":"Admin"}`, then the CSRF token on every POST | 2.5 |
+| Sign in through Keycloak (single sign-on), rehearse it with the development Keycloak | `AUTH_MODE=oidc` and the `OIDC_*` settings; `docker compose --profile sso up -d keycloak` | 2.6 |
 | **Load data** | | |
 | Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
@@ -295,7 +296,7 @@ and the second-reviewer rule compares people, not typed names.
   right. Change with `SESSION_IDLE_MINUTES` and `SESSION_MAX_HOURS`.
 - **Other people or roles:** `AUTH_DEV_USERS="Asha=reviewer,approver;Kabir=reviewer;Admin=admin"` before `uv run arai local`.
 - **Shared deployments** (`APP_PROFILE=vm`) refuse the development login and use Keycloak single sign-on
-  (`AUTH_MODE=oidc`), which is step 2 of the design; until it lands, a vm instance answers sign-in with 503.
+  (`AUTH_MODE=oidc`, section 2.6).
 - **Scripts and `curl.exe`** sign in through the same login and send the session's CSRF token on every POST and DELETE:
 
 ```powershell
@@ -306,6 +307,76 @@ curl.exe -s -b arai-cookies.txt http://127.0.0.1:8000/api/v1/me                 
 ```
 
 Reviews written before sign-in existed keep their typed name and show **unverified name**; nothing is rewritten.
+
+### 2.6 Single sign-on with Keycloak
+
+Since API contract 1.17.0 (decision AM-70) ARAI signs people in through Keycloak when `AUTH_MODE=oidc` (the default on
+the vm profile). The server does the whole sign-in: the browser is sent to Keycloak, comes back with a one-time code,
+and the server exchanges it for an ID token, checks that token against the realm's published keys, and gives the
+browser ARAI's own session cookie (the same session as section 2.5: 60 minutes idle, 10 hours at most). Roles come
+from the person's **Keycloak groups**, read again at every sign-in:
+
+| Keycloak group | ARAI role |
+|---|---|
+| `arai-viewers` | viewer |
+| `arai-reviewers` | reviewer |
+| `arai-approvers` | approver |
+| `arai-admins` | admin |
+
+Someone in none of these groups is refused with a message saying so. `ARAI_BOOTSTRAP_ADMINS=you@example.org` makes the
+listed e-mail addresses admin before any group exists.
+
+**Settings** (environment variables, also in `.env.example`):
+
+| Variable | Example | Meaning |
+|---|---|---|
+| `AUTH_MODE` | `oidc` | single sign-on (empty: dev on local, oidc on vm) |
+| `OIDC_ISSUER` | `https://keycloak.example.org/realms/arai` | the realm; must be https unless `OIDC_ALLOW_HTTP=1` |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | `arai`, (from Keycloak) | the confidential client ARAI signs in with |
+| `OIDC_REDIRECT_URI` | `https://arai.example.org/api/v1/auth/callback` | registered on the client in Keycloak |
+| `AUTH_ROLE_MAP` | `arai-viewers=viewer,...` | group to role, the table above by default |
+| `AUTH_ROLE_CLAIM` | `groups` | the token claim holding the groups |
+| `OIDC_API_AUDIENCE` | `arai-api` | the audience a script's bearer token must carry |
+| `ARAI_BOOTSTRAP_ADMINS` | `you@example.org` | admin without a group |
+
+The instance refuses to start in `oidc` mode when the issuer, client id, client secret or redirect address is missing.
+
+**Setting up Keycloak:** a realm `arai`; a confidential OpenID Connect client `arai` with standard flow, PKCE method
+S256 and the redirect address above; a *Group Membership* mapper on the client with token claim name `groups` and
+"Full group path" off; an *Audience* mapper adding `arai-api` to access tokens; the four groups. Multi-factor
+authentication, password rules and lockout are Keycloak's realm settings. `deploy/keycloak/arai-realm.json` is a
+complete example of this realm.
+
+**Rehearsing on a laptop with the development Keycloak.** The Compose profile `sso` starts Keycloak 26 on
+http://127.0.0.1:8081 with that realm: six people with the same roles as section 2.5 (`asha`, `ravi`, `meera`,
+`arjun`, `priya`, `admin`; password `arai-dev` for all) and the client secret `arai-dev-secret`. These credentials
+are for this local rehearsal only. Needs Docker and `POSTGRES_PASSWORD` set in `.env` (Compose reads it for every
+service); only Keycloak is started.
+
+```powershell
+docker compose --profile sso up -d keycloak       # first start takes about a minute; http://127.0.0.1:8081
+$env:AUTH_MODE = "oidc"; $env:OIDC_ISSUER = "http://127.0.0.1:8081/realms/arai"; $env:OIDC_ALLOW_HTTP = "1"
+$env:OIDC_CLIENT_ID = "arai"; $env:OIDC_CLIENT_SECRET = "arai-dev-secret"
+$env:OIDC_REDIRECT_URI = "http://127.0.0.1:8000/api/v1/auth/callback"
+uv run arai local                                  # open http://127.0.0.1:8000 and choose "Sign in with Keycloak"
+docker compose --profile sso down                  # afterwards; the realm is imported afresh at the next start
+```
+
+Open ARAI at `127.0.0.1:8000` (not `localhost`), so the address matches the redirect address. **Sign out** ends the
+ARAI session and the Keycloak session, then returns to the sign-in page.
+
+**Scripts** send a Keycloak access token instead of a cookie; no CSRF token is needed. The token must be meant for
+`arai-api` and the person must be in an ARAI group. With the development realm (its client allows the password grant
+for scripts; a company realm would use a service account or a device sign-in instead):
+
+```powershell
+$t = (curl.exe -s -X POST http://127.0.0.1:8081/realms/arai/protocol/openid-connect/token `
+  -d grant_type=password -d client_id=arai -d client_secret=arai-dev-secret -d username=admin -d password=arai-dev `
+  -d scope=openid | ConvertFrom-Json).access_token
+curl.exe -s -H "Authorization: Bearer $t" http://127.0.0.1:8000/api/v1/me
+```
+
+Behind the vm profile's shared login a bearer request passes the shared login and is checked by ARAI itself.
 
 ---
 
@@ -444,10 +515,10 @@ Run these in order. Each line says what a good result looks like.
 
 ```powershell
 # 1. Python tests. They start their own temporary PostgreSQL; the running server is not touched.
-uv run --no-sync pytest -q                          # "227 passed" in about 8 minutes
+uv run --no-sync pytest -q                          # "232 passed" in about 10 minutes
 
 # 2. Front-end tests and type check
-cd web; npm test; npx tsc --noEmit; cd ..            # "28 passed"; tsc prints nothing
+cd web; npm test; npx tsc --noEmit; cd ..            # "29 passed"; tsc prints nothing
 
 # 3. Browser walkthrough of the running application (needs the server up with W5401 and its snapshots of section 4.1
 #    scored; uses Edge, headless; it signs in as Admin, Ravi and Arjun through the development login)

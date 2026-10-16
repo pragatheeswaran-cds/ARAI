@@ -13,6 +13,8 @@ LOCAL_UI_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
 DEFAULT_DEV_USERS = (("Asha", ("reviewer", "approver")), ("Ravi", ("reviewer", "approver")), ("Meera", ("reviewer", "approver")),
                      ("Arjun", ("reviewer",)), ("Priya", ("viewer",)), ("Admin", ("admin",)))
 ROLES = ("viewer", "reviewer", "approver", "admin")
+# Keycloak groups to ARAI roles (AM-69, owner's decision: roles live in Keycloak groups)
+DEFAULT_ROLE_MAP = (("arai-viewers", "viewer"), ("arai-reviewers", "reviewer"), ("arai-approvers", "approver"), ("arai-admins", "admin"))
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,17 @@ class ServiceConfig:
     dev_users: tuple = DEFAULT_DEV_USERS
     session_idle_minutes: int = 60                  # signed out after this long without a request
     session_max_hours: int = 10                     # signed in again after this long, active or not
+    # Keycloak single sign-on (AUTH_MODE=oidc, step 2 of the authentication design)
+    oidc_issuer: str | None = None                  # e.g. https://keycloak.example.com/realms/arai
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = field(default=None, repr=False)
+    oidc_redirect_uri: str | None = None            # https://<host>/api/v1/auth/callback
+    oidc_scopes: str = "openid profile email"
+    oidc_api_audience: str = "arai-api"             # the audience scripts' bearer tokens must carry
+    oidc_role_claim: str = "groups"
+    oidc_role_map: tuple = DEFAULT_ROLE_MAP
+    bootstrap_admins: tuple = ()                    # e-mail addresses given admin before any group exists
+    oidc_allow_http: bool = False                   # a plain-http issuer, only for a local test Keycloak
 
     def __post_init__(self):
         if self.profile not in ("local", "vm"):
@@ -43,6 +56,19 @@ class ServiceConfig:
                 raise ValueError(f"development user {name!r}: roles must be among {ROLES}")
         if self.session_idle_minutes < 1 or self.session_max_hours < 1:
             raise ValueError("session limits must be positive")
+        if {role for _, role in self.oidc_role_map} - set(ROLES):
+            raise ValueError(f"AUTH_ROLE_MAP roles must be among {ROLES}")
+
+    def oidc_problems(self) -> list:
+        """What single sign-on still needs; empty when AUTH_MODE=oidc can start (checked when the app is created)."""
+        if self.mode != "oidc":
+            return []
+        missing = [name for name, value in (("OIDC_ISSUER", self.oidc_issuer), ("OIDC_CLIENT_ID", self.oidc_client_id),
+                                            ("OIDC_CLIENT_SECRET", self.oidc_client_secret), ("OIDC_REDIRECT_URI", self.oidc_redirect_uri))
+                   if not value]
+        if self.oidc_issuer and not self.oidc_issuer.startswith("https://") and not self.oidc_allow_http:
+            missing.append("an https OIDC_ISSUER (or OIDC_ALLOW_HTTP=1 for a local test Keycloak)")
+        return missing
 
     @property
     def mode(self) -> str:
@@ -62,7 +88,21 @@ def from_env() -> ServiceConfig:
                          anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None, memo_model=os.environ.get("ARAI_MEMO_MODEL") or None,
                          auth_mode=os.environ.get("AUTH_MODE") or None, dev_users=dev_users,
                          session_idle_minutes=int(os.environ.get("SESSION_IDLE_MINUTES", "60")),
-                         session_max_hours=int(os.environ.get("SESSION_MAX_HOURS", "10")))
+                         session_max_hours=int(os.environ.get("SESSION_MAX_HOURS", "10")),
+                         oidc_issuer=os.environ.get("OIDC_ISSUER") or None, oidc_client_id=os.environ.get("OIDC_CLIENT_ID") or None,
+                         oidc_client_secret=os.environ.get("OIDC_CLIENT_SECRET") or None,
+                         oidc_redirect_uri=os.environ.get("OIDC_REDIRECT_URI") or None,
+                         oidc_scopes=os.environ.get("OIDC_SCOPES", "openid profile email"),
+                         oidc_api_audience=os.environ.get("OIDC_API_AUDIENCE", "arai-api"),
+                         oidc_role_claim=os.environ.get("AUTH_ROLE_CLAIM", "groups"),
+                         oidc_role_map=parse_role_map(os.environ["AUTH_ROLE_MAP"]) if os.environ.get("AUTH_ROLE_MAP") else DEFAULT_ROLE_MAP,
+                         bootstrap_admins=tuple(e.strip().casefold() for e in os.environ.get("ARAI_BOOTSTRAP_ADMINS", "").split(",") if e.strip()),
+                         oidc_allow_http=os.environ.get("OIDC_ALLOW_HTTP", "") in ("1", "true", "yes"))
+
+
+def parse_role_map(text: str) -> tuple:
+    """AUTH_ROLE_MAP: "arai-viewers=viewer,arai-reviewers=reviewer,arai-approvers=approver,arai-admins=admin"."""
+    return tuple((group.strip().lstrip("/"), role.strip()) for group, _, role in (e.partition("=") for e in text.split(",")) if group.strip())
 
 
 def parse_dev_users(text: str) -> tuple:
