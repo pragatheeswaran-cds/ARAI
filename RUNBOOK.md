@@ -46,8 +46,8 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
 | W5401 as of 9 July and 9 August (the same customers, earlier cutoffs) | `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` | 4.1 |
-| Register and score those snapshots | the browser or the `curl.exe` calls of section 4 with `worlds\W5401.as-of-2026-07-09\operational`, then `...2026-08-09` | 4.1 |
-| Record the August review outcomes the history screens show | `uv run --no-sync python scripts\history_demo.py` | 4.1 |
+| Register and score the three snapshots, then record the August review outcomes (instance up) | `uv run --no-sync python scripts\history_demo.py --load` | 4.1 |
+| Only the August review outcomes | `uv run --no-sync python scripts\history_demo.py` | 4.1 |
 | Validate a snapshot without registering it | `uv run arai validate <folder>` | 5 |
 | Export the queue as CSV (any filters of the list) | queue page **Export this view as CSV**, or `curl.exe -s -o queue.csv "http://127.0.0.1:8000/api/v1/runs/<run_id>/customers/export?review_only=true"` | 5 |
 | **Check** | | |
@@ -330,18 +330,40 @@ same identifier in every snapshot (decision AM-68). Registering W5401 again with
 snapshot of the same world instead of being refused, and the queue, the case and the Overview show each customer's
 history across the snapshots. Different worlds are never linked.
 
+**On a laptop, from this branch** (everything below is regenerated, nothing is copied from another machine; rehearsed
+on an empty database: same numbers, about two minutes):
+
 ```powershell
-# 1. write W5401 as it stood on 9 July and 9 August (about 15 seconds each; replayed from the generator, checked as
-#    prefixes of W5401; written beside it as worlds\W5401.as-of-<date> and in the private folder)
+# 0. the branch, its environment and its UI (the UI changed on this branch, so rebuild it)
+git fetch origin; git checkout gap3-customer-history; git pull
+uv sync
+cd web; npm install; npm run build; cd ..
+
+# 1. write W5401 as it stood on 9 July and 9 August (about 15 seconds each). Needs W5401 itself on disk
+#    (data\EXP-20261005-04\artifacts\worlds\W5401, as section 1.3 generates it). The command replays the generator
+#    for seed 5401, so nothing is copied; it checks each snapshot is a prefix of your W5401 and stops if it is not.
 uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09
 
-# 2. register and score both, as in section 4, with these folders instead of worlds\W5401\operational:
-#    data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-07-09\operational
-#    data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-08-09\operational
+# 2. start the instance (terminal 1); the database moves to schema version 11 by itself on the first start
+uv run arai local
 
-# 3. record three August review outcomes (a rejection, an approval, one awaiting approval); safe to run twice
-uv run --no-sync python scripts\history_demo.py
+# 3. in terminal 2: register and score the three snapshots of W5401 (the ones already registered or scored are
+#    skipped), then record the three August review outcomes. Safe to run again.
+uv run --no-sync python scripts\history_demo.py --load
 ```
+
+The last line it prints must read `Since the previous snapshot (2026-08-09): 249 in both queues, 35 new, 22 left,
+2 decided before`. To confirm that your snapshot files are byte for byte the ones this branch was built with, compare
+two hashes (all fourteen are in `records/2026-10-16-monthly-snapshots.md`):
+
+```powershell
+Get-FileHash data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-07-09\operational\customer_master.csv   # BD1D31D933D73B34...
+Get-FileHash data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-08-09\operational\customer_master.csv   # 372D98CD2CAF3E63...
+```
+
+Step 3 by hand instead: register and score each folder as in section 4 (browser or `curl.exe`), using
+`worlds\W5401.as-of-2026-07-09\operational` and `worlds\W5401.as-of-2026-08-09\operational`, then run
+`uv run --no-sync python scripts\history_demo.py` without `--load`.
 
 The order does not matter: the workspace always opens on the newest run of the latest snapshot (9 September).
 Expected: July 256 selected of 5,119 eligible; August 271 of 5,408; and on the September Overview a panel **Since the

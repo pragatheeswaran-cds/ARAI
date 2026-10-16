@@ -46,3 +46,33 @@ opened by Asha and rejected by Ravi; W5401-C07084 (a household at an address whe
 approved by Asha as legitimate; W5401-C05428 (ring, rank 23) opened by Asha and sent for approval. In September all three
 are in the queue again as new cases of that month, with the August outcome shown on them; C05428 has climbed from rank 38
 in July and 23 in August to rank 3.
+
+## Reproducing it on another machine
+
+`arai snapshot` replays the generator for the world's seed, so the snapshots are regenerated, not copied: run twice it
+wrote byte-identical files. On a fresh database `scripts/history_demo.py --load` registered and scored the three
+snapshots and recorded the August outcomes in about two minutes, with the numbers above, and the browser walkthrough
+passed 61 of 61 against it (RUNBOOK section 4.1). The files of this branch's snapshots, for comparison:
+
+| Snapshot | Table | Rows | SHA-256 |
+|---|---|---|---|
+| 2026-07-09 | customer_master | 9,502 | `bd1d31d933d73b344d8f69bb6173d9b6b51f140335e22cd252d327bbfa87a048` |
+| 2026-07-09 | sku_master | 300 | `27048143e1f617dc145623d86ce5bda712a9212fffc06cfbb4bd113ab89dc484` |
+| 2026-07-09 | reason_code | 16 | `c3e219f89cd51f5a927653163409a153022c0dac38ef410070a5ef481bc3a6ec` |
+| 2026-07-09 | sales_order | 71,301 | `629e21fd6199c335203cc7bdca3756e7f7953c39322759b7f6a2991c0f485779` |
+| 2026-07-09 | sales_order_line | 113,969 | `927be3f694684186c69cb05054704cd6fcbe6a4435c5346652cb7fbd555146bb` |
+| 2026-07-09 | return_order | 21,038 | `4358a13b3b85c31c0fb59d872129038c0327077c88434912c89feba76215d9ec` |
+| 2026-07-09 | return_order_line | 23,006 | `edcea7200a872f10fa3ee2f3d613016b909fc1ec04190bd2f28bb3be0939f0fd` |
+| 2026-08-09 | customer_master | 9,791 | `372d98cd2caf3e63d45e6f5165331cadfabf71fdea0d7f96ca5ab93588770f40` |
+| 2026-08-09 | sku_master | 300 | `27048143e1f617dc145623d86ce5bda712a9212fffc06cfbb4bd113ab89dc484` |
+| 2026-08-09 | reason_code | 16 | `c3e219f89cd51f5a927653163409a153022c0dac38ef410070a5ef481bc3a6ec` |
+| 2026-08-09 | sales_order | 77,762 | `1b4880ef380865fdb7f3be880f77fb8fe3d17f1bb92392c85b2b1b3f50e62353` |
+| 2026-08-09 | sales_order_line | 124,286 | `2180f3b359f4c95c91b25bfd2da122ad09cd16e9b72e346380147d92e8663f42` |
+| 2026-08-09 | return_order | 23,004 | `4c3666e4c5601e0e23ee41e85116f4ccaca8c15a7477c0201dc731db2afb674b` |
+| 2026-08-09 | return_order_line | 25,106 | `6f4ef846027f1fd2ff222f49b8341788f84606386a77aeefae36c01bf5920f5b` |
+
+This was rehearsed in a Linux container. The CSV files are written with `\n` line endings on every system, so on
+Windows the same hashes are expected; comparing them (RUNBOOK section 4.1) is how to confirm it. Run ids differ between
+machines (they are random), and dataset ids may (they hash the manifest file, whose line endings follow the operating
+system); customer ids, scores, ranks, selections and the counts above follow from the files.
+

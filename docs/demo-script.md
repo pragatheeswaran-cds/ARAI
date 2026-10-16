@@ -135,8 +135,9 @@ defaults.
    `scoring_ready` and `promoted_model_ready` must both be `true` and `model_kind` must be `supervised`.
 2. Open http://127.0.0.1:8000. The Overview must show 5,676 eligible customers and 284 selected for W5401. If it
    says no scored run is available, register and score W5401 (RUNBOOK.md section 4), about 15 seconds.
-2b. Load the July and August snapshots of W5401 and the three August review outcomes (RUNBOOK.md section 4.1: one
-   `arai snapshot` command, two registrations and scores, `scripts\history_demo.py`). The Overview must then show
+2b. Load the July and August snapshots of W5401 and the three August review outcomes (RUNBOOK.md section 4.1:
+   `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` once, then with the instance up
+   `uv run --no-sync python scripts\history_demo.py --load`). The Overview must then show
    **Since the previous snapshot of W5401 (09 Aug 2026)**: 249, 35, 22 and 2.
 3. Type your first reviewer name (Arjun) in the header. The name is kept in the browser only.
 4. Know the state the walkthrough leaves behind: the top-ranked case W5401-C03245 is already **in review**, opened
