@@ -1,6 +1,7 @@
 // Rules the UI applies itself, each in one place (frontend data plan, section 4). Every rule reads fields the API serves
 // and mirrors a server rule where one exists. Nothing here changes a score, a rank or a selection.
 import type { Customer, Dataset, GateOutcome, Run, Style, Tier, WorkflowState } from "./api";
+import { ist } from "./components/ui";
 
 /** The dataset as the run strip names it: world and purpose. */
 export const datasetName = (run: Run, dataset?: Dataset | null) => (dataset ? `${run.world_id} · ${dataset.purpose.replaceAll("_", " ")}` : run.world_id);
@@ -188,15 +189,10 @@ export function caseSummary(data: CaseLike): string {
 }
 
 // ---------------------------------------------------------------- snapshots of one world (contract 1.15.0, decision AM-68)
-/** A snapshot named by its cutoff date in IST, e.g. "09 Aug 2026" (a cutoff is the last second of that day). */
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** A snapshot named by its cutoff date in IST, e.g. "09 Aug 2026" (a cutoff is the last second of that day), written
+ *  the way every other date in the workspace is (ist), so a row never mixes "Sep" and "Sept". */
 export function snapshotDate(cutoff: string | null | undefined): string {
-  if (!cutoff) return "n/a";
-  const date = new Date(cutoff);
-  if (Number.isNaN(date.getTime())) return cutoff.slice(0, 10);
-  // the IST calendar date, spelt the same in every browser (locales disagree on "Sep" and "Sept")
-  const local = new Date(date.getTime() + 330 * 60 * 1000);
-  return `${String(local.getUTCDate()).padStart(2, "0")} ${MONTHS[local.getUTCMonth()]} ${local.getUTCFullYear()}`;
+  return ist(cutoff, false);
 }
 
 export const HISTORY_LABEL: Record<"all" | "new_in_queue" | "repeat_in_queue" | "decided_before", string> = {

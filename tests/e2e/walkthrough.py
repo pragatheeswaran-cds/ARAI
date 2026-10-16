@@ -184,7 +184,7 @@ with sync_playwright() as pw:
     check("a case decided last month comes back as this month's own case, with the decision shown on it",
           "Rejected on the 09 Aug 2026 snapshot by Ravi" in text and "this snapshot's review starts on" in text)
     check("the history tab shows the customer in every snapshot of the world",
-          all(d in text for d in ("09 Jul 2026", "09 Aug 2026", "09 Sep 2026")) and "History across snapshots" in text and "Rejected" in text)
+          all(d in text for d in ("09 Jul 2026", "09 Aug 2026", "09 Sept 2026")) and "History across snapshots" in text and "Rejected" in text)
     shot(page, "17-case-history")
     page.get_by_role("tab", name="notes (2)").click()
     settle(page)

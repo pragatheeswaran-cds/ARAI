@@ -268,7 +268,10 @@ export function Datasets() {
                 </tr>
               </thead>
               <tbody>
-                {datasets.data.map((dataset) => (
+                {/* the snapshots of one world together, latest cutoff first (AM-68) */}
+                {[...datasets.data]
+                  .sort((a, b) => a.world_id.localeCompare(b.world_id) || new Date(b.cutoff).getTime() - new Date(a.cutoff).getTime())
+                  .map((dataset) => (
                   <tr key={dataset.dataset_id}>
                     <td>
                       {dataset.world_id} <strong>{snapshotDate(dataset.cutoff)}</strong>

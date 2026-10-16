@@ -410,7 +410,7 @@ Click **Datasets & runs**. Show, without necessarily doing it:
 If you do register W5401 again, the server answers with the existing dataset (same manifest hash) and a new run
 can be started with a fresh idempotency key; previous runs and notes stay.
 
-**A new month.** The dataset list shows W5401 three times: **09 Jul 2026**, **09 Aug 2026** and **09 Sep 2026**, the
+**A new month.** The dataset list shows W5401 three times: **09 Sept 2026**, **09 Aug 2026** and **09 Jul 2026**, the
 same 10,000-customer world exported on three dates (9,502, 9,791 and 10,000 accounts as new customers sign up). Say:
 "Next month's export is not a new world. It is the next snapshot of the same customers." Go to the **Overview**
 (screenshot `15-overview-history.png`): **Since the previous snapshot of W5401 (09 Aug 2026)**: 249 customers are in
