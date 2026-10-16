@@ -1,0 +1,61 @@
+{
+  "checks": [
+    {
+      "check": "health reports the baseline, not a promoted model",
+      "ok": true,
+      "detail": "{'alive': True, 'scoring_ready': True, 'promoted_model_ready': False, 'model_kind': 'baseline_fallback', 'queue_depth': 0, 'worker_seconds_since_seen': 0.352413}"
+    },
+    {
+      "check": "the baseline run succeeds with complete counts",
+      "ok": true,
+      "detail": "succeeded"
+    },
+    {
+      "check": "banner states the real reason and the active ranking",
+      "ok": true,
+      "detail": "No candidate passed the validation gate. The return-rate ranking is active. Evidence remai"
+    },
+    {
+      "check": "overview says the scoring mode is the baseline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the model-versus-rule comparison is hidden under fallback",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "header names the baseline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the score is relabelled as a return-rate percentile",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no rule column and no comparison filter under fallback",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case evidence is complete under fallback",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation says no winner and that nothing was promoted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "datasets page names the active bundle as the baseline",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "passed": 11,
+  "failed": 0
+}

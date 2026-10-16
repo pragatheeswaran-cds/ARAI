@@ -211,3 +211,6 @@ tr.member td:first-child::before { content: "└ "; color: var(--muted); }
 button.copy { min-width: 24px; min-height: 24px; }
 a.link { display: inline-block; padding: 2px 0; }
 button.quiet { background: transparent; border: 1px solid var(--line); color: #2c4a3a; margin-left: 8px; }
+
+/* contract 1.14.0: action rows above a panel */
+.actions { margin: 0 0 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

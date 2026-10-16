@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import type { Customer, PrimarySignal, Run } from "../api";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, clearedHeavyReturner, groupByCommunity, rawRate } from "../derive";
-import { Badge, CopyId, label, number, percent } from "./ui";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, clearedHeavyReturner, groupByCommunity, notObserved, rawRate } from "../derive";
+import { Badge, CopyId, label, number, percent, rupees } from "./ui";
 
 export const SCORE_HELP =
   "Position of this customer's score among the frozen training scores (0-100). It is not a probability of abuse and not the rank in this batch.";
@@ -93,7 +93,7 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
                 Return-rate rule
               </th>
             )}
-            <th scope="col" title="Units requested for return on mature sale lines; rejected requests count, withdrawn ones do not">
+            <th scope="col" title="Units requested for return on mature sale lines (rejected requests count, withdrawn ones do not), and refunds paid">
               Requested / mature units
             </th>
             {!compact && <th scope="col">Status</th>}
@@ -118,6 +118,7 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
                     <small>
                       {cleared ? "cleared heavy returner · " : ""}
                       {CLEARED_REASON[c.cleared_reason]}
+                      {c.absent_signals?.length ? ` · ${notObserved(c)}` : ""}
                     </small>
                   )}
                 </td>
@@ -156,6 +157,11 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
                   <small>
                     {rate !== null ? percent(rate, 0) + " of mature units" : "no mature units"} / {s.mature_sale_lines} lines
                   </small>
+                  {!compact && c.refunded_inr !== null && c.refunded_inr !== undefined && (
+                    <small>
+                      {rupees(c.refunded_inr)} refunded{c.claim_refunded_inr ? `, ${rupees(c.claim_refunded_inr)} on claims` : ""}
+                    </small>
+                  )}
                 </td>
                 {!compact && (
                   <td>

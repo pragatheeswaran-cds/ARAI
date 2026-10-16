@@ -3,6 +3,7 @@ import { api } from "../api";
 import { useWorkspace } from "../App";
 import { CustomerTable } from "../components/CustomerTable";
 import { Callout, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, useLoad } from "../components/ui";
+import { inrLakh } from "../derive";
 
 export function Overview() {
   const { run, runs, experiment, fallback, health } = useWorkspace();
@@ -91,6 +92,42 @@ export function Overview() {
           )}
         </Panel>
       </div>
+      {run.refunds && (
+        <Panel title="Refunds paid to the customers in each queue">
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Queue</th>
+                  <th scope="col">Customers</th>
+                  <th scope="col">Refunds paid</th>
+                  <th scope="col">Of which on transaction claims</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{fallback ? "Review set (return-rate ranking)" : "Selected by the model"}</td>
+                  <td>{number(run.refunds.review_set.customers)}</td>
+                  <td>{inrLakh(run.refunds.review_set.refunded_inr)}</td>
+                  <td>{inrLakh(run.refunds.review_set.claim_refunded_inr)}</td>
+                </tr>
+                {!fallback && (
+                  <tr>
+                    <td>Would be selected by the return-rate rule</td>
+                    <td>{number(run.refunds.rule_set.customers)}</td>
+                    <td>{inrLakh(run.refunds.rule_set.refunded_inr)}</td>
+                    <td>{inrLakh(run.refunds.rule_set.claim_refunded_inr)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Callout>
+            Observed refunds from the snapshot, not losses. A refund on a transaction claim (item not received, empty package, missing parts,
+            wrong item sent) is money paid where no item came back to inspect; it is not proof of abuse.
+          </Callout>
+        </Panel>
+      )}
       {!fallback && lists.data && (
         <Panel title="Model and return-rate rule compared">
           <p className="muted">

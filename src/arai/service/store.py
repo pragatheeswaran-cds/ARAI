@@ -158,6 +158,43 @@ class Store:
             db.execute("DELETE FROM datasets WHERE id = %s", (dataset_id,))
         return row
 
+    # ------------------------------------------------------------------ refunds paid, from the stored timeline (contract 1.14.0)
+    def refund_totals(self, run_id: str, customer_ids: list) -> dict:
+        """customer_id -> {refunded, claim_refunded, known}: refunds paid on the customer's return lines with status refunded,
+        and the part paid on transaction-claim lines. `known` is false for a run scored before line statuses were stored.
+        A customer with no return line is absent from the result (nothing refunded)."""
+        if not customer_ids:
+            return {}
+        with self.transaction() as db:
+            rows = db.execute("""SELECT customer_id,
+                                        coalesce(sum(amount_inr) FILTER (WHERE line_status = 'refunded'), 0) AS refunded,
+                                        coalesce(sum(amount_inr) FILTER (WHERE line_status = 'refunded'
+                                                                           AND event_type = 'transaction_claim'), 0) AS claim_refunded,
+                                        bool_and(line_status IS NOT NULL) AS known
+                                 FROM run_timeline WHERE run_id = %s AND customer_id = ANY(%s) AND event_type <> 'purchase'
+                                 GROUP BY customer_id""", (run_id, list(customer_ids))).fetchall()
+        return {row["customer_id"]: row for row in rows}
+
+    def run_refunds(self, run_id: str) -> dict | None:
+        """Refunds paid to the review set and to the set the return-rate rule would select, for the Overview; None for a run
+        scored before line statuses were stored."""
+        with self.transaction() as db:
+            known = db.execute("""SELECT bool_and(line_status IS NOT NULL) AS known FROM run_timeline
+                                  WHERE run_id = %s AND event_type <> 'purchase'""", (run_id,)).fetchone()["known"]
+            if known is False:
+                return None
+            out = {}
+            for name, column in (("review_set", "selected_for_review"), ("rule_set", "baseline_selected")):
+                row = db.execute(f"""SELECT (SELECT count(*) FROM run_customers WHERE run_id = %s AND {column}) AS customers,
+                                            coalesce(sum(t.amount_inr) FILTER (WHERE t.line_status = 'refunded'), 0) AS refunded,
+                                            coalesce(sum(t.amount_inr) FILTER (WHERE t.line_status = 'refunded'
+                                                                                 AND t.event_type = 'transaction_claim'), 0) AS claims
+                                     FROM run_timeline t JOIN run_customers c ON c.run_id = t.run_id AND c.customer_id = t.customer_id
+                                     WHERE t.run_id = %s AND t.event_type <> 'purchase' AND c.{column}""", (run_id, run_id)).fetchone()
+                out[name] = {"customers": int(row["customers"]), "refunded_inr": round(float(row["refunded"]), 2),
+                             "claim_refunded_inr": round(float(row["claims"]), 2)}
+        return out
+
     # ------------------------------------------------------------------ demo housekeeping (arai db-clean)
     def counts(self) -> dict:
         """How much the database holds, for the clean-up command's report: datasets, runs, result rows, reviews, memos."""

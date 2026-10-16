@@ -4,7 +4,7 @@ import { ApiError, api, newKey, type Case, type Community, type Curves, type Dis
 import { useReviewer, useWorkspace } from "../App";
 import { Chips, GateBadge, SCORE_HELP, StateBadge, TierBadge, workflowNote } from "../components/CustomerTable";
 import { Badge, Callout, CopyId, ErrorBox, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, rupees, shortId, useLoad } from "../components/ui";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_LABEL, clearedHeavyReturner, rawRate } from "../derive";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_LABEL, caseSummary, clearedHeavyReturner, notObserved, rawRate } from "../derive";
 
 const TABS = ["evidence", "returns", "linked accounts", "notes"] as const;
 type Tab = (typeof TABS)[number];
@@ -42,6 +42,7 @@ function ClearedHeader({ data }: { data: Case }) {
       {heavy && run?.heavy_returner_cutoff !== null && run && rate !== null && (
         <> Raw return rate {percent(rate, 0)}, at or above this run's heavy-returner cutoff of {percent(run.heavy_returner_cutoff, 0)}.</>
       )}{" "}
+      {c.absent_signals?.length ? <>Not observed for this customer: {notObserved(c)}. </> : null}
       The model read the basket, the claims and the timing, not the rate alone.
     </Callout>
   );
@@ -137,6 +138,14 @@ function Expected({ data }: { data: Case }) {
       <Row name="Actual units requested for return" note="Rejected requests count, because an attempt is evidence; withdrawn requests do not">
         {number(b.actual_units)} of {number(b.purchased_units)} bought
       </Row>
+      {data.customer.refunded_inr !== null && data.customer.refunded_inr !== undefined && (
+        <Row
+          name="Refunds paid"
+          note={`${rupees(data.customer.claim_refunded_inr ?? 0)} of it on transaction claims, where no item comes back to inspect; withdrawn and rejected requests carry none`}
+        >
+          {rupees(data.customer.refunded_inr) || "INR 0"}
+        </Row>
+      )}
       <Row name="Expected for this basket" note="From other customers who bought the same products">
         {b.expected_units.toFixed(1)}
       </Row>
@@ -720,6 +729,22 @@ export function CustomerCase() {
       <LoadState state={state} />
       {data && c && (
         <>
+          <p className="actions">
+            <button
+              type="button"
+              onClick={() => {
+                // a plain-text hand-off for the returns-policy or service team, built from what this page shows
+                const blob = new Blob([caseSummary(data)], { type: "text/plain;charset=utf-8" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `arai-case-${c.customer_id}.txt`;
+                link.click();
+                URL.revokeObjectURL(link.href);
+              }}
+            >
+              Download case summary
+            </button>
+          </p>
           <ClearedHeader data={data} />
           <div className="stats">
             <Stat

@@ -31,3 +31,5 @@ Fallback banner states actual failed gate or selection not completed; retain val
 | INF-AC-07 | A run records its drift report; shifted scores or inputs and a changed scoring code each raise a warning, and a snapshot like training raises none. |
 
 Acceptance status is recorded per criterion in acceptance-register.csv (status, evidence, date, reviewer). Prose requirements are not implementation evidence.
+
+Contract 1.14.0 (AM-66): the community kind is `scoring.community_kind`. Where some edge shares a payment instrument a community is a ring on one coordinated claim match, two or more members selected for review, or a member with a coordinated claim share above zero; where every edge shares only an address and a device it is a ring only with two or more coordinated claim matches or two or more members selected for review. Observed evidence only; scores, ranks and selections are unchanged.

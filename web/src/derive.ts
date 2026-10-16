@@ -121,3 +121,68 @@ export function thresholdFor(bins: { lower: number; at_or_above: number }[], siz
 }
 
 export const seconds = (value: number | null) => (value === null ? "" : value < 60 ? `${value}s` : `${Math.floor(value / 60)}m ${value % 60}s`);
+
+// ---------------------------------------------------------------- contract 1.14.0: what was not observed, money, hand-off
+const ABSENT_PHRASE: Record<string, string> = {
+  repeat_claims: "no repeated transaction claims",
+  linked_claims: "no claims matched by a linked account",
+  late_returns: "no late returns",
+  returns_above_expected: "returns within the basket's expectation",
+  supported_links: "no linked accounts",
+};
+/** For a customer outside the queue, the evidence it does not carry, as one clause ("no late returns, no linked accounts"). */
+export function notObserved(customer: Pick<Customer, "absent_signals">): string {
+  return (customer.absent_signals ?? []).map((tag) => ABSENT_PHRASE[tag] ?? tag.replace(/_/g, " ")).join(", ");
+}
+
+/** Indian rupees in lakh for the Overview's totals: 5214288 -> "INR 52.1 lakh". */
+export function inrLakh(value: number | null | undefined): string {
+  return value === null || value === undefined ? "n/a" : `INR ${(value / 100000).toFixed(1)} lakh`;
+}
+
+type CaseLike = {
+  run_id: string;
+  world_id: string;
+  model_id: string;
+  customer: Customer;
+  timeline: { event_type: string; observed_at: string; order_id: string | null; order_line_no: number | null; sku: string | null; quantity: number | null; reason_code: string | null; day_in_window: number | null; window_days: number | null; line_status: string | null; amount_inr: number | null }[];
+  rules_fired: { label: string; fired: boolean | null }[];
+  wardrobing: { status: string };
+  community: { id: string; kind: string; size: number } | null;
+  reviews: { created_at: string; reviewer_name: string; kind: string; disposition: string; note: string }[];
+};
+const money = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : "INR " + v.toLocaleString("en-IN", { maximumFractionDigits: 2 }));
+const words = (v: string | null | undefined) => (v ?? "n/a").replace(/_/g, " ");
+/** A plain-text hand-off of one case for the returns-policy or service team: the evidence, the return lines and the notes. */
+export function caseSummary(data: CaseLike): string {
+  const c = data.customer;
+  const b = c.basket_expectation;
+  const w = c.workflow;
+  const lines = [
+    "ARAI case hand-off",
+    `Customer ${c.customer_id} / world ${data.world_id} / run ${data.run_id} / model ${data.model_id}`,
+    "Observed evidence for a human reviewer. It is not a finding of misconduct. Synthetic data only.",
+    "",
+    c.rank
+      ? `Score ${c.risk_score?.toFixed(2)} (a percentile against the training scores, not a probability) / rank ${c.rank} / tier ${words(c.tier)} / recommendation ${words(c.gate_outcome)}`
+      : "Not ranked: fewer than three mature sale lines",
+    `Status ${words(w.state)}${w.opened_by ? `, opened by ${w.opened_by}` : ""}${w.decided_by ? `, decided by ${w.decided_by}` : ""}`,
+    `Return-rate rule: ${c.baseline_rank ? `rank ${c.baseline_rank}, ${c.baseline_selected ? "selected" : "not selected"}` : "not ranked"}`,
+    b ? `Requested ${b.actual_units} of ${b.purchased_units} mature units; expected ${b.expected_units.toFixed(1)}${b.band_low !== null && b.band_high !== null ? ` (normal band ${b.band_low.toFixed(1)} to ${b.band_high.toFixed(1)})` : ""}` : "No mature purchase yet",
+    `Refunds paid ${money(c.refunded_inr)}, of which ${money(c.claim_refunded_inr)} on transaction claims (withdrawn and rejected requests carry none)`,
+    `Primary signals: ${c.primary_signals.length ? c.primary_signals.map((s) => s.label).join("; ") : "none"}`,
+    c.absent_signals?.length ? `Not observed: ${notObserved(c)}` : "",
+    `Linked accounts: ${data.community ? `${data.community.kind} of ${data.community.size} (${data.community.id})` : "none"}`,
+    `Wardrobing indicator: ${words(data.wardrobing.status)}`,
+    `Analyst rules that would have fired: ${data.rules_fired.filter((r) => r.fired).map((r) => r.label).join("; ") || "none"}`,
+    "",
+    "Return lines (requested, order/line, SKU, units, reason, day in window, status, refund):",
+    ...data.timeline
+      .filter((e) => e.event_type !== "purchase")
+      .map((e) => `- ${e.observed_at.slice(0, 10)} ${e.order_id ?? ""}/${e.order_line_no ?? ""} ${e.sku ?? ""} x${e.quantity ?? ""} ${words(e.reason_code)}${e.event_type === "transaction_claim" ? " (transaction claim)" : ""}, ${e.day_in_window !== null && e.window_days !== null ? `day ${e.day_in_window} of ${e.window_days}` : "no window day"}, ${words(e.line_status)}${e.line_status === "withdrawn" ? " (not counted)" : ""}, ${money(e.amount_inr)}`),
+    "",
+    "Notes, oldest first:",
+    ...(data.reviews.length ? data.reviews.map((r) => `- ${r.created_at.slice(0, 16).replace("T", " ")} UTC ${r.reviewer_name} (${words(r.kind)}, ${words(r.disposition)}): ${r.note}`) : ["- none"]),
+  ];
+  return lines.filter((line, i) => line !== "" || lines[i - 1] !== "").join("\n") + "\n";
+}

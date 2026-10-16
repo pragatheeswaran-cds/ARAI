@@ -15,7 +15,7 @@ from openapi_schema_validator import OAS30Validator
 from arai import bundles, modeling
 from arai.operational import TABLES, read_csv_world
 from arai.paths import SPEC_ROOT
-from arai.service import datasets, ingest, scoring, worker
+from arai.service import datasets, ingest, scoring, views, worker
 from arai.service.api import create_app
 from arai.service.config import ServiceConfig
 from arai.service.store import RESULT_TABLES, Store
@@ -1119,7 +1119,10 @@ def test_communities_group_linked_accounts_and_their_kind_follows_the_stated_rul
         if c["customer_id"] == min(ids):
             cases = [client.get(f"{url}/{m}").json() for m in sorted(ids)]
             share = any((next(s["value"] for s in k["signals"] if s["code"] == "coordinated_claim_share") or 0) > 0 for k in cases)
-            ring = group["coordinated_claim_matches"] >= 1 or group["selected_count"] >= 2 or share
+            if any("payment" in e["types"] for e in group["edges"]):          # decision D3 as revised by AM-66
+                ring = group["coordinated_claim_matches"] >= 1 or group["selected_count"] >= 2 or share
+            else:                                                               # address and device only: a household's shape
+                ring = group["coordinated_claim_matches"] >= 2 or group["selected_count"] >= 2
             assert group["kind"] == ("ring" if ring else "household")
             rings += group["kind"] == "ring"
     assert rings == run["ring_count"]
@@ -1144,8 +1147,11 @@ def test_a_large_component_is_split_by_louvain_and_no_member_is_left_alone():
     members = [f"W9-C{i:05d}" for i in range(16)]
     cliques = [members[:8], members[8:]]
     rows = [(a, b, 2.0) for clique in cliques for a, b in itertools.combinations(clique, 2)] + [(members[7], members[8], 0.1)]
-    edges = pd.DataFrame([{"customer_a": a, "customer_b": b, "shared_types": ["address", "device"], "shared_value_count": 2,
-                           "max_value_fanout": 3, "weight": w} for a, b, w in rows])
+    # the first clique shares a payment instrument, so the first rule of D3 applies to it (AM-66); the second shares an
+    # address and a device only
+    edges = pd.DataFrame([{"customer_a": a, "customer_b": b,
+                           "shared_types": ["address", "payment"] if b in cliques[0] else ["address", "device"],
+                           "shared_value_count": 2, "max_value_fanout": 3, "weight": w} for a, b, w in rows])
     neighbors = pd.DataFrame([(x, y, 1 if {x, y} == {members[0], members[1]} else 0) for a, b, _ in rows for x, y in ((a, b), (b, a))],
                              columns=["customer_id", "neighbor_id", "coordinated_claim_matches"])
     customers = pd.DataFrame({"customer_id": members + ["W9-C99999"], "selected_for_review": [True] + [False] * 16,
@@ -1437,6 +1443,68 @@ def test_the_clean_up_removes_notes_runs_and_datasets_in_the_right_order_and_kee
     # scoring still works afterwards: register again and run
     again = register(client, written)
     assert client.post(f"{API}/runs", json={"dataset_id": again["dataset_id"], "idempotency_key": "after-clean"}).status_code == 202
+
+
+def test_the_revised_kind_rule_asks_more_of_address_and_device_only_groups():
+    payment = [{"types": ["device", "payment"]}]
+    household = [{"types": ["address", "device"]}, {"types": ["address", "device"]}]
+    assert scoring.community_kind(payment, 0, 1, False) == "ring"                 # the first rule stands where a card is shared
+    assert scoring.community_kind(payment, 0, 0, True) == "ring"
+    assert scoring.community_kind(payment, 1, 0, False) == "household"
+    assert scoring.community_kind(household, 1, 1, True) == "household"           # one matching claim is not enough
+    assert scoring.community_kind(household, 0, 2, False) == "ring"
+    assert scoring.community_kind(household, 2, 0, False) == "ring"
+
+
+def test_refunds_absent_signals_and_the_queue_export_follow_the_stored_results(client, env, written):
+    import csv
+    import io
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    everyone = all_pages(client, url, {"review_only": "false"})
+    # refunds per customer are the refunded return lines of its own timeline; the claim part is the claim lines among them
+    for c in [x for x in everyone if x["selected_for_review"]][:12] + [x for x in everyone if not x["selected_for_review"]][:12]:
+        case = client.get(f"{url}/{c['customer_id']}").json()
+        conforms("Case", case)
+        refunded = [e for e in case["timeline"] if e["event_type"] != "purchase" and e["line_status"] == "refunded"]
+        assert c["refunded_inr"] == pytest.approx(sum(e["amount_inr"] or 0 for e in refunded), abs=0.01)
+        assert c["claim_refunded_inr"] == pytest.approx(sum(e["amount_inr"] or 0 for e in refunded if e["event_type"] == "transaction_claim"), abs=0.01)
+        assert case["customer"]["refunded_inr"] == c["refunded_inr"] and 0 <= c["claim_refunded_inr"] <= c["refunded_inr"]
+    # absent signals: only for an eligible customer outside the queue, and exactly the tags it does not carry
+    for c in everyone:
+        if c["eligibility_status"] == "eligible" and not c["selected_for_review"]:
+            assert c["absent_signals"] == [t for t in scoring.TAGS if t not in c["evidence_tags"]]
+        else:
+            assert c["absent_signals"] is None
+    # the run's totals are the sums over the review set and over the rule's set
+    body = client.get(f"{API}/runs/{run['run_id']}").json()
+    conforms("Run", body)
+    for name, key in (("review_set", "selected_for_review"), ("rule_set", "baseline_selected")):
+        members = [c for c in everyone if c[key]]
+        assert body["refunds"][name]["customers"] == len(members)
+        assert body["refunds"][name]["refunded_inr"] == pytest.approx(sum(c["refunded_inr"] for c in members), abs=0.05)
+        assert body["refunds"][name]["claim_refunded_inr"] == pytest.approx(sum(c["claim_refunded_inr"] for c in members), abs=0.05)
+    # the export is the filtered list, every row, in queue order, with the same values
+    answer = client.get(f"{url}/export")
+    assert answer.status_code == 200 and answer.headers["content-type"].startswith("text/csv")
+    assert "attachment" in answer.headers["content-disposition"] and run["run_id"] in answer.headers["content-disposition"]
+    rows = list(csv.reader(io.StringIO(answer.text)))
+    assert rows[0] == views.EXPORT_COLUMNS
+    queue = all_pages(client, url)
+    assert [r[1] for r in rows[1:]] == [c["customer_id"] for c in queue]
+    first = dict(zip(rows[0], rows[1]))
+    assert first["rank"] == str(queue[0]["rank"]) and first["recommendation"] == queue[0]["gate_outcome"]
+    assert float(first["refunded_inr"]) == pytest.approx(queue[0]["refunded_inr"])
+    everyone_export = list(csv.reader(io.StringIO(client.get(f"{url}/export", params={"review_only": "false", "tier": "MEDIUM"}).text)))
+    assert [r[1] for r in everyone_export[1:]] == [c["customer_id"] for c in all_pages(client, url, {"review_only": "false", "tier": "MEDIUM"})]
+    assert client.get(f"{url}/export", params={"tier": "high"}).status_code == 422
+    # a reviewer name that starts like a formula is exported as text
+    target = queue[1]["customer_id"]
+    assert client.post(f"{url}/{target}/reviews", json={"reviewer_name": "=HYPERLINK(\"x\")", "kind": "open", "disposition": "needs_investigation",
+                                                     "note": "n", "idempotency_key": "export-1"}).status_code == 201
+    opened = list(csv.reader(io.StringIO(client.get(f"{url}/export", params={"state": "in_review"}).text)))
+    row = dict(zip(opened[0], next(r for r in opened[1:] if r[1] == target)))
+    assert row["opened_by"].startswith("'=") and row["status"] == "in_review"
 
 
 def test_responses_carry_hardening_headers_and_missing_assets_are_not_the_app_shell(client, env):

@@ -14,6 +14,8 @@ Local loopback,one worker,no authenticated reviewer claim. Cloud optional after 
 
 Contract 1.13.0 (AM-64): every response carries X-Content-Type-Options nosniff, X-Frame-Options DENY and Referrer-Policy same-origin, and API responses Cache-Control no-store; a request carrying a NUL byte in its path, query or body is refused with 422; a missing file under assets/ or with a static suffix is a 404 rather than the app shell, so a broken build fails loudly.
 
+Contract 1.14.0 (AM-67): the CSV export carries no note text, and any cell that starts with =, +, -, @, a tab or a carriage return is prefixed with a quote so a spreadsheet does not run it; the case summary is built in the browser from data the page already holds.
+
 Monitor liveness vs scoring readiness, queue depth,duration,error codes,artifact compatibility. Drift reports compare input/score distributions to training; never auto-refit/promote or imply accuracy. Implemented as a per-run report (component 11), the queue depth and the seconds since a worker last reported in Health (the worker is a separate process in the reference runtime), and a restart policy on every Compose service. Measure target-machine P95/full-world runtime. No generation/training at server startup.
 
 Implementation commands must cover validate/generate/features/train/evaluate/select/promote/serve with project-relative paths. Seed/config changes version experiment records. Reviewing package requires no external account/API key.

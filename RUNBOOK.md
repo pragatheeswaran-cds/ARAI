@@ -46,6 +46,7 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
 | Validate a snapshot without registering it | `uv run arai validate <folder>` | 5 |
+| Export the queue as CSV (any filters of the list) | queue page **Export this view as CSV**, or `curl.exe -s -o queue.csv "http://127.0.0.1:8000/api/v1/runs/<run_id>/customers/export?review_only=true"` | 5 |
 | **Check** | | |
 | Health of an instance | `curl.exe -s http://127.0.0.1:8000/api/v1/health` (8011 for the rehearsal) | 5 |
 | Latest run | `curl.exe -s http://127.0.0.1:8000/api/v1/runs` | 5 |
@@ -355,7 +356,7 @@ Run these in order. Each line says what a good result looks like.
 
 ```powershell
 # 1. Python tests. They start their own temporary PostgreSQL; the running server is not touched.
-uv run --no-sync pytest -q                          # "213 passed" in about 8 minutes
+uv run --no-sync pytest -q                          # "216 passed" in about 8 minutes
 
 # 2. Front-end tests and type check
 cd web; npm test; npx tsc --noEmit; cd ..            # "21 passed"; tsc prints nothing

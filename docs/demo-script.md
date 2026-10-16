@@ -2,8 +2,10 @@
 
 A story and a click-by-click flow for a 20 to 25 minute demonstration of the return-abuse workbench. The slide deck
 built from it is in `docs/demo-deck/`. Every number
-below is what the screens show for the demonstration world W5401 scored on experiment 4 (run
-`run-ed95a0e2fd3e49a69d4d`, 15 Oct 2026). Screenshots of each scene are in `reports/ui/2026-10-15/`.
+below is what the screens show for the demonstration world W5401 scored on experiment 4, on its latest run
+(`run-020e5490d88f48c28e8c`, re-scored 16 Oct 2026 under API contract 1.14.0 with the revised ring rule). The first
+run of 15 Oct (`run-ed95a0e2fd3e49a69d4d`) has the same scores, ranks and selection. Screenshots are in
+`reports/ui/2026-10-16/`.
 
 The data is simulated. Say so at the start and at the end: the application reads a synthetic world of 10,000
 customers of an online apparel retailer (brands A to D, prices in INR, one year of history). The numbers show
@@ -90,7 +92,7 @@ what it replaced.
 | Overview, "Model and return-rate rule compared" | 209 model only, 75 both, 209 rule only | Three quarters of the two lists differ |
 | Customer queue, column "Return-rate rule" | The rule's rank for every customer: rank 1 is the rule's 553rd, rank 5 its 2,254th | The real cases never arrive |
 | Customer queue, Comparison "Selected by the rule, not by the model" | The 209 the rule would have reviewed | The rule punishes loyalty |
-| Customer queue, Show "Cleared heavy returners" | The customers above the 40.6 percent cutoff the model left out, each with the reason it was left out (most read "below the review threshold") | The loyal customer is left alone |
+| Customer queue, Show "Cleared heavy returners" | The customers above the 40.6 percent cutoff the model left out, each with the reason it was left out and what was not observed (no claims, no late returns, no links) | The loyal customer is left alone |
 | Customer case, "Analyst rules that would have fired" | The five legacy rules against this case | A decision nobody can defend, then one with a record |
 | Evaluation, "Abusers caught against alerts used" | First 58 alerts: 58 abusers against 19; 0 honest heavy returners against 39 | Same budget, three times the hits |
 | Evaluation, "How often each ranking is right" | Rule 22.7 percent, analyst rulebook 32.4, model 74.3 | Four of five visits find nothing |
@@ -180,6 +182,17 @@ Point at **Model and return-rate rule compared**:
 Say: "Three quarters of the two lists differ. The rest of the demo is about why the model's 209 are the better
 use of a reviewer's hour, and how a reviewer can check that for themselves on every case."
 
+Then point at **Refunds paid to the customers in each queue**:
+
+| Queue | Refunds paid | Of which on transaction claims |
+|---|---|---|
+| Selected by the model (284) | INR 52.1 lakh | INR 20.5 lakh |
+| Would be selected by the return-rate rule (284) | INR 57.7 lakh | INR 9.5 lakh |
+
+Say: "The rule reviews more money. The model reviews more than twice the money paid out on claims where nothing
+came back to inspect." Read the callout under the table: these are observed refunds, not losses, and a claim refund
+is not proof of abuse.
+
 Do not read the **Next customers to investigate** list aloud yet; click **View results** on it to move on.
 
 ### 4.2 Customer queue (2 to 6 minutes)
@@ -194,8 +207,8 @@ Walk the columns left to right:
   this run is 95.5; the queue is everyone at or above it.
 - **Tier.** Every selected customer is **High**; the tiers are anchored to the budget, not to fixed bands, so High
   always means "in this period's queue". Hover the (?) for the one-sentence rule.
-- **Gate outcome.** A presentation rule over the results, not a model output: **Escalate** (101 customers) is
-  selected and in a ring or with the wardrobing indicator elevated; **Hold** (183) is selected otherwise.
+- **Gate outcome.** A presentation rule over the results, not a model output: **Escalate** (98 customers) is
+  selected and in a ring or with the wardrobing indicator elevated; **Hold** (186) is selected otherwise.
 - **Primary signals.** Chips such as "Two or more late returns, 4 of 13 item-return lines" or "Shares
   identifiers with 4 accounts". Each chip carries its denominator.
 - **Return-rate rule.** The rule's own rank and whether the rule would have selected the customer.
@@ -207,14 +220,18 @@ Now three filter moves, each of which changes the address bar so a view can be s
    are the rule's 209: high return rates, no claim or timing pattern, and the model leaves them out of the queue.
    Say: "These are mostly the honest heavy returners the rule has always sent for review."
 2. Back to **Show: Review set**, then **Group: by ring**. Members of the same ring sit under their first member,
-   so a reviewer sees the group once. 89 of the 284 are ring members, across 33 rings; 16 more are household
+   so a reviewer sees the group once. 86 of the 284 are ring members, across 30 rings; 19 more are household
    members, which the kind rule labels differently and the queue does not escalate for.
 3. **Show: Cleared heavy returners.** Customers above the heavy-returner cutoff (a return rate of 40.6 percent in
-   this run) whom the model did not select, each with the reason the page gives for leaving it out. Most rows read
-   "below the review threshold"; a few say size bracketing or returns at the rate the basket predicts. Do not claim
-   that every row carries a basket explanation. Say: "This is the list the rule would have reviewed and the model
+   this run) whom the model did not select. Each row gives the reason it was left out, mostly "below the review
+   threshold", followed by what the model did not see for that customer, for example "no claims matched by a linked
+   account, no late returns, no linked accounts". Read one row aloud: the argument is in what is absent. Say: "This is the list the rule would have reviewed and the model
    argues you need not. It is on the page so that the argument can be lost as well as won." If asked how often the
    model is wrong here: in the functional review of this run, 21 of the 443 cleared heavy returners were abusers.
+
+With any of these views on screen, point at **Export this view as CSV**: every row of the current filters, with
+refunds, status and who opened or decided each case, for the returns-policy or service team. No note text leaves
+the system that way.
 
 Reset the filters, type the last five characters of the top customer's id (`03245`) into **Search customer ID**,
 press Enter, and open the case with the keyboard (Tab to the link, Enter) to show the queue works without a
@@ -229,7 +246,8 @@ would never have shown this case.
 
 **Evidence tab, top to bottom:**
 
-- **Expected vs actual returns.** 12 units requested back of 29 purchased on mature sale lines. A customer buying
+- **Expected vs actual returns.** 12 units requested back of 29 purchased on mature sale lines, and INR 24,365
+  refunded, none of it on transaction claims (the **Refunds paid** row). A customer buying
   the same products would be expected to request about 5.7, with a normal band of 1.5 to 10.0. The expectation is
   built from what was bought, so a customer who buys fit-sensitive jeans is not punished for a jeans return rate.
   Open **Why the expectation is where it is** to show the products behind the number.
@@ -269,6 +287,9 @@ Now the second-reviewer rule, two ways:
 - *Approval.* Change the header name to Meera, write a note such as "Reviewed the timing evidence; agree it needs
   the policy team", press **Approve**. The status tile turns to Approved with both names and times.
 
+Press **Download case summary** at the top of the case: a plain-text hand-off with the evidence, every return
+line with its status and refund, and the notes, for whoever acts on the decision.
+
 Finish with **If the threshold moved**: drag the slider to show how many customers the queue would hold at any
 score, and that the page tells you the budget this would cost. It changes nothing on the server.
 
@@ -285,10 +306,10 @@ Go back to the queue, set **Group: by ring**, and open rank 4, W5401-C08645. Gat
   are in this queue, one is ranked 1,228th and not selected. The panel shows every member with its own units,
   rank and tags, the edges between members with their types, and **one coordinated claim match**: two members
   claiming on the same product within days. Say: "The ring is a pattern in the record, and the page shows the
-  record." Point at the edge types: this ring shares payment instruments, as 29 of the 31 true rings in this run
-  do. Households usually share an address and a device but no payment card, and most are labelled household. Do
-  not claim the kind rule always tells them apart: a family at an address where parcels go missing can be labelled
-  a ring after one matching claim (section 6).
+  record." Point at the edge types: this ring shares payment instruments, as 29 of the 31 rings in this run do.
+  A group that shares only an address and a device, the shape of a household, needs two matching claims or two
+  members in the queue before it is called a ring. Open W5401-C07084 to show the other side: a family at an
+  address where parcels go missing, one matching claim, now labelled household and marked Hold (section 6).
 - **Wardrobing indicator: elevated.** Three late occasion-wear returns and occasion-wear units far above what this
   customer's other returns predict.
 
@@ -332,11 +353,10 @@ Click **Evaluation**. This is Priya's page: what the queue costs and what it res
   alerts catch 58 abusers and no honest heavy returner; the rule's first 58 catch 19 and review 39 honest heavy
   returners. With the pointer off the chart the page reads the full budget: at 284 alerts the model's queue holds
   232 abusers and 18 honest heavy returners, the rule's 75 and 209.
-- **Money, not on screen.** The functional review of this run (`reports/qa/2026-10-15/functional-review.md`) adds
-  the figure a returns director asks for first: refunds paid on abusive return lines come to Rs 23.7 lakh in the
-  model's 284 against Rs 8.0 lakh in the rule's 284, although the rule's queue received more refunds in total
-  (Rs 57.7 lakh against Rs 52.1 lakh). Say it as "the rule reviews more money, mostly honest money", and say that
-  the figure comes from the simulation's truth, not from a screen.
+- **Money behind the truth.** The Overview showed observed refunds. The functional review of this run
+  (`reports/qa/2026-10-15/functional-review.md`) adds what only the simulation's truth can say: refunds paid on
+  abusive return lines come to INR 23.7 lakh in the model's 284 against INR 8.0 lakh in the rule's 284. Say it as
+  "the rule reviews more money, mostly honest money", and say that this figure comes from the truth, not a screen.
 - **How often each ranking is right** (validation worlds, five percent budget):
 
   | Ranking | Precision | Recall | Honest heavy returners sent for review |
@@ -398,7 +418,8 @@ step is the same pipeline on a real month of returns, with the same evaluation p
 | Where do the memos come from? | A drafting model called after the run, only when an API key is configured, with each draft checked against the case's own numbers before it is stored. Without a key the panel says so and shows nothing else. |
 | Why are the bundle ids different from the experiment record? | The manifest hashes the dependency lock and library versions as well as the code and seeds. Scores, ranks and selections reproduce exactly; the ids differ when the environment does. |
 | Can this run on our data? | The data contract (manifest plus seven tables) is the interface; the pipeline, the evaluation page and the final-test discipline are the same. The results on this page are from a simulator and say nothing yet about real returns. |
-| Why is this family marked as a ring? | A known limit of the kind rule: two members at one address who share a device and both claimed "not received" on the same style within a week count as one coordinated claim, and one is enough. In this run it happens to 4 of 35 rings, all address-and-device only, none sharing a payment card. Check the edge types and the members' claims before acting; a change to the rule is under review. |
+| Why is this family not marked as a ring? (W5401-C07084) | Since contract 1.14.0 a group whose accounts share only an address and a device needs two matching claims or two members in the queue to be a ring. Family members at an address where parcels go missing can both claim "not received" on the same order within days for honest reasons; under the first rule 4 such families in this run were called rings. The revision was checked on the five validation worlds before it shipped (`records/2026-10-16-community-kind-rule-revision.md`); it gave up one real coordination group out of 183, whose member stays in the queue as Hold. |
+| Can we hand this list to our policy team? | Yes: **Export this view as CSV** on the queue (every row of the current filters, with refunds and who decided each case, no note text), and **Download case summary** on a case. |
 | What happens when no model passes the gate? | The baseline return-rate ranking is served, the banner says why, the score column is relabelled a return-rate percentile, and the comparison views disappear. `tests/e2e/fallback_check.py` demonstrates it. |
 
 ---

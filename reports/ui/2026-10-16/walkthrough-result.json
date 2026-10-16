@@ -40,7 +40,7 @@
     {
       "check": "no training, refund, block or delete control exists",
       "ok": true,
-      "detail": "validate and register score with the active bundle view results view results view results"
+      "detail": "validate and register score with the active bundle view results view results view results view results"
     },
     {
       "check": "upload refuses a wrong file set before sending",
@@ -55,7 +55,7 @@
     {
       "check": "queue route carries the run",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers"
+      "detail": "http://127.0.0.1:8000/runs/run-020e5490d88f48c28e8c/customers"
     },
     {
       "check": "queue opens on the review set",
@@ -70,12 +70,12 @@
     {
       "check": "keyboard filter change updates the address",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers?show=all"
+      "detail": "http://127.0.0.1:8000/runs/run-020e5490d88f48c28e8c/customers?show=all"
     },
     {
       "check": "comparison filter lists rule-only selections",
       "ok": true,
-      "detail": "292 W5401-C02250copy\ncleared heavy returner \u00b7 below the review threshold\n\t95.4\tMedium\tWarning\tTwo or more transaction cl"
+      "detail": "292 W5401-C02250copy\ncleared heavy returner \u00b7 below the review threshold \u00b7 no claims matched by a linked account, no lat"
     },
     {
       "check": "search by identifier finds the customer",
@@ -90,7 +90,7 @@
     {
       "check": "case opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers/W5401-C03245"
+      "detail": "http://127.0.0.1:8000/runs/run-020e5490d88f48c28e8c/customers/W5401-C03245"
     },
     {
       "check": "case shows observed and expected with denominators",
@@ -130,7 +130,7 @@
     {
       "check": "case tab returns opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers/W5401-C03245?tab=returns"
+      "detail": "http://127.0.0.1:8000/runs/run-020e5490d88f48c28e8c/customers/W5401-C03245?tab=returns"
     },
     {
       "check": "return behaviour shows reason codes, never free text",
@@ -140,12 +140,12 @@
     {
       "check": "case tab linked accounts opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers/W5401-C03245?tab=linked+accounts"
+      "detail": "http://127.0.0.1:8000/runs/run-020e5490d88f48c28e8c/customers/W5401-C03245?tab=linked+accounts"
     },
     {
       "check": "case tab notes opens from the keyboard",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers/W5401-C03245?tab=notes"
+      "detail": "http://127.0.0.1:8000/runs/run-020e5490d88f48c28e8c/customers/W5401-C03245?tab=notes"
     },
     {
       "check": "note appended and shown with its origin run",
@@ -195,7 +195,7 @@
     {
       "check": "browser back returns to the style",
       "ok": true,
-      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/styles/BB-JKT-02"
+      "detail": "http://127.0.0.1:8000/runs/run-020e5490d88f48c28e8c/styles/BB-JKT-02"
     },
     {
       "check": "evaluation shows selection separately from the final test",

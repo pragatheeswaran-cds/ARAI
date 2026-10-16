@@ -68,3 +68,45 @@ describe("derived rules", () => {
     expect(thresholdFor([], 5)).toBeNull();
   });
 });
+
+describe("contract 1.14.0 helpers", () => {
+  it("says what a cleared customer does not show, in plain words", async () => {
+    const { notObserved } = await import("./derive");
+    expect(notObserved({ absent_signals: ["repeat_claims", "late_returns", "supported_links"] })).toBe("no repeated transaction claims, no late returns, no linked accounts");
+    expect(notObserved({ absent_signals: null })).toBe("");
+  });
+  it("writes totals in lakh", async () => {
+    const { inrLakh } = await import("./derive");
+    expect(inrLakh(5214288)).toBe("INR 52.1 lakh");
+    expect(inrLakh(null)).toBe("n/a");
+  });
+  it("builds a case hand-off with the evidence, the return lines and the notes, and no truth", async () => {
+    const { caseSummary } = await import("./derive");
+    const text = caseSummary({
+      run_id: "run-1", world_id: "W1", model_id: "m-1",
+      customer: {
+        customer_id: "W1-C1", rank: 3, risk_score: 99.5, tier: "HIGH", gate_outcome: "HOLD", baseline_rank: 900, baseline_selected: false,
+        basket_expectation: { actual_units: 12, purchased_units: 29, expected_units: 5.7, sd: 2, band_low: 1.5, band_high: 10, z: 2.9 },
+        workflow: { state: "in_review", opened_by: "Asha", opened_at: "2026-10-15T10:00:00Z", decided_by: null, decided_at: null },
+        refunded_inr: 12345, claim_refunded_inr: 2000, primary_signals: [{ tag: "late_returns", label: "Two or more late returns" }], absent_signals: null,
+      } as unknown as Customer,
+      timeline: [
+        { event_type: "purchase", observed_at: "2026-01-01", order_id: "O1", order_line_no: 1, sku: "S1", quantity: 1, reason_code: null, day_in_window: null, window_days: 30, line_status: "delivered", amount_inr: 1000 },
+        { event_type: "return_request", observed_at: "2026-01-20T10:00:00+05:30", order_id: "O1", order_line_no: 1, sku: "S1", quantity: 1, reason_code: "changed_my_mind", day_in_window: 12, window_days: 30, line_status: "withdrawn", amount_inr: 0 },
+      ],
+      rules_fired: [{ label: "Return rate at or above the 90th percentile", fired: true }, { label: "Two claims", fired: false }],
+      wardrobing: { status: "possible" }, community: { id: "W1-LX", kind: "ring", size: 3 },
+      reviews: [{ created_at: "2026-10-15T10:00:00Z", reviewer_name: "Asha", kind: "open", disposition: "needs_investigation", note: "Checked the timing." }],
+    });
+    expect(text).toContain("Customer W1-C1 / world W1 / run run-1");
+    expect(text).toContain("not a finding of misconduct");
+    expect(text).toContain("Requested 12 of 29 mature units; expected 5.7 (normal band 1.5 to 10.0)");
+    expect(text).toContain("Refunds paid INR 12,345, of which INR 2,000 on transaction claims");
+    expect(text).toContain("withdrawn (not counted)");
+    expect(text).toContain("Linked accounts: ring of 3 (W1-LX)");
+    expect(text).toContain("Analyst rules that would have fired: Return rate at or above the 90th percentile\n");
+    expect(text).toContain("Asha (open, needs investigation): Checked the timing.");
+    expect(text).not.toContain("purchase");
+    expect(text.toLowerCase()).not.toContain("fraud");
+  });
+});

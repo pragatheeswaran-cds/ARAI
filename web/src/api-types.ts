@@ -102,6 +102,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/customers/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.14.0. The filtered queue as CSV, every row in queue order, for a hand-off to the returns-policy or service team. Takes the list's filters (no cursor, no limit). Columns - rank, customer_id, score, tier, recommendation, primary_signals, rule_rank, rule_selected, mature_requested_units, mature_purchased_units, refunded_inr, claim_refunded_inr, linked_accounts, community_id, wardrobing, cleared_reason, not_observed, status, opened_by, decided_by, latest_reading, run_id, world_id. A cell of free text that starts like a spreadsheet formula is prefixed with a quote. No note text is exported. */
+        get: operations["exportCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{run_id}/customers/{customer_id}": {
         parameters: {
             query?: never;
@@ -351,7 +368,7 @@ export interface components {
             heavy_returner_cutoff: number | null;
             /** @description Groups of linked accounts in the snapshot, the connected components of the supported edges (a component of thirteen or more members is split by Louvain with a fixed seed). Null until the run succeeded. */
             community_count: number | null;
-            /** @description Of community_count, the groups the stated rule calls a ring (a coordinated claim match on an edge, two or more members selected for review, or a member with a coordinated claim share above zero). Evidence about the group, not a verdict on any member. Null until the run succeeded. */
+            /** @description Of community_count, the groups the stated rule calls a ring (see Customer.community.kind; contract 1.14.0 asks more of groups whose edges share only an address and a device). Evidence about the group, not a verdict on any member. Null until the run succeeded. */
             ring_count: number | null;
             /** @description How far the run's investigation memos are. They are drafted after the run succeeded, one per selected customer, so results are served while they arrive; complete when every selected customer has a decided memo (ok or unavailable). Null until the run succeeded. */
             memos: {
@@ -368,6 +385,18 @@ export interface components {
             }[];
             /** @description Styles whose state is quality, targeting or mixed_or_uncertain, for the done summary. Null until the run succeeded. */
             styles_with_verdict: number | null;
+            /** @description Contract 1.14.0. Refunds paid to the customers of the review set and to the customers the return-rate rule would select, from the run's stored timeline, for the Overview. Observed money, not losses. Null until the run succeeded, and for a run scored before return-line statuses were stored. */
+            refunds?: {
+                review_set: components["schemas"]["RefundTotals"];
+                rule_set: components["schemas"]["RefundTotals"];
+            } | null;
+        };
+        RefundTotals: {
+            customers: number;
+            /** @description Refunds paid on return lines whose status is refunded, in INR. */
+            refunded_inr: number;
+            /** @description The part paid on transaction-claim lines. */
+            claim_refunded_inr: number;
         };
         Support: {
             mature_sale_lines: number;
@@ -399,6 +428,12 @@ export interface components {
             wardrobing_status: "elevated" | "possible" | "no_elevated_signal" | "insufficient_evidence" | "incomplete";
             /** @enum {string|null} */
             latest_disposition: "needs_investigation" | "likely_legitimate" | "unresolved" | null;
+            /** @description Contract 1.14.0. Refunds paid on this customer's return lines whose status is refunded, in INR, from the run's stored timeline. Observed money, not a loss and not proof of anything; rejected and withdrawn requests carry none. Null for a run scored before return-line statuses were stored. */
+            refunded_inr?: number | null;
+            /** @description Contract 1.14.0. The part of refunded_inr paid on transaction-claim lines (item not received, empty package, missing parts, wrong item sent), where no item comes back to inspect. */
+            claim_refunded_inr?: number | null;
+            /** @description Contract 1.14.0. For an eligible customer outside the review set, the evidence tags the customer does not carry, so the cleared view can say what was not observed. Null for a selected or unranked customer. */
+            absent_signals?: ("repeat_claims" | "linked_claims" | "late_returns" | "returns_above_expected" | "supported_links")[] | null;
             /** @description Units requested for return on mature sale lines against the units a customer buying the same products would be expected to request, with the normal band expected +/- 2 sd, sd = sqrt(d * sum q p (1 - p)) over the lines with d the mean lines per order and style clipped to [1, 4]. The same quantities the model's expected return rate and residual z are built from; nothing is recomputed. sd, the band and z are null when every line's expected probability is 0 or 1, and for runs scored before contract 1.5.0. */
             basket_expectation: {
                 actual_units: number;
@@ -418,7 +453,7 @@ export interface components {
             community: {
                 id: string;
                 /**
-                 * @description ring when any edge of the group has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero; household otherwise. From observed evidence only.
+                 * @description From observed evidence only (decision D3, revised by AM-66 in contract 1.14.0). Where some edge of the group shares a payment instrument - ring when any edge has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero. Where every edge shares only an address and a device (the shape of a household) - ring only with two or more coordinated claim matches or two or more members selected for review. household otherwise. Runs scored before 1.14.0 keep the kinds they were scored with.
                  * @enum {string}
                  */
                 kind: "ring" | "household";
@@ -633,7 +668,7 @@ export interface components {
             community: {
                 id: string;
                 /**
-                 * @description ring when any edge of the group has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero; household otherwise. From observed evidence only.
+                 * @description From observed evidence only (decision D3, revised by AM-66 in contract 1.14.0). Where some edge of the group shares a payment instrument - ring when any edge has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero. Where every edge shares only an address and a device (the shape of a household) - ring only with two or more coordinated claim matches or two or more members selected for review. household otherwise. Runs scored before 1.14.0 keep the kinds they were scored with.
                  * @enum {string}
                  */
                 kind: "ring" | "household";
@@ -730,7 +765,7 @@ export interface components {
                 community: {
                     id: string;
                     /**
-                     * @description ring when any edge of the group has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero; household otherwise. From observed evidence only.
+                     * @description From observed evidence only (decision D3, revised by AM-66 in contract 1.14.0). Where some edge of the group shares a payment instrument - ring when any edge has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero. Where every edge shares only an address and a device (the shape of a household) - ring only with two or more coordinated claim matches or two or more members selected for review. household otherwise. Runs scored before 1.14.0 keep the kinds they were scored with.
                      * @enum {string}
                      */
                     kind: "ring" | "household";
@@ -1566,6 +1601,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerPage"];
+                };
+            };
+            /** @description VM authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportCustomers: {
+        parameters: {
+            query?: {
+                review_only?: boolean;
+                eligibility?: "all" | "eligible" | "insufficient_history";
+                search?: string;
+                evidence?: string;
+                disposition?: "all" | "unreviewed" | "needs_investigation" | "likely_legitimate" | "unresolved";
+                comparison?: "all" | "model_only" | "baseline_only" | "both";
+                /** @description Show only customers whose independent wardrobing indicator is in this band. A filter chooses what is shown; it changes no score or selection. */
+                wardrobing?: "all" | "elevated" | "possible" | "no_elevated_signal" | "insufficient_evidence" | "incomplete";
+                /** @description Show only customers whose group of linked accounts is of this kind (ring, household), or only customers with no supported edge (none). A filter chooses what is shown; it changes no score or selection. */
+                community?: "all" | "ring" | "household" | "none";
+                /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
+                community_id?: string;
+                /** @description Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
+                tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
+                /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
+                gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
+                /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
+                state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                /** @description Leave out the customers whose latest open was by this reviewer, so the approval band shows a reviewer only the cases another person opened. */
+                exclude_reviewer?: string;
+                /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
+                cleared_heavy?: boolean;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description VM authentication required */

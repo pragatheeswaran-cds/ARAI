@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ApiError, api, type Customer, type CustomerFilters } from "../api";
+import { ApiError, api, queueExportUrl, type Customer, type CustomerFilters } from "../api";
 import { useReviewer, useWorkspace } from "../App";
 import { CustomerTable, SCORE_HELP, TAGS, tagLabel } from "../components/CustomerTable";
 import { Callout, ErrorBox, PageTitle, Panel, number, percent, useLoad } from "../components/ui";
@@ -253,6 +253,14 @@ export function CustomerQueue() {
             ? ` / heavy means a raw return rate at or above ${percent(run.heavy_returner_cutoff, 0)}, this run's 90th percentile`
             : ""}
         </p>
+        {!error && run && run.run_id === runId && (
+          <p className="actions">
+            <a className="button" href={queueExportUrl(runId, filters)} download>
+              Export this view as CSV
+            </a>{" "}
+            <span className="small muted">every row of the current filters, for the returns-policy or service team; no note text is exported</span>
+          </p>
+        )}
         {error && <ErrorBox error={error} retry={() => load(null)} />}
         {!error && !loading && shown.length === 0 && (
           <div className="empty">{view === "cleared" ? "No heavy returner outside the queue in this run." : "No customer matches. Clear the search or change a filter."}</div>

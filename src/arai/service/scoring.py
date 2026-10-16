@@ -153,6 +153,22 @@ def _louvain(component: nx.Graph) -> list:
     return [sorted(part) for part in sorted(parts, key=min)]
 
 
+def community_kind(edges: list, selected: int, matched: int, share_positive: bool) -> str:
+    """The kind of a group of linked accounts (decision D3 as revised by AM-66), from observed evidence only.
+
+    Where some edge shares a payment instrument, the first rule stands: `ring` on one coordinated claim match, two or
+    more members selected for review, or a member with a coordinated claim share above zero. Where every edge shares
+    only an address and a device, the shape of a household, one matching claim is not enough: family members at an
+    address where parcels go missing claim on the same order within days for honest reasons. Such a group is a `ring`
+    only with two or more coordinated claim matches or two or more members selected for review.
+    """
+    if any("payment" in edge["types"] for edge in edges):
+        ring = matched >= 1 or selected >= 2 or share_positive
+    else:
+        ring = matched >= 2 or selected >= 2
+    return "ring" if ring else "household"
+
+
 def _communities(world_id: str, graph_edges: pd.DataFrame, neighbors: pd.DataFrame, customers: pd.DataFrame) -> tuple:
     """Groups of linked accounts and the observable kind of each; (communities frame, customer_id -> community_id).
 
@@ -162,9 +178,8 @@ def _communities(world_id: str, graph_edges: pd.DataFrame, neighbors: pd.DataFra
     produced each community. The identifier is the world prefix and a hash of the sorted member ids, so the same
     accounts linked the same way get the same id in every run of the world.
 
-    Kind (decision D3), from observed evidence only, truth is never read: `ring` when any edge in the community has a
-    coordinated claim match, or two or more members are selected for review, or a member has a coordinated claim
-    share above zero; `household` otherwise. A customer with no supported edge belongs to no community.
+    Kind (decision D3, revised by AM-66), from observed evidence only, truth is never read: see `community_kind`.
+    A customer with no supported edge belongs to no community.
     """
     membership = pd.Series(None, index=pd.Index(customers["customer_id"]), dtype=object)
     if not len(graph_edges):
@@ -195,8 +210,8 @@ def _communities(world_id: str, graph_edges: pd.DataFrame, neighbors: pd.DataFra
         own = by_id.loc[members]
         selected = int(own["selected_for_review"].sum())
         matched = sum(edge["coordinated_claim_matches"] for edge in edges)
-        ring = matched >= 1 or selected >= 2 or bool((own["coordinated_claim_share"].fillna(0) > 0).any())
-        rows.append({"community_id": community_id, "kind": "ring" if ring else "household", "method": method,
+        kind = community_kind(edges, selected, matched, bool((own["coordinated_claim_share"].fillna(0) > 0).any()))
+        rows.append({"community_id": community_id, "kind": kind, "method": method,
                      "size": len(members), "selected_count": selected,
                      "requested_units": int(own["mature_requested_units"].sum()),
                      "purchased_units": int(own["mature_purchased_units"].sum()),

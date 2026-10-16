@@ -95,6 +95,16 @@ export type CustomerFilters = {
   cleared_heavy?: boolean;
 };
 
+/** The address of the queue's CSV export for the same filters the list uses (contract 1.14.0). */
+export function queueExportUrl(runId: string, filters: Partial<CustomerFilters>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== null && value !== undefined && value !== "" && value !== false) params.set(key, String(value));
+  }
+  if (filters.review_only === false) params.set("review_only", "false");
+  return `${API}/runs/${encodeURIComponent(runId)}/customers/export${params.size ? "?" + params : ""}`;
+}
+
 export const api = {
   health: () => request<Health>("/health"),
   datasets: (cursor?: string | null) => request<Page<Dataset>>("/datasets", undefined, { cursor, limit: 100 }),

@@ -16,6 +16,8 @@ Run carries warnings recorded at scoring (fewer than 500 eligible customers, a c
 
 Contract 1.13.0 (AM-64): the review workflow is a closed state machine (case_already_open, case_not_open, case_decided, second_reviewer_required with names compared without case, out_of_scope; a decision needs a reading, 422 request.decision_disposition); a NUL byte anywhere in a request is a 422; GET /runs/{id}/customers?cleared_heavy=true serves the cleared heavy returners (eligible, outside the review set, raw return rate at or above heavy_returner_cutoff); DELETE /datasets/{id} removes a dataset no run was scored on (409 dataset_in_use otherwise), while runs and notes keep having no delete; a missing static file is a 404, not index.html.
 
+Contract 1.14.0 (AM-66, AM-67): Customer carries refunded_inr, claim_refunded_inr and absent_signals; Run carries refunds for the review set and the rule's set; GET /runs/{run_id}/customers/export answers the filtered queue as CSV with the list's filters (no cursor or limit), and the community kind text states the revised rule. All read from stored results; nothing is rescored.
+
 Local explicit CORS UI origins; VM same-origin reverse proxy shared login covers both UI and API. No app signup/profile/password endpoints. Experiment truth reveal separated from inference and synthetic-labelled.
 
 ## Inputs, outputs and dependencies

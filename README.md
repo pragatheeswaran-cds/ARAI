@@ -84,7 +84,7 @@ points serving at the new bundle only after the report is written.
 ### Tests
 
 ```
-uv run pytest                              # 213 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
+uv run pytest                              # 216 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
 cd web && npm test                         # front-end unit tests
 uv run python tests/e2e/walkthrough.py     # browser walkthrough against a running `arai local`
 ```

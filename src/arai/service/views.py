@@ -204,9 +204,14 @@ def primary_signals(row: dict) -> list:
     return out
 
 
-def customer_item(row: dict, latest_disposition: str | None, summary: dict | None = None) -> dict:
-    """A customer as the queue shows it. `summary` is what scoring recorded for the run (the gate reads its heavy-returner cutoff)."""
+def customer_item(row: dict, latest_disposition: str | None, summary: dict | None = None, refunds: dict | None = None) -> dict:
+    """A customer as the queue shows it. `summary` is what scoring recorded for the run (the gate reads its heavy-returner cutoff).
+    `refunds` maps customer ids to their refund totals (Store.refund_totals); None leaves the refund fields null."""
     summary = summary or {}
+    paid = None if refunds is None else refunds.get(row["customer_id"], {"refunded": 0, "claim_refunded": 0, "known": True})
+    if paid is not None and not paid["known"]:
+        paid = None
+    outside = row["eligibility_status"] == "eligible" and not row["selected_for_review"]
     return {
         "basket_expectation": basket_expectation(row), "cleared_reason": (row.get("measures") or {}).get("cleared_reason"),
         "community": community_summary(row), "tier": tier(row), "gate_outcome": gate_outcome(row, summary),
@@ -218,7 +223,38 @@ def customer_item(row: dict, latest_disposition: str | None, summary: dict | Non
         "support_counts": {name: int(row[name]) for name in scoring.SUPPORT},
         "evidence_tags": list(row["evidence_tags"]),
         "wardrobing_status": row["wardrobing_status"], "latest_disposition": latest_disposition,
+        # contract 1.14.0: observed refunds, and for a customer outside the queue the evidence it does not carry
+        "refunded_inr": None if paid is None else round(float(paid["refunded"]), 2),
+        "claim_refunded_inr": None if paid is None else round(float(paid["claim_refunded"]), 2),
+        "absent_signals": [tag for tag in scoring.TAGS if tag not in set(row["evidence_tags"])] if outside else None,
     }
+
+
+EXPORT_COLUMNS = ["rank", "customer_id", "score", "tier", "recommendation", "primary_signals", "rule_rank", "rule_selected",
+                  "mature_requested_units", "mature_purchased_units", "refunded_inr", "claim_refunded_inr", "linked_accounts",
+                  "community_id", "wardrobing", "cleared_reason", "not_observed", "status", "opened_by", "decided_by",
+                  "latest_reading", "run_id", "world_id"]
+
+
+def _cell(value) -> str:
+    """A CSV cell that a spreadsheet will not run: free text that starts like a formula gets a leading quote."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+def export_row(item: dict, run: dict) -> list:
+    """One queue row for the CSV export, from the item the list serves (so the two never disagree)."""
+    community = item["community"] or {}
+    workflow = item["workflow"]
+    score = item["risk_score"]
+    return [_cell(v) for v in (
+        item["rank"], item["customer_id"], None if score is None else f"{score:.2f}", item["tier"], item["gate_outcome"],
+        "; ".join(s["label"] for s in item["primary_signals"]), item["baseline_rank"], "yes" if item["baseline_selected"] else "no",
+        item["support_counts"]["mature_requested_units"], item["support_counts"]["mature_purchased_units"],
+        item["refunded_inr"], item["claim_refunded_inr"],
+        f"{community['kind']} of {community['size']}" if community else "", community.get("id"), item["wardrobing_status"],
+        item["cleared_reason"], "; ".join(item["absent_signals"] or []), workflow["state"], workflow["opened_by"],
+        workflow["decided_by"], item["latest_disposition"], run["id"], run["world_id"])]
 
 
 def customer_queue(store: Store, run: dict, filters: dict, after: int | None, limit: int) -> tuple:
@@ -226,7 +262,8 @@ def customer_queue(store: Store, run: dict, filters: dict, after: int | None, li
     summary = run["summary"] or {}
     rules = {"medium_from": TIER_MEDIUM_FROM, "heavy_cutoff": summary.get("heavy_returner_cutoff")}
     rows = store.run_customers(run["id"], run["world_id"], filters, after, limit + 1, rules)
-    items = [customer_item(row, row["latest_disposition"], summary) for row in rows[:limit]]
+    refunds = store.refund_totals(run["id"], [row["customer_id"] for row in rows[:limit]])
+    items = [customer_item(row, row["latest_disposition"], summary, refunds) for row in rows[:limit]]
     return items, (rows[limit - 1]["queue_position"] if len(rows) > limit else None)
 
 
@@ -371,7 +408,7 @@ def case_body(store: Store, run: dict, customer: dict, review_body) -> dict:
     latest = reviews[-1]["disposition"] if reviews else None
     return {"run_id": run["id"], "dataset_id": run["dataset_id"], "world_id": run["world_id"], "model_id": run["model_id"],
             "model_kind": run["model_kind"], "cutoff": _iso(run["cutoff"]),
-            "customer": customer_item(customer, latest, run["summary"]),
+            "customer": customer_item(customer, latest, run["summary"], store.refund_totals(run["id"], [customer["customer_id"]])),
             "signals": case["signals"], "timeline": case["timeline"], "neighbors": case["neighbors"], "styles": case["styles"],
             "wardrobing": case["wardrobing"], "community": case["community"],
             "score_breakdown": score_breakdown(store, run, customer), "rules_fired": case["rules_fired"],

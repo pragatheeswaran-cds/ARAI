@@ -252,8 +252,8 @@ not an authenticated identity.
 |---|---|---|---|---|
 | 1 | Correct the cleared-reason wording, the two narrative lines and the household line in the demo script and deck; add W5401's own figures (232 against 75; Rs 23.7 lakh against Rs 8.0 lakh) | docs only | findings 2, 3, 1 (wording) | done 16 Oct 2026 |
 | 2 | Label counts as excluding withdrawn requests; explain Approve and Reject in returns terms | UI copy | findings 4, 5 | done 16 Oct 2026 |
-| 3 | Refine the ring kind rule for address-and-device-only communities | decision D3 change, re-score | finding 1 | open, awaiting decision |
-| 4 | Refund value at stake on case, queue and Overview; export; cleared reasons that name what is absent | backlog | gaps 1 and 2, finding 2 | open |
+| 3 | Refine the ring kind rule for address-and-device-only communities | decision D3 change, re-score | finding 1 | done 16 Oct 2026 (AM-66) |
+| 4 | Refund value at stake on case, queue and Overview; export; cleared reasons that name what is absent | backlog | gaps 1 and 2, finding 2 | done 16 Oct 2026 (AM-67) |
 
 **What changes 1 and 2 did.**
 
@@ -276,3 +276,27 @@ not an authenticated identity.
 
 Checked after the change: type check clean, 21 web tests, UI build, browser walkthrough 54 of 54 (screenshots in
 `reports/ui/2026-10-16`).
+
+**What changes 3 and 4 did (API contract 1.14.0).**
+
+- *Ring rule (AM-66).* A community whose edges share only an address and a device is a ring only with two or more
+  coordinated claim matches or two or more members in the queue; the first rule stands where a payment instrument is
+  shared. Checked offline with the active bundle on the five validation worlds and W5401
+  (`records/2026-10-16-community-kind-rule-revision.md`): rings holding a coordination group went from 183 of 204 to
+  182 of 190, rings with no abuser from 15 to 5; one coordination group (W5203) became a household and its queued
+  member moved from Escalate to Hold. W5401 was re-scored (`run-020e5490d88f48c28e8c`): 31 rings, the four families
+  of finding 1 now households, Escalate 98 and Hold 186, every score, rank and selection unchanged.
+- *Money (AM-67).* Every customer row carries refunds paid and the part paid on transaction claims, from the stored
+  timeline; the run carries the same totals for the review set and the rule's set. The Overview shows them: the
+  model's 284 received INR 52.1 lakh, INR 20.5 lakh of it on transaction claims; the rule's 284 received INR 57.7
+  lakh, INR 9.5 lakh on claims. Labelled as observed refunds, not losses or proof. The truth-based figure of gap 1
+  stays a demo talking point from this review.
+- *Export (AM-67).* `GET /runs/{run_id}/customers/export` and an **Export this view as CSV** link on the queue give
+  every row of the current filters, with refunds and workflow, no note text, formula-like cells quoted. The case page
+  has **Download case summary**, a plain-text hand-off.
+- *Cleared reasons (AM-67).* Customers outside the queue carry `absent_signals`; cleared rows and the case's cleared
+  callout now add what was not observed, for example "below the review threshold · no claims matched by a linked
+  account, no late returns, no linked accounts".
+
+Checked after the change: 216 Python tests, 24 web tests, walkthrough 54 of 54, fallback 11 of 11,
+specification package PASS.

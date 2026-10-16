@@ -14,6 +14,8 @@ Notes append only across same immutable world/customer; correction new note, no 
 
 Contract 1.13.0 (AM-64): the append-only rule is unchanged; what the workflow accepts is now closed (one open at a time, one decision until a reopen, the opener never decides, names compared without case or spacing), checked under the per-customer advisory lock so concurrent decisions resolve to one. A dataset no run was scored on may be deleted with its files (DELETE /datasets/{id}); a dataset with runs is kept (409 dataset_in_use).
 
+Contract 1.14.0 (AM-67): refund totals are aggregates over run_timeline (amount_inr, line_status, event_type) at read time; no table or column is added and results stay write-once. Runs scored before line statuses were stored answer null refunds.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Dataset/job/model/experiment/review events.

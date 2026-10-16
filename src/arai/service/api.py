@@ -7,6 +7,8 @@ The files it still opens are not data: the active pointer and bundle it verifies
 from __future__ import annotations
 
 import base64
+import csv
+import io
 import logging
 import os
 import secrets
@@ -19,7 +21,7 @@ from typing import Literal
 from urllib.parse import unquote
 
 import yaml
-from fastapi import APIRouter, FastAPI, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -91,7 +93,7 @@ RUN_SUMMARY_FIELDS = {                             # Run field -> key of the sum
     "styles_with_verdict": "styles_with_verdict"}
 
 
-def run_body(row: dict, summary: dict | None = None, memos: dict | None = None) -> dict:
+def run_body(row: dict, summary: dict | None = None, memos: dict | None = None, refunds: dict | None = None) -> dict:
     """A run as the contract shows it. `summary` is what scoring recorded, given only for a succeeded run; `memos` is how far its
     investigation memos are (null until it succeeded)."""
     summary = summary or {}
@@ -106,6 +108,7 @@ def run_body(row: dict, summary: dict | None = None, memos: dict | None = None) 
             "selected_count": row["selected_count"], "model_only_count": row["model_only_count"],
             "baseline_only_count": row["baseline_only_count"], "warnings": summary.get("warnings") or [], "memos": memos,
             "stage_log": [{"stage": entry["stage"], "at": entry["at"]} for entry in (row.get("stage_log") or [])],
+            "refunds": refunds,
             **{field: summary.get(key) for field, key in RUN_SUMMARY_FIELDS.items()}}
 
 
@@ -161,7 +164,9 @@ class Service:
 
     def run_body(self, row: dict) -> dict:
         """A run as the contract shows it, with the warnings recorded when it was scored."""
-        return run_body(row, row["summary"] if row["status"] == "succeeded" else None, views.memo_progress(self.store, row))
+        succeeded = row["status"] == "succeeded" and row["summary"] is not None
+        return run_body(row, row["summary"] if row["status"] == "succeeded" else None, views.memo_progress(self.store, row),
+                        self.store.run_refunds(row["id"]) if succeeded else None)
 
     def succeeded_run(self, run_id: str) -> dict:
         """The run, if its results can be read. Results exist exactly for succeeded runs: both are one transaction."""
@@ -384,31 +389,51 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         return service.run_body(service.store.request_cancel(run_id))
 
     # ------------------------------------------------------------------ customers
-    @api.get("/runs/{run_id}/customers")
-    def list_customers(run_id: str, cursor: str | None = None, limit: int = limit_query, review_only: bool = True,
-                       eligibility: Literal["all", "eligible", "insufficient_history"] = "all", search: str | None = None,
-                       evidence: str | None = None,
-                       disposition: Literal["all", "unreviewed", "needs_investigation", "likely_legitimate", "unresolved"] = "all",
-                       comparison: Literal["all", "model_only", "baseline_only", "both"] = "all",
-                       wardrobing: Literal["all", "elevated", "possible", "no_elevated_signal", "insufficient_evidence", "incomplete"] = "all",
-                       community: Literal["all", "ring", "household", "none"] = "all",
-                       community_id: str | None = Query(None, max_length=200),
-                       tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
-                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
-                       state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
-                       exclude_reviewer: str | None = Query(None, max_length=100), cleared_heavy: bool = False):
-        run = service.succeeded_run(run_id)
+    def queue_filters(review_only: bool = True,
+                      eligibility: Literal["all", "eligible", "insufficient_history"] = "all", search: str | None = None,
+                      evidence: str | None = None,
+                      disposition: Literal["all", "unreviewed", "needs_investigation", "likely_legitimate", "unresolved"] = "all",
+                      comparison: Literal["all", "model_only", "baseline_only", "both"] = "all",
+                      wardrobing: Literal["all", "elevated", "possible", "no_elevated_signal", "insufficient_evidence", "incomplete"] = "all",
+                      community: Literal["all", "ring", "household", "none"] = "all",
+                      community_id: str | None = Query(None, max_length=200),
+                      tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
+                      gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
+                      state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
+                      exclude_reviewer: str | None = Query(None, max_length=100), cleared_heavy: bool = False) -> dict:
+        """The queue's filters, shared by the list and its export. Filters choose what is shown, never a score or a selection."""
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
                            [{"rule_id": "request.evidence", "table": None, "row_key": evidence, "count": 1}])
-        filters = {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
-                   "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing,
-                   "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate,
-                   "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None, "cleared_heavy": cleared_heavy}
+        return {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
+                "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing,
+                "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate,
+                "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None, "cleared_heavy": cleared_heavy}
+
+    @api.get("/runs/{run_id}/customers")
+    def list_customers(run_id: str, cursor: str | None = None, limit: int = limit_query, filters: dict = Depends(queue_filters)):
+        run = service.succeeded_run(run_id)
         context = {"list": "customers", "run_id": run_id, **filters}
         after = views.decode_cursor(cursor, context, "int")
         items, following = views.customer_queue(service.store, run, filters, after, limit)
         return {"items": items, "next_cursor": views.encode_cursor(context, following) if following is not None else None}
+
+    @api.get("/runs/{run_id}/customers/export")
+    def export_customers(run_id: str, filters: dict = Depends(queue_filters)):
+        """The filtered queue as CSV for a hand-off to the returns-policy or service team: every row, in queue order."""
+        run = service.succeeded_run(run_id)
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\r\n")
+        writer.writerow(views.EXPORT_COLUMNS)
+        after = None
+        while True:
+            items, after = views.customer_queue(service.store, run, filters, after, 500)
+            writer.writerows(views.export_row(item, run) for item in items)
+            if after is None:
+                break
+        name = f"arai-{run['world_id']}-{run_id}-queue.csv"
+        return Response(content=buffer.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @api.get("/runs/{run_id}/score-distribution")
     def get_score_distribution(run_id: str):
