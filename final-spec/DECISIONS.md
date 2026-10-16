@@ -194,7 +194,7 @@ A review of the specification and the codebase from a principal ML engineer's st
 
 Housekeeping in this amendment: the per-component acceptance footers now point to the register instead of stating NOT_RUN; a version label on a component or contract names the amendment in which that file last changed in substance.
 
-Open for the project owner: a gate leg for honest repeat claimants belongs in the next experiment and cannot be added to this one (it needs a revised experiment.yaml, which voids the generated worlds, and untouched validation and test seeds); the rehearsal on the presentation machine and the optional VM (OPS-AC-05) remain to be done; the code repository has no remote.
+Open for the project owner: a gate leg for honest repeat claimants belongs in the next experiment and cannot be added to this one (it needs a revised experiment.yaml, which voids the generated worlds, and untouched validation and test seeds); the rehearsal on the presentation machine and the optional VM (OPS-AC-05) remain to be done; the code repository had no remote (since resolved: it is on GitHub as pragatheeswaran-cds/ARAI).
 
 ## Amendment 1.9 (2026-10-05)
 
@@ -216,7 +216,7 @@ The contract of the second experiment, EXP-20261005-02, fixed before any of its 
 
 Consequence on this branch: bundles of EXP-20261002-01 carry the 17-feature schema and are refused by an installation whose feature contract has 43, so serving has no promoted model here until experiment 2 publishes one. The previous branch stays the state that can be demonstrated until then.
 
-Open for the project owner, unchanged: the rehearsal on the presentation machine, the optional VM (OPS-AC-05), a git remote. The 0.75-0.85 target stays open (AM-45) until this experiment's gate dry run and results are recorded.
+Open for the project owner, unchanged: the rehearsal on the presentation machine, the optional VM (OPS-AC-05), a git remote (since resolved: GitHub, pragatheeswaran-cds/ARAI). The 0.75-0.85 target stays open (AM-45) until this experiment's gate dry run and results are recorded.
 
 ## Amendment 3.0 (2026-10-05)
 
