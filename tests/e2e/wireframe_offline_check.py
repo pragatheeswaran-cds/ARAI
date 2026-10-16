@@ -15,13 +15,13 @@ import platform
 import shutil
 import sys
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
 REPO = Path(__file__).resolve().parents[2]
-OUT = REPO / "reports" / "ops-ac-02" / date.today().isoformat()
+OUT = REPO / "reports" / "ops-ac-02" / datetime.now().astimezone().date().isoformat()
 results: list = []
 
 
@@ -54,7 +54,7 @@ def main() -> int:
             page.on("pageerror", lambda e: errors.append(str(e)))
             page.goto(page_url)
             page.wait_for_load_state("load")
-            text = lambda: page.locator("main").inner_text()  # noqa: E731
+            text = lambda: page.locator("main").inner_text()
 
             check("opens from disk in a path with spaces", " " in page_url.replace("%20", " ") and page.title().startswith("ARAI"), page.title())
             names = page.locator("#nav a").all_inner_texts()
@@ -91,7 +91,7 @@ def main() -> int:
             browser.close()
     passed = sum(r["passed"] for r in results)
     (OUT / "result.json").write_text(json.dumps({
-        "criterion": "OPS-AC-02", "executed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "criterion": "OPS-AC-02", "executed_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "machine": f"{platform.system()} {platform.release()} ({platform.machine()})", "browser": ("chromium " if os.environ.get("ARAI_BROWSER") else "msedge ") + version,
         "mode": "file:// from a copy of final-spec alone, in a path with spaces; browser offline, every non-file request refused",
         "checks": results, "passed": passed, "total": len(results)}, indent=2) + "\n", encoding="utf-8")

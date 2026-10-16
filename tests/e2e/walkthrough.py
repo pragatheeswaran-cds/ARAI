@@ -16,14 +16,14 @@ import re
 import os
 import sys
 import time
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 DEMO_WORLD = sys.argv[2] if len(sys.argv) > 2 else "W5401"          # the demonstration world of the current experiment
-OUT = Path(__file__).resolve().parents[2] / "reports" / "ui" / date.today().isoformat()
+OUT = Path(__file__).resolve().parents[2] / "reports" / "ui" / datetime.now().astimezone().date().isoformat()
 OUT.mkdir(parents=True, exist_ok=True)
 TRUTH_WORDS = ("y_abuse", "abused returns in the simulation", "really abusers", "deceptive", "temporary use return", "persona")
 results, console_errors, failed_requests = [], [], []

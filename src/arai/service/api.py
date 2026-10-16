@@ -272,7 +272,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                                       headers={"WWW-Authenticate": 'Basic realm="ARAI"'})
         try:
             response = await call_next(request)
-        except Exception:                                           # noqa: BLE001  never leak a stack, path or secret
+        except Exception:                                           # never leak a stack, path or secret
             log.exception("request_id=%s unhandled error", request.state.request_id)
             return error_response(500, "internal_error", "Unexpected error. Quote the request id when reporting it.",
                                   request.state.request_id, headers={"x-request-id": request.state.request_id})

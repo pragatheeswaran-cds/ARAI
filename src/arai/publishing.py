@@ -34,7 +34,7 @@ REFERENCE_LABELS = {"analyst_rulebook": "analyst rulebook", "volume_only_logreg"
 def _metric(name, value, numerator=None, denominator=None, lower=None, upper=None, scope="", code=None, ranking=None,
             slice=None) -> dict:
     """One reported number. `code`, `ranking` and `slice` identify it; `name` and `scope` are display text and may be reworded."""
-    number = lambda v: None if v is None or pd.isna(v) else float(v)  # noqa: E731
+    number = lambda v: None if v is None or pd.isna(v) else float(v)
     return {"code": code, "ranking": ranking, "slice": slice, "name": name, "value": number(value), "numerator": number(numerator),
             "denominator": number(denominator), "lower_95": number(lower), "upper_95": number(upper), "scope": scope}
 
@@ -217,7 +217,7 @@ def _stress_wardrobing(experiment_dir: Path) -> list:
 
 def _dependence_limitations(dependence: dict, stress: dict) -> list:
     """The three statements a reader needs before quoting the headline, in plain words, from the measured facts."""
-    out, pct = [], lambda v: f"{100 * v:.0f}%"  # noqa: E731
+    out, pct = [], lambda v: f"{100 * v:.0f}%"
     if "without_claims" in dependence:
         out.append(f"Two signals carry the model: how much of what a customer asks back is a transaction claim, and item returns made "
                    f"late in the return window. Out of fold on training worlds its precision is {pct(dependence['all'])} with all "
@@ -257,7 +257,7 @@ def _dependence_limitations(dependence: dict, stress: dict) -> list:
 def build_report(experiment_dir: Path, promoted_model_id: str | None) -> dict:
     """The experiment in the API's `Experiment` shape, from the frozen offline reports."""
     experiment_dir = Path(experiment_dir)
-    load = lambda name: json.loads((experiment_dir / name).read_text(encoding="utf-8"))  # noqa: E731
+    load = lambda name: json.loads((experiment_dir / name).read_text(encoding="utf-8"))
     config, dry = load("config.json"), load("reports/dry_run.json")
     selection = load("selection.json") if (experiment_dir / "selection.json").is_file() else None
     validation = load("reports/validation.json") if (experiment_dir / "reports" / "validation.json").is_file() else None
@@ -317,9 +317,9 @@ def build_report(experiment_dir: Path, promoted_model_id: str | None) -> dict:
                                                           "validation")
     coverage = source["coverage"]
     where = "validation worlds" if validation else "training worlds"
-    limitations = [f"{coverage['abusers_excluded']} of {coverage['abusers_all']} abusers on the {where} have fewer than three mature sale "
-                   "lines and are outside the ranking.", "Simulated data from one generator: results show stability across simulated worlds, not "
-                   "performance on real returns.",
+    limitations = [(f"{coverage['abusers_excluded']} of {coverage['abusers_all']} abusers on the {where} have fewer than three mature sale "
+                    "lines and are outside the ranking."),
+                   "Simulated data from one generator: results show stability across simulated worlds, not performance on real returns.",
                    *_dependence_limitations(dependence, stress),
                    "The heavy-returner group is defined on return rate itself, so that gate leg cannot fail for a model and is not evidence."]
     limitations += [f"Segment {SEGMENT_LABELS[s]} has fewer than 200 members." for s in coverage["segments_below_minimum"]]
@@ -390,7 +390,7 @@ def verify_feature_code(experiment_dir: Path, artifact_root: Path | None = None)
         first = str(difference).splitlines()[0]
         raise RuntimeError(f"the feature code no longer reproduces the features {config['experiment_id']} was trained on "
                            f"({world_id}): {first}. Restore the code, or train a new experiment.") from None
-    return {"world_id": world_id, "features_sha256": config["features_sha256"][world_id], "rows": int(len(frozen)),
+    return {"world_id": world_id, "features_sha256": config["features_sha256"][world_id], "rows": len(frozen),
             "cutoff": manifest["cutoff"]}
 
 
@@ -398,7 +398,7 @@ def git_sha() -> str | None:
     """The commit of the code that publishes, or None outside a repository. Publishing re-verifies that this code still
     reproduces the frozen training features, so the hash names code that is known to match the experiment."""
     try:
-        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=paths.REPO_ROOT, capture_output=True, text=True, timeout=10)
+        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=paths.REPO_ROOT, capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout.strip() if out.returncode == 0 and len(out.stdout.strip()) == 40 else None

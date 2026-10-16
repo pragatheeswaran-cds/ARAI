@@ -81,7 +81,7 @@ def register(store: Store, artifact_root: Path, manifest_text: str, files: dict)
         row, created = store.register_dataset({
             "id": dataset_id, "world_id": world_id, "manifest_hash": manifest_hash, "schema_version": manifest["schema_version"],
             "cutoff": manifest["cutoff"], "history_start": manifest["history_start"], "purpose": manifest["purpose"],
-            "customer_count": int(len(tables["customer_master"])), "artifact_key": f"datasets/{dataset_id}"})
+            "customer_count": len(tables["customer_master"]), "artifact_key": f"datasets/{dataset_id}"})
         if not (final / "parquet").is_dir():              # new, or registered earlier and its files have since vanished
             if final.exists():
                 shutil.rmtree(final)

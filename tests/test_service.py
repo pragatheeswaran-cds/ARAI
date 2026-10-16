@@ -1,4 +1,5 @@
 """Inference, storage and the HTTP API against a real PostgreSQL (final-spec components 11, 12, 14)."""
+import itertools
 import json
 import shutil
 import subprocess
@@ -197,7 +198,7 @@ def test_a_world_cannot_be_registered_twice_with_different_content(client, writt
 
 def test_csv_upload_gives_the_same_features_as_the_generated_tables(written, world, trained):
     from arai import features as F
-    tables, manifest = read_csv_world(written["operational"])
+    tables, _ = read_csv_world(written["operational"])
     uploaded = F.compute_features(tables, world.snapshot_date, trained["reference"]).features
     direct = F.compute_features(world.tables, world.snapshot_date, trained["reference"]).features
     pd.testing.assert_frame_equal(uploaded, direct)
@@ -652,7 +653,7 @@ def test_serving_does_not_import_offline_modules_or_need_private_truth():
             "bad = sorted(m for m in sys.modules if m in ('arai.evaluation', 'arai.selection', 'arai.experiment', 'arai.eda', "
             "'arai.diagnostics', 'arai.feature_eda', 'arai.publishing', 'arai.modeling', 'arai.dataset', 'arai.generator.world')); "
             "print(bad); sys.exit(1 if bad else 0)")
-    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -761,7 +762,6 @@ def test_the_worker_loop_survives_a_database_error(env):
             if len(calls) == 1:
                 raise RuntimeError("database briefly unreachable")
             stop.set()
-            return None
     config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], poll_seconds=0.01)
     thread = threading.Thread(target=worker.run_forever, args=(config, Flaky(env["config"].database_url), stop))
     thread.start()
@@ -935,7 +935,7 @@ def test_a_database_dump_restores_to_another_database_and_artifact_root(client, 
     before = {"queue": client.get(url, params={"limit": 40}).json(), "case": client.get(f"{url}/{customer}").json(),
               "run": client.get(f"{API}/runs/{run['run_id']}").json(), "styles": client.get(f"{API}/runs/{run['run_id']}/styles").json()}
 
-    tool = lambda name: str(Path(pgserver.__file__).parent / "pginstall" / "bin" / (name + (".exe" if os.name == "nt" else "")))  # noqa: E731
+    tool = lambda name: str(Path(pgserver.__file__).parent / "pginstall" / "bin" / (name + (".exe" if os.name == "nt" else "")))
     dump = tmp_path / "backup.dump"
     subprocess.run([tool("pg_dump"), "--format=custom", "--file", str(dump), "--dbname", env["config"].database_url],
                    check=True, capture_output=True)
@@ -1276,7 +1276,7 @@ def test_tiers_gate_outcomes_and_primary_signals_follow_the_stated_rules_and_the
         # the chips follow the families: the first chip's family lowers the score at least as much as the second's
         deltas = {f["family"]: f["delta_points"] for f in breakdown["families"]}
         chips = [p for p in case["customer"]["primary_signals"] if p["family"]]
-        assert all(deltas[a["family"]] <= deltas[b["family"]] for a, b in zip(chips, chips[1:]))
+        assert all(deltas[a["family"]] <= deltas[b["family"]] for a, b in itertools.pairwise(chips))
         assert all(p["family"] is None for p in case["customer"]["primary_signals"][len(chips):])
         # the rules read the case's own signals; report-only
         codes = {s["code"]: s["value"] for s in case["signals"]}
@@ -1332,8 +1332,8 @@ def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_de
                                   "decided_by": None, "decided_at": None}
     assert {c["workflow"]["state"] for c in queue} == {"new"} and any(c["workflow"]["state"] == "auto_logged" for c in everyone)
     first, second = queue[0]["customer_id"], queue[1]["customer_id"]
-    reviews = lambda customer: f"{url}/{customer}/reviews"  # noqa: E731
-    post = lambda customer, key, **body: client.post(reviews(customer), json={  # noqa: E731
+    reviews = lambda customer: f"{url}/{customer}/reviews"
+    post = lambda customer, key, **body: client.post(reviews(customer), json={
         "reviewer_name": "Asha", "disposition": "needs_investigation", "note": "Looked at the timeline.", "idempotency_key": key, **body})
     # a note never moves the state; the kinds that do need an open first
     assert post(first, "k0").status_code == 201 and client.get(f"{url}/{first}").json()["customer"]["workflow"]["state"] == "new"
@@ -1396,7 +1396,7 @@ def test_workflow_rules_refuse_a_second_open_a_second_decision_and_actions_out_o
     queue = all_pages(client, url)
     everyone = all_pages(client, url, {"review_only": "false"})
     first, second = queue[2]["customer_id"], queue[3]["customer_id"]
-    post = lambda customer, key, **body: client.post(f"{url}/{customer}/reviews", json={  # noqa: E731
+    post = lambda customer, key, **body: client.post(f"{url}/{customer}/reviews", json={
         "reviewer_name": "Asha", "disposition": "needs_investigation", "note": "n", "idempotency_key": key, **body})
     assert post(first, "o1", kind="open").status_code == 201
     twice = post(first, "o2", kind="open", reviewer_name="Ravi")                      # cannot take over an open case
@@ -1646,7 +1646,7 @@ def test_the_evaluation_curves_count_abusers_and_legitimate_heavy_returners_at_e
     conforms("Curves", curves)
     customers = all_pages(client, f"{API}/runs/{run['run_id']}/customers", {"review_only": "false", "eligibility": "eligible"})
     abusers = set(truth.loc[truth["y_abuse"] == 1, "customer_id"])
-    rate = lambda c: c["support_counts"]["mature_requested_units"] / c["support_counts"]["mature_purchased_units"]  # noqa: E731
+    rate = lambda c: c["support_counts"]["mature_requested_units"] / c["support_counts"]["mature_purchased_units"]
     heavy = {c["customer_id"] for c in customers if c["customer_id"] not in abusers and rate(c) >= run["heavy_returner_cutoff"]}
     assert curves["synthetic_only"] and curves["world_id"] == run["world_id"] and curves["review_budget"] == run["review_budget"]
     assert curves["eligible_count"] == len(customers) == len(curves["points"]) == curves["points"][-1]["k"]
@@ -1862,7 +1862,7 @@ def test_snapshots_of_one_world_keep_the_customer_and_its_history(client, env, w
     assert new == queued_after - queued_before and repeat == queued_after & queued_before and repeat
 
     # a case decided on the earlier snapshot: the decision stays with that snapshot, the later case starts its own review
-    target = sorted(repeat)[0]
+    target = min(repeat)
     for number, (name, kind) in enumerate((("Asha", "open"), ("Ravi", "reject"))):
         made = client.post(f"{API}/runs/{first['run_id']}/customers/{target}/reviews",
                            json={"reviewer_name": name, "kind": kind, "disposition": "needs_investigation",
@@ -1949,7 +1949,7 @@ def test_roles_decide_what_each_person_may_do(client, env, written):
     run = scored_run(client, env, written)
     url = f"{API}/runs/{run['run_id']}/customers"
     customer = client.get(url, params={"limit": 1}).json()["items"][0]["customer_id"]
-    note = lambda key, **body: {"disposition": "needs_investigation", "note": "n", "idempotency_key": key, **body}  # noqa: E731
+    note = lambda key, **body: {"disposition": "needs_investigation", "note": "n", "idempotency_key": key, **body}
     viewer, reviewer, admin = (client.as_user(name) for name in ("Viewer", "Reviewer", "Admin"))
     me = viewer.get(f"{API}/me").json()
     conforms("Me", me)
@@ -2053,7 +2053,7 @@ def test_the_second_reviewer_rule_compares_user_ids_and_names_only_for_older_rev
     url = f"{API}/runs/{run['run_id']}/customers"
     first, second = [c["customer_id"] for c in client.get(url, params={"limit": 2}).json()["items"]]
     asha, ravi = client.as_user("Asha"), client.as_user("Ravi")
-    body = lambda key, kind, reading="needs_investigation": {"kind": kind, "disposition": reading, "note": "n", "idempotency_key": key}  # noqa: E731
+    body = lambda key, kind, reading="needs_investigation": {"kind": kind, "disposition": reading, "note": "n", "idempotency_key": key}
     store = Store(env["config"].database_url)
     assert asha.post(f"{url}/{first}/reviews", json=body("o", "open")).status_code == 201
     # the same person under another name is still the opener
@@ -2072,7 +2072,7 @@ def test_the_second_reviewer_rule_compares_user_ids_and_names_only_for_older_rev
         db.execute("""INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind, dataset_id)
                       VALUES ('rev-legacy', %s, %s, %s, %s, 'Meera', 'unresolved', 'typed name', 'open', %s)""",
                    (run_row["world_id"], second, run["run_id"], run_row["model_id"], run_row["dataset_id"]))
-    legacy = [r for r in client.get(f"{url}/{second}/reviews").json()["items"] if r["review_id"] == "rev-legacy"][0]
+    legacy = next(r for r in client.get(f"{url}/{second}/reviews").json()["items"] if r["review_id"] == "rev-legacy")
     assert legacy["author"] == {"user_id": None, "display_name": "Meera", "verified": False}
     meera = client.as_user("Meera")
     assert meera.post(f"{url}/{second}/reviews", json=body("m1", "approve")).json()["error_code"] == "second_reviewer_required"
@@ -2239,7 +2239,7 @@ def test_scripts_use_keycloak_bearer_tokens_checked_against_the_realm_keys(sso, 
 
     from arai.service import oidc
     browser, fake = sso["browser"], sso["fake"]
-    token = lambda **claims: {"Authorization": "Bearer " + fake.sign(fake.claims(**claims))}  # noqa: E731
+    token = lambda **claims: {"Authorization": "Bearer " + fake.sign(fake.claims(**claims))}
     admin = token(sub="kc-admin", groups=("arai-admins",), aud=["arai-api", "account"])
     me = browser.get(f"{API}/me", headers=admin).json()
     conforms("Me", me)

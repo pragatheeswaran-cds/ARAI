@@ -10,7 +10,7 @@ import hashlib
 import json
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +27,7 @@ REFERENCES = ("volume_only_logreg", "analyst_rulebook")
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _write(path: Path, payload: dict) -> None:
@@ -60,11 +60,11 @@ def _sealed_worlds_present(settings, artifact_root=None) -> list:
 
 def _check_sealed_worlds(worlds: list, recorded_at: str, event: str, settings, artifact_root=None) -> None:
     """Sealed worlds must be generated after `event` was recorded, by the generator and configuration of the training worlds."""
-    recorded = datetime.strptime(recorded_at, "%Y-%m-%dT%H:%M:%SZ")
+    recorded = datetime.strptime(recorded_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     training = json.loads(_manifest_path(f"W{settings.experiment['train_seeds'][0]}", artifact_root).read_text())["generator"]
     for world_id in worlds:
         path = _manifest_path(world_id, artifact_root)
-        if datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).replace(tzinfo=None) < recorded:
+        if datetime.fromtimestamp(path.stat().st_mtime, UTC) < recorded:
             raise RuntimeError(f"{world_id} was generated before {event}")
         generator = json.loads(path.read_text())["generator"]
         if any(generator[key] != training[key] for key in ("code_sha256", "config_sha256", "catalog_sha256")):
@@ -276,7 +276,7 @@ def stress(experiment_id: str = DEFAULT_EXPERIMENT, artifact_root=None, private_
         frame = _frozen_rankings(out, evaluation.evaluation_frame([world_id], artifact_root, private_root))
         card = selection.scorecard(frame, rankings, selectable, require_coverage=False)
         evidence = evidence_metrics([world_id], artifact_root, private_root)
-        rows.append({"world_id": world_id, "mechanism": mechanisms[world_id], "eligible": int(len(frame)),
+        rows.append({"world_id": world_id, "mechanism": mechanisms[world_id], "eligible": len(frame),
                      "prevalence": float(frame["y_abuse"].mean()), "rankings": _records(card),
                      "wardrobing": {key: evidence[key] for key in ("wardrobing_elevated", "wardrobing_possible",
                                                                    "wardrobing_elevated_or_possible", "wardrobing_false_alerts")}})

@@ -16,8 +16,6 @@ import argparse
 import collections
 import json
 
-import numpy as np
-import pandas as pd
 
 from arai import features as F
 from arai import ranking
@@ -51,8 +49,8 @@ def check_world(seed: int) -> dict:
         confusion[(row.kind, truth_kind)] += 1
     coordination_groups = truth.loc[truth["group_type"] == "coordination", "group_id"].nunique()
     found = sum(n for (kind, t), n in confusion.items() if t == "coordination")
-    return {"world_id": world.world_id, "customers": int(len(customers)), "edges": int(len(result.graph.edges)),
-            "communities": int(len(communities)), "methods": communities["method"].value_counts().to_dict(),
+    return {"world_id": world.world_id, "customers": len(customers), "edges": len(result.graph.edges),
+            "communities": len(communities), "methods": communities["method"].value_counts().to_dict(),
             "sizes": {int(size): int(n) for size, n in communities["size"].value_counts().sort_index().items()},
             "coordination_groups_generated": int(coordination_groups), "communities_with_a_coordination_pair": int(found),
             "confusion": {f"{kind} | {t}": int(n) for (kind, t), n in sorted(confusion.items())}}

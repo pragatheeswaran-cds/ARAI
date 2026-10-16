@@ -117,9 +117,8 @@ class Store:
 
     @contextmanager
     def transaction(self):
-        with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
-            with connection.transaction():
-                yield connection
+        with psycopg.connect(self.database_url, row_factory=dict_row) as connection, connection.transaction():
+            yield connection
 
     # ------------------------------------------------------------------ schema
     def migrate(self) -> list:
@@ -448,10 +447,9 @@ class Store:
 
     def _copy(self, db, table: str, key: tuple, columns: list, rows) -> None:
         """Bulk-load rows of one table; `key` is the leading (column, value) every row shares."""
-        with db.cursor() as cursor:
-            with cursor.copy(f"COPY {table} ({', '.join([key[0], *columns])}) FROM STDIN") as copy:
-                for row in rows:
-                    copy.write_row((key[1], *row))
+        with db.cursor() as cursor, cursor.copy(f"COPY {table} ({', '.join([key[0], *columns])}) FROM STDIN") as copy:
+            for row in rows:
+                copy.write_row((key[1], *row))
 
     def _write_results(self, db, run_id: str, tables: dict) -> None:
         if set(tables) != set(RESULT_TABLES):

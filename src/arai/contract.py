@@ -12,7 +12,7 @@ import yaml
 from arai.paths import SPEC_ROOT
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _load(name: str) -> dict:
     return yaml.safe_load((SPEC_ROOT / "contracts" / name).read_text(encoding="utf-8"))
 

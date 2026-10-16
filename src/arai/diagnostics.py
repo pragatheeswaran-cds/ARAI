@@ -110,7 +110,7 @@ def generation_report(world) -> dict:
         "propensity_share": {"claim": round(float(profile["claim_propensity"].mean()), 4),
                              "temporary_use": round(float(profile["temporary_use_propensity"].mean()), 4),
                              "both": round(float((profile["claim_propensity"] & profile["temporary_use_propensity"]).mean()), 4)},
-        "eligible_customers": int(len(eligible)), "eligible_share": round(len(eligible) / len(summary), 4),
+        "eligible_customers": len(eligible), "eligible_share": round(len(eligible) / len(summary), 4),
         "abusers_all": int(summary["y_abuse"].sum()), "abusers_eligible": int(eligible["y_abuse"].sum()),
         "abusers_excluded_by_eligibility": int((summary["y_abuse"] == 1).sum() - eligible["y_abuse"].sum()),
         "prevalence_among_eligible": round(float(eligible["y_abuse"].mean()), 4) if len(eligible) else None,

@@ -20,7 +20,7 @@ import hashlib
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from arai import bundles, contract, paths
@@ -52,11 +52,11 @@ def git(*args: str) -> bytes:
 
 
 def utc(text: str) -> datetime:
-    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
 def written(path: Path) -> datetime:
-    return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+    return datetime.fromtimestamp(path.stat().st_mtime, UTC)
 
 
 def world_problem(world_id: str, artifacts: Path, private: Path) -> str | None:
@@ -86,7 +86,7 @@ def main() -> int:
 
     experiment_id, artifacts, private = contract.experiment_id(), paths.ARTIFACT_ROOT, paths.PRIVATE_TRUTH_ROOT
     out = artifacts / "experiments" / experiment_id
-    load = lambda name: json.loads((out / name).read_text(encoding="utf-8"))  # noqa: E731
+    load = lambda name: json.loads((out / name).read_text(encoding="utf-8"))
     settings = load_settings()
     print(f"{experiment_id} in {artifacts.parent}\n")
 
@@ -106,11 +106,11 @@ def main() -> int:
     committed = datetime.fromisoformat(git("log", "-1", "--format=%cI", commit).decode().strip())
 
     # ---- the order of the protocol (file times of the world manifests, as the pipeline's own guard reads them)
-    manifest = lambda seed: artifacts / "worlds" / f"W{seed}" / "operational" / "manifest.json"  # noqa: E731
+    manifest = lambda seed: artifacts / "worlds" / f"W{seed}" / "operational" / "manifest.json"
     e = settings.experiment
-    first = lambda key: min(written(manifest(s)) for s in e[key])  # noqa: E731
+    first = lambda key: min(written(manifest(s)) for s in e[key])
     check("the contract was committed before any training world was generated", committed <= first("train_seeds"),
-          f"commit {committed.astimezone(timezone.utc):%H:%M:%S}Z, first world {first('train_seeds'):%H:%M:%S}Z")
+          f"commit {committed.astimezone(UTC):%H:%M:%S}Z, first world {first('train_seeds'):%H:%M:%S}Z")
     check("the gate dry run was recorded before any validation world was generated", utc(dry["recorded_at"]) <= first("validation_seeds"),
           f"dry run {dry['recorded_at']}, first world {first('validation_seeds'):%H:%M:%S}Z")
     check("the selection was frozen before any test world was generated", utc(selection["frozen_at"]) <= first("test_seeds"),

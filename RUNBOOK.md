@@ -542,9 +542,12 @@ uv run --no-sync pytest -q                          # "234 passed" in about 10 m
 # 2. Front-end tests and type check
 cd web; npm test; npx tsc --noEmit; cd ..            # "30 passed"; tsc prints nothing
 
+#    Python lint (rules in pyproject.toml; the version is pinned here because each ruff release changes its default rules)
+uvx ruff@0.16.8 check src tests scripts              # "All checks passed!"
+
 # 3. Browser walkthrough of the running application (needs the server up with W5401 and its snapshots of section 4.1
 #    scored; uses Edge, headless; it signs in as Admin, Ravi and Arjun through the development login)
-uv run --no-sync python tests\e2e\walkthrough.py     # "66 of 66 checks passed"
+uv run --no-sync python tests\e2e\walkthrough.py     # "71 of 71 checks passed"
 
 # 4. Baseline-fallback check (starts its own temporary instance on port 8011: stop the baseline rehearsal first)
 uv run --no-sync python tests\e2e\fallback_check.py  # "11 of 11 checks passed"

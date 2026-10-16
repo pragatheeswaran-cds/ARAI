@@ -19,7 +19,7 @@ import logging
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 log = logging.getLogger("arai.memo")
 
@@ -200,10 +200,10 @@ def memo_for(client, model: str, case: dict, attempts: int = ATTEMPTS) -> dict:
                 failed = gate(memo, inputs, customer_id)
                 if not failed:
                     return {"customer_id": customer_id, "status": "ok", "attempts": used, "reason": None, "model": model,
-                            "generated_at": datetime.now(timezone.utc), "memo": memo}
+                            "generated_at": datetime.now(UTC), "memo": memo}
                 reason = "gate: " + "; ".join(failed)[:300]
     return {"customer_id": customer_id, "status": "unavailable", "attempts": used, "reason": reason, "model": model,
-            "generated_at": datetime.now(timezone.utc), "memo": None}
+            "generated_at": datetime.now(UTC), "memo": None}
 
 
 def write_memos(config, store, run_id: str, case_of, client=None) -> dict:
@@ -220,10 +220,10 @@ def write_memos(config, store, run_id: str, case_of, client=None) -> dict:
     def one(customer_id: str) -> None:
         try:
             row = memo_for(client, model, case_of(customer_id))
-        except Exception:                                                   # noqa: BLE001  one memo, never the batch
+        except Exception:                                                   # one memo, never the batch
             log.exception("run=%s customer=%s memo failed", run_id, customer_id)
             row = {"customer_id": customer_id, "status": "unavailable", "attempts": 0, "reason": "error", "model": model,
-                   "generated_at": datetime.now(timezone.utc), "memo": None}
+                   "generated_at": datetime.now(UTC), "memo": None}
         store.write_memo(run_id, row)
         with lock:
             counts[row["status"]] += 1
@@ -231,7 +231,7 @@ def write_memos(config, store, run_id: str, case_of, client=None) -> dict:
     if client is None:                                                      # nothing to call: record the reason, read no case
         for customer_id in customers:
             store.write_memo(run_id, {"customer_id": customer_id, "status": "unavailable", "attempts": 0, "reason": "no_api_key",
-                                      "model": model, "generated_at": datetime.now(timezone.utc), "memo": None})
+                                      "model": model, "generated_at": datetime.now(UTC), "memo": None})
             counts["unavailable"] += 1
     else:
         with ThreadPoolExecutor(max_workers=POOL) as pool:

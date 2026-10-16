@@ -214,7 +214,7 @@ def test_temporary_use_prefers_orders_with_occasion_wear():
     profiles = builder.profiles.assign(claim_propensity=False, temporary_use_propensity=False,
                                        claim_action_rate=0.0, temporary_use_action_rate=0.0)
     profiles.loc[cust, ["temporary_use_propensity", "temporary_use_action_rate"]] = [True, 0.4]
-    actions, events = abuse.run_solo_actions(builder.ctx, profiles, builder.orders, builder.units, builder.reserved.copy())
+    _, events = abuse.run_solo_actions(builder.ctx, profiles, builder.orders, builder.units, builder.reserved.copy())
     acted = set(events["order_id"])
     occasion_orders = set(free.loc[(free["cust"] == cust) & free["occasion"], "order_id"])
     assert occasion_orders and occasion_orders <= acted                      # every such order produces an action

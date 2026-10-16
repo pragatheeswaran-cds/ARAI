@@ -643,7 +643,7 @@ def curves(store: Store, experiment: dict, run: dict, max_points: int) -> dict:
     keep = set()
     if rows:
         step = max(1, len(rows) / max(1, max_points - 1))
-        keep = {rows[min(len(rows) - 1, int(round(i * step)))]["k"] for i in range(max_points)} | {rows[0]["k"], rows[-1]["k"]}
+        keep = {rows[min(len(rows) - 1, round(i * step))]["k"] for i in range(max_points)} | {rows[0]["k"], rows[-1]["k"]}
         if budget:
             keep.add(budget)
     points = [{"k": int(r["k"]), "model_abusers_caught": int(r["model_abusers"]), "model_legitimate_heavy_reviewed": int(r["model_heavy"]),

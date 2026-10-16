@@ -6,6 +6,7 @@ the other, and its column lists mirror migrations/0002_results_in_postgres.sql.
 from __future__ import annotations
 
 import json
+import math
 
 import pandas as pd
 from psycopg.types.json import Jsonb
@@ -47,7 +48,7 @@ CASTS = {"int": int, "float": float, "bool": bool, "text": str}
 def _values(series: pd.Series, kind: str | None = None) -> list:
     """Plain Python values of a column, every kind of missing value as None, cast to the column's type."""
     cast = CASTS.get(kind, lambda value: value)
-    return [None if value is None or value is pd.NA or (isinstance(value, float) and value != value) else cast(value)
+    return [None if value is None or value is pd.NA or (isinstance(value, float) and math.isnan(value)) else cast(value)
             for value in series.tolist()]
 
 
@@ -56,7 +57,7 @@ def _rows(frame: pd.DataFrame, spec: tuple) -> list:
     if not len(frame):
         return []
     absent = pd.Series([None] * len(frame), index=frame.index, dtype=object)
-    return list(zip(*[_values(frame[name] if name in frame else absent, kind) for name, kind in spec]))
+    return list(zip(*[_values(frame.get(name, absent), kind) for name, kind in spec]))
 
 
 def _split(series: pd.Series) -> list:
@@ -75,7 +76,7 @@ def tables(output: RunOutput) -> dict:
     timeline_rows = [(seq, *row) for seq, row in enumerate(_rows(output.timeline, TIMELINE), start=1)]
     community_rows = [(*row, Jsonb(json.loads(edges))) for row, edges in
                       zip(_rows(output.communities, COMMUNITIES), output.communities["edges"].tolist())]
-    names = lambda spec: [name for name, _ in spec]  # noqa: E731
+    names = lambda spec: [name for name, _ in spec]
     return {
         "run_customers": ([*names(CUSTOMERS), "evidence_tags", "measures"], customer_rows),
         "run_styles": (names(STYLES), _rows(output.styles, STYLES)),

@@ -16,7 +16,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -31,7 +31,7 @@ from arai.service.config import ServiceConfig
 
 PORT = 8011
 BASE = f"http://127.0.0.1:{PORT}"
-OUT = paths.REPO_ROOT / "reports" / "ui" / date.today().isoformat()
+OUT = paths.REPO_ROOT / "reports" / "ui" / datetime.now().astimezone().date().isoformat()
 results = []
 
 

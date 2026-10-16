@@ -29,7 +29,7 @@ def _criteria():
     """(component file, title, [(id, text), ...]) for every component, read from its acceptance table."""
     for path in sorted((SPEC / "components").glob("*.md")):
         text = path.read_bytes().decode("ascii").replace("\r\n", "\n")
-        yield path.name, text.split("\n")[0][2:], re.findall(r"^\| ([A-Z]+-AC-\d\d) \| (.*) \|$", text, re.M)
+        yield path.name, text.split("\n")[0][2:], re.findall(r"^\| ([A-Z]+-AC-\d\d) \| (.*) \|$", text, re.MULTILINE)
 
 
 def rebuild_register() -> int:
@@ -101,7 +101,7 @@ def main() -> int:
     check_text_files()
     changed = rebuild_manifest(args.version, args.amended)
     print(f"{count} acceptance criteria; {len(changed)} file hashes updated")
-    result = subprocess.run([sys.executable, str(SPEC / "tools" / "verify_package.py")])
+    result = subprocess.run([sys.executable, str(SPEC / "tools" / "verify_package.py")], check=False)
     if result.returncode == 0 and args.zip:
         print("wrote", write_zip(args.zip).name)
     return result.returncode

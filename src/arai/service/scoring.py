@@ -431,12 +431,12 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
                         "to confirm that features still match training.")
     summary = {
         "world_id": world_id, "model_id": bundle.model_id, "model_kind": bundle.kind, "cutoff": manifest["cutoff"],
-        "customer_count": int(len(customers)), "eligible_count": n, "excluded_count": int(len(customers) - n),
+        "customer_count": len(customers), "eligible_count": n, "excluded_count": int(len(customers) - n),
         "review_budget_k": int(k), "selected_count": int(selected.sum()),
         "model_only_count": int((selected & ~baseline_selected).sum()),
         "baseline_only_count": int((baseline_selected & ~selected).sum()),
         "both_count": int((selected & baseline_selected).sum()),
-        "graph_edges": int(len(result.graph.edges)), "identifier_values_dropped": int(result.graph.dropped_values),
+        "graph_edges": len(result.graph.edges), "identifier_values_dropped": int(result.graph.dropped_values),
         "category_fallback_uses": int(result.fallback_uses), "warnings": warnings, "drift": drift_report,
         # the queue's edge and the eligible population it is cut from, for the queue header and the threshold slider
         "threshold_score": threshold,
@@ -445,7 +445,7 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         "mean_return_rate": requested / purchased if purchased else None,
         "heavy_returner_cutoff": heavy_cutoff,
         # groups of linked accounts (connected components of the supported edges) and how many look coordinated
-        "community_count": int(len(communities)), "ring_count": int((communities["kind"] == "ring").sum()),
+        "community_count": len(communities), "ring_count": int((communities["kind"] == "ring").sum()),
         "styles_with_verdict": int(styles["state"].isin(["quality", "targeting", "mixed_or_uncertain"]).sum()),
         # how the score breakdown was made: whose medians stood in for a family, and the raw score at the queue's edge
         "attribution": {"typical_from": typical_from, "threshold_raw_score": threshold_raw},

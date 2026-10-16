@@ -11,7 +11,7 @@ import numpy as np
 
 
 def _digest(world_seed: int, entity_key: str, purpose: str) -> bytes:
-    return hashlib.sha256(f"{world_seed}|{entity_key}|{purpose}".encode("utf-8")).digest()
+    return hashlib.sha256(f"{world_seed}|{entity_key}|{purpose}".encode()).digest()
 
 
 def stream(world_seed: int, entity_key: str, purpose: str) -> np.random.Generator:

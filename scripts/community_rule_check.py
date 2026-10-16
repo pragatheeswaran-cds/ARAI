@@ -63,7 +63,7 @@ def check_world(world_id: str, bundle) -> dict:
             changed.append({"community": row.community_id, "size": int(row.size), "selected": int(row.selected_count),
                             "matches": int(row.coordinated_claim_matches), "truth": truth_kind,
                             "abusers": len(set(members) & abusers), "types": sorted({t for e in edges for t in e["types"]})})
-    return {"world_id": world_id, "communities": int(len(output.communities)), "selected": int(customers["selected_for_review"].sum()),
+    return {"world_id": world_id, "communities": len(output.communities), "selected": int(customers["selected_for_review"].sum()),
             "confusion": {rule: {f"{k} | {t}": n for (k, t), n in sorted(c.items())} for rule, c in confusion.items()},
             "rings_without_an_abuser": no_abuser_rings, "changed_by_the_revision": changed}
 
@@ -78,8 +78,8 @@ def main() -> int:
     print(json.dumps(reports, indent=2))
     totals = {"first": collections.Counter(), "revised": collections.Counter()}
     for report in reports:
-        for rule in totals:
-            totals[rule].update(report["confusion"][rule])
+        for rule, total in totals.items():
+            total.update(report["confusion"][rule])
     for rule, total in totals.items():
         print(f"\n{rule} rule, pooled:", dict(sorted(total.items())))
         print(f"  rings without an abuser: {sum(r['rings_without_an_abuser'][rule] for r in reports)}")
