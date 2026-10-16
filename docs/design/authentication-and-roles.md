@@ -1,6 +1,6 @@
 # Design: authentication, roles and verified reviewer identity
 
-Status: **proposal for approval** (16 Oct 2026). Branch `auth-design`, cut from `gap3-customer-history` (API contract
+Status: **proposal, decisions 1 to 4 and 6 taken, 5 open** (16 Oct 2026). Branch `auth-design`, cut from `gap3-customer-history` (API contract
 1.15.0). Nothing here is built yet; this document is for review before any code.
 
 ## 1. Why
@@ -165,16 +165,58 @@ credentials only for the configured development origin.
 | 4 | Contract 1.16.0, AM-69, components, RUNBOOK (setting up an identity provider), demo script; Basic auth made optional | With steps 1 to 3 |
 | Later | Admin screen for users and roles; contract 2.0.0 removes `reviewer_name` from requests | - |
 
-## 6. Decisions needed from you
+## 6. Decisions (answered 16 Oct 2026)
 
-1. **Identity provider** for shared deployments: Microsoft Entra ID, Google Workspace, Okta, or Keycloak (self-hosted)?
-   The design works with any OpenID Connect provider; the choice decides the setup guide and the test fixtures.
-2. **Where roles live:** in the provider's groups (recommended; one place to grant and remove access), or managed
-   inside ARAI by an admin?
-3. **Viewers and export:** may a viewer export the queue, or only reviewers and above (as proposed)?
-4. **Admin and reviewing:** keep admin separate from reviewing (as proposed), or let admins also review?
-5. **Session lengths:** 60 minutes idle and 10 hours at most, or your company's standard?
-6. **Basic auth:** keep the shared login at the proxy as an extra layer after single sign-on, or retire it?
+| # | Question | Decision |
+|---|---|---|
+| 1 | Identity provider | **Keycloak** (self-hosted), see 6.1 |
+| 2 | Where roles live | **Keycloak groups** (recommended): mapped to ARAI roles at each sign-in |
+| 3 | Viewers and export | **Reviewers and above only** export the queue or download a case summary (as proposed) |
+| 4 | Admin and reviewing | **Admin stays separate** from reviewing (as proposed) |
+| 5 | Session lengths | **Open**: options in 6.2 |
+| 6 | Basic auth at the proxy | **Kept** as an extra outer layer after single sign-on, see 6.3 |
+
+### 6.1 Keycloak setup this implies
+
+- One realm (for example `arai`) and one **confidential client** `arai` using the authorization code flow with PKCE,
+  redirect URI `https://<host>/auth/callback`, post-logout redirect `https://<host>/`.
+- Groups `arai-viewers`, `arai-reviewers`, `arai-approvers`, `arai-admins`, and a **Group Membership** mapper on the
+  client that puts them in a `groups` claim (full group path off), so `AUTH_ROLE_CLAIM=groups` and
+  `AUTH_ROLE_MAP=arai-viewers=viewer,arai-reviewers=reviewer,arai-approvers=approver,arai-admins=admin`.
+- An **Audience** mapper adding `arai-api` to access tokens, so scripts' bearer tokens are accepted
+  (`OIDC_API_AUDIENCE=arai-api`) and tokens meant for other applications are refused.
+- `OIDC_ISSUER=https://<keycloak>/realms/arai`; keys come from that issuer's published JWKS, so a key rotated in
+  Keycloak is picked up without a restart.
+- Multi-factor authentication, password rules and account lockout are Keycloak's realm policies; ARAI never sees a
+  password.
+- For tests and step 2, a Keycloak container with a realm export (test users in each group) is added to a separate
+  Compose profile, so the sign-in can be rehearsed end to end without a company Keycloak; the laptop demo keeps the
+  development login.
+
+### 6.2 Session lengths (open)
+
+Two limits apply to an ARAI session. **Idle timeout**: after this long without any request, the user is signed out
+(it protects a screen left open on a shared desk). **Maximum age**: even while active, the user signs in again after
+this long (it limits how long a stolen session cookie works, and, because roles are read from Keycloak groups at
+sign-in, it is also the longest a person removed from a group keeps their old role in an open session; disabling the
+user inside ARAI ends their sessions at once). When the ARAI session ends but the user's Keycloak session is still
+alive, signing in again is a redirect with no password; a note being typed is kept in the browser and the page comes
+back after sign-in.
+
+| Option | Idle | Maximum | Fits |
+|---|---|---|---|
+| A, stricter | 30 minutes | 8 hours | Shared desks, a service or warehouse floor |
+| B, proposed | 60 minutes | 10 hours | One working day; a long investigation is not interrupted |
+| C, follow Keycloak | B, plus a check with Keycloak every 5 minutes (refresh token) | Keycloak's own | Sign-out in Keycloak, or removal from a group, takes effect within 5 minutes; one more moving part |
+
+### 6.3 Basic auth kept at the proxy
+
+The proxy keeps the shared login and the IP allow-list in front of everything; ARAI's single sign-on runs behind it.
+One consequence: HTTP Basic occupies the `Authorization` header at the proxy, so a script cannot send its Keycloak
+bearer token in that header through the proxy. Scripts therefore call the API from inside the private network
+(directly on the API port, behind the proxy), where the bearer token works; browsers are unaffected. The smoke checks
+of OPS-AC-05 cover both layers: no shared login gives 401 at the proxy, no ARAI session gives 401 from ARAI, a missing
+role gives 403.
 
 ## 7. Risks
 
