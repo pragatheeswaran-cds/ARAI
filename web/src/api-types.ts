@@ -109,7 +109,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Contract 1.14.0. The filtered queue as CSV, every row in queue order, for a hand-off to the returns-policy or service team. Takes the list's filters (no cursor, no limit). Columns - rank, customer_id, score, tier, recommendation, primary_signals, rule_rank, rule_selected, mature_requested_units, mature_purchased_units, refunded_inr, claim_refunded_inr, linked_accounts, community_id, wardrobing, cleared_reason, not_observed, status, opened_by, decided_by, latest_reading, run_id, world_id. A cell of free text that starts like a spreadsheet formula is prefixed with a quote. No note text is exported. */
+        /** @description Contract 1.14.0. The filtered queue as CSV, every row in queue order, for a hand-off to the returns-policy or service team. Takes the list's filters (no cursor, no limit). Columns - rank, customer_id, score, tier, recommendation, primary_signals, rule_rank, rule_selected, mature_requested_units, mature_purchased_units, refunded_inr, claim_refunded_inr, linked_accounts, community_id, wardrobing, cleared_reason, not_observed, status, opened_by, decided_by, latest_reading, previous_cutoff, previous_rank, previous_in_queue, earlier_decision, run_id, world_id, cutoff (the history columns since contract 1.15.0). A cell of free text that starts like a spreadsheet formula is prefixed with a quote. No note text is exported. */
         get: operations["exportCustomers"];
         put?: never;
         post?: never;
@@ -390,6 +390,18 @@ export interface components {
                 review_set: components["schemas"]["RefundTotals"];
                 rule_set: components["schemas"]["RefundTotals"];
             } | null;
+            /** @description Contract 1.15.0 (AM-68). This run's review set against the previous snapshot of the same world (the latest earlier cutoff with a succeeded run, read from its latest succeeded run) - customers in both review sets, new to this one, gone from it, and how many of this review set had their review end in approve or reject on an earlier snapshot. Null until the run succeeded and on a world's first scored snapshot. */
+            previous_snapshot: {
+                dataset_id: string;
+                run_id: string;
+                /** Format: date-time */
+                cutoff: string;
+                repeat: number;
+                new: number;
+                left: number;
+                approved_before: number;
+                rejected_before: number;
+            } | null;
         };
         RefundTotals: {
             customers: number;
@@ -434,6 +446,28 @@ export interface components {
             claim_refunded_inr?: number | null;
             /** @description Contract 1.14.0. For an eligible customer outside the review set, the evidence tags the customer does not carry, so the cleared view can say what was not observed. Null for a selected or unranked customer. */
             absent_signals?: ("repeat_claims" | "linked_claims" | "late_returns" | "returns_above_expected" | "supported_links")[] | null;
+            /** @description Contract 1.15.0 (AM-68). The same customer in the previous snapshot of its world - absent (present false, an account that did not exist yet) or its rank, score, place in that review set and where its review ended there (null with no workflow event). Null when the run has no previous snapshot. */
+            previous: {
+                /** Format: date-time */
+                cutoff: string;
+                run_id: string;
+                present: boolean;
+                rank: number | null;
+                risk_score: number | null;
+                selected_for_review: boolean | null;
+                /** @enum {string|null} */
+                workflow_state: "in_review" | "awaiting_approval" | "approved" | "rejected" | null;
+            } | null;
+            /** @description Contract 1.15.0 (AM-68). The latest earlier snapshot of the world on which this customer's review ended in a decision, with who decided and when. The workflow runs per snapshot, so a decision there does not decide this snapshot's case. Null without one. */
+            earlier_decision: {
+                /** @enum {string} */
+                state: "approved" | "rejected";
+                decided_by: string;
+                /** Format: date-time */
+                decided_at: string;
+                /** Format: date-time */
+                cutoff: string;
+            } | null;
             /** @description Units requested for return on mature sale lines against the units a customer buying the same products would be expected to request, with the normal band expected +/- 2 sd, sd = sqrt(d * sum q p (1 - p)) over the lines with d the mean lines per order and style clipped to [1, 4]. The same quantities the model's expected return rate and residual z are built from; nothing is recomputed. sd, the band and z are null when every line's expected probability is 0 or 1, and for runs scored before contract 1.5.0. */
             basket_expectation: {
                 actual_units: number;
@@ -479,7 +513,7 @@ export interface components {
                 denominator: number | null;
                 unit: string;
             }[];
-            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this world and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
             workflow: {
                 /** @enum {string} */
                 state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
@@ -522,6 +556,13 @@ export interface components {
             note: string;
             /** Format: date-time */
             created_at: string;
+            /** @description Contract 1.15.0 (AM-68). The snapshot the note was written on. Notes follow the customer across the snapshots of its world; open, approval and decision events count only in their own snapshot. */
+            dataset_id: string;
+            /**
+             * Format: date-time
+             * @description Contract 1.15.0. The cutoff of that snapshot.
+             */
+            snapshot_cutoff: string;
         };
         /** @description One source transaction of the customer. The sentence in description is built from the fact fields that follow it; read the fields, not the sentence. A fact that does not apply to the event kind is null, and every fact is null for a run scored before contract 1.4.0 (results are written once). The customer's free-text reason is never carried. */
         TimelineEvent: {
@@ -746,7 +787,51 @@ export interface components {
                 /** Format: date-time */
                 generated_at: string | null;
             };
+            /** @description Every note on this customer in any snapshot of its world, oldest first. */
             reviews: components["schemas"]["Review"][];
+            /** @description Contract 1.15.0 (AM-68). The customer in every scored snapshot of its world, oldest cutoff first, each read from that snapshot's stored results (this run for this run's snapshot, otherwise the snapshot's latest succeeded run). Nothing is recomputed or carried from one snapshot to another. */
+            history: components["schemas"]["HistoryEntry"][];
+        };
+        HistoryEntry: {
+            dataset_id: string;
+            /** Format: date-time */
+            cutoff: string;
+            run_id: string;
+            /** @enum {string} */
+            model_kind: "supervised" | "unsupervised" | "baseline_fallback";
+            /** @description True for the snapshot of the run being viewed. */
+            current: boolean;
+            /** @description False when the account did not exist yet at that cutoff; every other value is then null or empty. */
+            present: boolean;
+            /** @enum {string|null} */
+            eligibility_status: "eligible" | "insufficient_history" | null;
+            rank: number | null;
+            risk_score: number | null;
+            /** @enum {string|null} */
+            tier: "HIGH" | "MEDIUM" | "LOW" | null;
+            /** @enum {string|null} */
+            gate_outcome: "ESCALATE" | "HOLD" | "WARNING" | "LOW" | null;
+            selected_for_review: boolean | null;
+            mature_requested_units: number | null;
+            mature_purchased_units: number | null;
+            refunded_inr: number | null;
+            evidence_tags: string[];
+            /** @enum {string|null} */
+            community_kind: "ring" | "household" | null;
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            workflow: {
+                /** @enum {string} */
+                state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                opened_by: string | null;
+                /** Format: date-time */
+                opened_at: string | null;
+                /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
+                decided_by: string | null;
+                /** Format: date-time */
+                decided_at: string | null;
+            } | null;
+            /** @description Notes written on that snapshot. */
+            notes: number;
         };
         StyleDetail: {
             run_id: string;
@@ -1046,7 +1131,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Identical already registered dataset */
+            /** @description Identical already registered dataset. A dataset is one snapshot of a world at its cutoff (contract 1.15.0, AM-68) - another cutoff of the same world is a new dataset (201); the same world and cutoff with other content is 409 world_content_differs. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1585,6 +1670,8 @@ export interface operations {
                 exclude_reviewer?: string;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
+                /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
+                history?: "all" | "new_in_queue" | "repeat_in_queue" | "decided_before";
             };
             header?: never;
             path: {
@@ -1684,6 +1771,8 @@ export interface operations {
                 exclude_reviewer?: string;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
+                /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
+                history?: "all" | "new_in_queue" | "repeat_in_queue" | "decided_before";
             };
             header?: never;
             path: {

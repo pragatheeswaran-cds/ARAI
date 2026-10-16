@@ -12,7 +12,7 @@ from datetime import datetime
 
 from arai import features as F
 from arai.service import attribution, scoring
-from arai.service.store import Store
+from arai.service.store import NotFound, Store
 
 WARDROBING_LIMITATION = ("Occasion wear returned late in its return window, counted only when what the customer returned supports "
                          "it. It cannot establish that an item was worn, and it is independent of the model score.")
@@ -204,9 +204,60 @@ def primary_signals(row: dict) -> list:
     return out
 
 
-def customer_item(row: dict, latest_disposition: str | None, summary: dict | None = None, refunds: dict | None = None) -> dict:
+def previous_snapshot(store: Store, run: dict) -> dict | None:
+    """The snapshot of the run's world just before the run's cutoff that has a succeeded run, with that reference run
+    (decision AM-68); None when the run is on the world's first scored snapshot."""
+    earlier = [s for s in store.snapshots(run["world_id"]) if s["cutoff"] < run["cutoff"]]
+    return earlier[-1] if earlier else None
+
+
+def page_history(store: Store, run: dict, customer_ids: list) -> dict:
+    """What customer_item needs to place a page of customers against earlier snapshots: the previous snapshot, each
+    customer's row in it, and each customer's latest decision in any earlier snapshot."""
+    previous = previous_snapshot(store, run)
+    rows = store.previous_rows(previous["run_id"], previous["dataset_id"], run["world_id"], customer_ids) if previous else {}
+    return {"previous": previous, "rows": rows, "decisions": store.earlier_decisions(run["world_id"], run["cutoff"], customer_ids)}
+
+
+def snapshot_comparison(store: Store, run: dict) -> dict | None:
+    """The run's review set against the previous snapshot's (decision AM-68): customers in both queues, new to this one, gone
+    from it, and how many of this queue were decided in an earlier snapshot. None on a world's first scored snapshot."""
+    previous = previous_snapshot(store, run)
+    if previous is None:
+        return None
+    counts = store.snapshot_comparison(run["id"], previous["run_id"], run["world_id"], run["cutoff"])
+    return {"dataset_id": previous["dataset_id"], "run_id": previous["run_id"], "cutoff": _iso(previous["cutoff"]), **counts}
+
+
+WORKFLOW_STATE = {"open": "in_review", "request_approval": "awaiting_approval", "approve": "approved", "reject": "rejected"}
+
+
+def _previous_field(row: dict, history: dict | None) -> dict | None:
+    """The customer in the previous snapshot: absent from it (a later account), or its rank, score, place in that queue
+    and where its review ended there. None when the run has no previous snapshot."""
+    previous = (history or {}).get("previous")
+    if previous is None:
+        return None
+    before = history["rows"].get(row["customer_id"])
+    return {"cutoff": _iso(previous["cutoff"]), "run_id": previous["run_id"], "present": before is not None,
+            "rank": _integer(before["rank"]) if before else None, "risk_score": _number(before["risk_score"]) if before else None,
+            "selected_for_review": bool(before["selected_for_review"]) if before else None,
+            "workflow_state": WORKFLOW_STATE.get(before["workflow_kind"]) if before else None}
+
+
+def _earlier_decision(row: dict, history: dict | None) -> dict | None:
+    decision = (history or {}).get("decisions", {}).get(row["customer_id"])
+    if decision is None:
+        return None
+    return {"state": WORKFLOW_STATE[decision["kind"]], "decided_by": decision["reviewer_name"],
+            "decided_at": _iso(decision["created_at"]), "cutoff": _iso(decision["cutoff"])}
+
+
+def customer_item(row: dict, latest_disposition: str | None, summary: dict | None = None, refunds: dict | None = None,
+                  history: dict | None = None) -> dict:
     """A customer as the queue shows it. `summary` is what scoring recorded for the run (the gate reads its heavy-returner cutoff).
-    `refunds` maps customer ids to their refund totals (Store.refund_totals); None leaves the refund fields null."""
+    `refunds` maps customer ids to their refund totals (Store.refund_totals); None leaves the refund fields null. `history`
+    is page_history for the page; None leaves the history fields null."""
     summary = summary or {}
     paid = None if refunds is None else refunds.get(row["customer_id"], {"refunded": 0, "claim_refunded": 0, "known": True})
     if paid is not None and not paid["known"]:
@@ -227,13 +278,16 @@ def customer_item(row: dict, latest_disposition: str | None, summary: dict | Non
         "refunded_inr": None if paid is None else round(float(paid["refunded"]), 2),
         "claim_refunded_inr": None if paid is None else round(float(paid["claim_refunded"]), 2),
         "absent_signals": [tag for tag in scoring.TAGS if tag not in set(row["evidence_tags"])] if outside else None,
+        # contract 1.15.0 (AM-68): the same customer in the previous snapshot of its world, and its latest earlier decision
+        "previous": _previous_field(row, history), "earlier_decision": _earlier_decision(row, history),
     }
 
 
 EXPORT_COLUMNS = ["rank", "customer_id", "score", "tier", "recommendation", "primary_signals", "rule_rank", "rule_selected",
                   "mature_requested_units", "mature_purchased_units", "refunded_inr", "claim_refunded_inr", "linked_accounts",
                   "community_id", "wardrobing", "cleared_reason", "not_observed", "status", "opened_by", "decided_by",
-                  "latest_reading", "run_id", "world_id"]
+                  "latest_reading", "previous_cutoff", "previous_rank", "previous_in_queue", "earlier_decision", "run_id",
+                  "world_id", "cutoff"]
 
 
 def _cell(value) -> str:
@@ -247,6 +301,9 @@ def export_row(item: dict, run: dict) -> list:
     community = item["community"] or {}
     workflow = item["workflow"]
     score = item["risk_score"]
+    previous = item["previous"] or {}
+    decision = item["earlier_decision"]
+    in_previous = previous.get("selected_for_review")
     return [_cell(v) for v in (
         item["rank"], item["customer_id"], None if score is None else f"{score:.2f}", item["tier"], item["gate_outcome"],
         "; ".join(s["label"] for s in item["primary_signals"]), item["baseline_rank"], "yes" if item["baseline_selected"] else "no",
@@ -254,16 +311,23 @@ def export_row(item: dict, run: dict) -> list:
         item["refunded_inr"], item["claim_refunded_inr"],
         f"{community['kind']} of {community['size']}" if community else "", community.get("id"), item["wardrobing_status"],
         item["cleared_reason"], "; ".join(item["absent_signals"] or []), workflow["state"], workflow["opened_by"],
-        workflow["decided_by"], item["latest_disposition"], run["id"], run["world_id"])]
+        workflow["decided_by"], item["latest_disposition"], (previous.get("cutoff") or "")[:10] or None, previous.get("rank"),
+        None if not previous else "not in snapshot" if not previous["present"] else "yes" if in_previous else "no",
+        f"{decision['state']} on the {decision['cutoff'][:10]} snapshot by {decision['decided_by']}" if decision else None,
+        run["id"], run["world_id"], _iso(run["cutoff"])[:10])]
 
 
 def customer_queue(store: Store, run: dict, filters: dict, after: int | None, limit: int) -> tuple:
     """(items, next position). Order: rank, then unranked customers by identifier. Filters only choose what is shown."""
     summary = run["summary"] or {}
     rules = {"medium_from": TIER_MEDIUM_FROM, "heavy_cutoff": summary.get("heavy_returner_cutoff")}
-    rows = store.run_customers(run["id"], run["world_id"], filters, after, limit + 1, rules)
-    refunds = store.refund_totals(run["id"], [row["customer_id"] for row in rows[:limit]])
-    items = [customer_item(row, row["latest_disposition"], summary, refunds) for row in rows[:limit]]
+    previous = previous_snapshot(store, run)
+    rules.update(previous_run=previous["run_id"] if previous else None, world_id=run["world_id"], cutoff=run["cutoff"])
+    rows = store.run_customers(run["id"], run["world_id"], filters, after, limit + 1, rules, run["dataset_id"])
+    page = [row["customer_id"] for row in rows[:limit]]
+    refunds = store.refund_totals(run["id"], page)
+    history = page_history(store, run, page)
+    items = [customer_item(row, row["latest_disposition"], summary, refunds, history) for row in rows[:limit]]
     return items, (rows[limit - 1]["queue_position"] if len(rows) > limit else None)
 
 
@@ -401,18 +465,52 @@ def customer_case(store: Store, run_id: str, customer: dict) -> dict:
     }
 
 
+def customer_history(store: Store, run: dict, customer_id: str, reviews: list) -> list:
+    """The customer in every scored snapshot of its world, oldest cutoff first (decision AM-68): its place in that snapshot's
+    reference run (this run for this run's snapshot), how its review ended there and how many notes were written under it.
+    Every value is read from that snapshot's stored results; nothing is recomputed or carried between snapshots."""
+    notes = {}
+    for review in reviews:
+        notes[review["dataset_id"]] = notes.get(review["dataset_id"], 0) + 1
+    out = []
+    for snapshot in store.snapshots(run["world_id"]):
+        current = snapshot["dataset_id"] == run["dataset_id"]
+        source = run if current else store.get_run(snapshot["run_id"])
+        entry = {"dataset_id": snapshot["dataset_id"], "cutoff": _iso(snapshot["cutoff"]), "run_id": source["id"],
+                 "model_kind": source["model_kind"], "current": current, "present": False, "eligibility_status": None,
+                 "rank": None, "risk_score": None, "tier": None, "gate_outcome": None, "selected_for_review": None,
+                 "mature_requested_units": None, "mature_purchased_units": None, "refunded_inr": None, "evidence_tags": [],
+                 "community_kind": None, "workflow": None, "notes": notes.get(snapshot["dataset_id"], 0)}
+        try:
+            row = store.run_customer(source["id"], customer_id, run["world_id"], snapshot["dataset_id"])
+        except NotFound:                                              # an account that did not exist yet at that cutoff
+            out.append(entry)
+            continue
+        item = customer_item(row, None, source["summary"], store.refund_totals(source["id"], [customer_id]))
+        entry.update(present=True, eligibility_status=item["eligibility_status"], rank=item["rank"], risk_score=item["risk_score"],
+                     tier=item["tier"], gate_outcome=item["gate_outcome"], selected_for_review=item["selected_for_review"],
+                     mature_requested_units=item["support_counts"]["mature_requested_units"],
+                     mature_purchased_units=item["support_counts"]["mature_purchased_units"], refunded_inr=item["refunded_inr"],
+                     evidence_tags=item["evidence_tags"], community_kind=(item["community"] or {}).get("kind"), workflow=item["workflow"])
+        out.append(entry)
+    return out
+
+
 def case_body(store: Store, run: dict, customer: dict, review_body) -> dict:
-    """The Case as the contract shows it: the customer row, its evidence, the group, the breakdown, the memo and the notes."""
+    """The Case as the contract shows it: the customer row, its evidence, the group, the breakdown, the memo, the notes of
+    every snapshot and the customer's history across the snapshots of its world."""
     case = customer_case(store, run["id"], customer)
     reviews = store.list_reviews(run["world_id"], customer["customer_id"])
     latest = reviews[-1]["disposition"] if reviews else None
     return {"run_id": run["id"], "dataset_id": run["dataset_id"], "world_id": run["world_id"], "model_id": run["model_id"],
             "model_kind": run["model_kind"], "cutoff": _iso(run["cutoff"]),
-            "customer": customer_item(customer, latest, run["summary"], store.refund_totals(run["id"], [customer["customer_id"]])),
+            "customer": customer_item(customer, latest, run["summary"], store.refund_totals(run["id"], [customer["customer_id"]]),
+                                      page_history(store, run, [customer["customer_id"]])),
             "signals": case["signals"], "timeline": case["timeline"], "neighbors": case["neighbors"], "styles": case["styles"],
             "wardrobing": case["wardrobing"], "community": case["community"],
             "score_breakdown": score_breakdown(store, run, customer), "rules_fired": case["rules_fired"],
-            "memo": memo_body(store, run, customer), "reviews": [review_body(r) for r in reviews]}
+            "memo": memo_body(store, run, customer), "reviews": [review_body(r) for r in reviews],
+            "history": customer_history(store, run, customer["customer_id"], reviews)}
 
 
 def memo_body(store: Store, run: dict, customer: dict) -> dict:

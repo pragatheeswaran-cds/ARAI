@@ -68,6 +68,7 @@ uv run arai test                           # the final test: runs once
 uv run arai generate --seed 5401           # demonstration world
 uv run arai publish --demo-world W5401     # bundles, active pointer, published experiment report
 uv run arai register data/EXP-20261005-04/artifacts/worlds/W5401/operational   # or upload through the UI
+uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09   # the same customers a month and two months earlier (RUNBOOK 4.1)
 ```
 
 Every command defaults to the experiment named in `final-spec/contracts/experiment.yaml` (now EXP-20261005-04) and
@@ -84,7 +85,7 @@ points serving at the new bundle only after the report is written.
 ### Tests
 
 ```
-uv run pytest                              # 216 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
+uv run pytest                              # 221 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
 cd web && npm test                         # front-end unit tests
 uv run python tests/e2e/walkthrough.py     # browser walkthrough against a running `arai local`
 ```
@@ -92,6 +93,8 @@ uv run python tests/e2e/walkthrough.py     # browser walkthrough against a runni
 ### Where things are
 
 - `src/arai/generator/` builds a synthetic world; `validation.py` checks an operational snapshot against the contract.
+  `snapshots.py` replays a generated world at an earlier cutoff: a world is one population of customers, and each
+  upload of it is a snapshot in which a customer keeps its identifier (decision AM-68).
 - `src/arai/features.py` computes the 43 model features and the evidence; `modeling.py`, `evaluation.py`,
   `selection.py`, `experiment.py` train, evaluate and select; `ablation.py` measures what the result depends on
   and which honest groups are sent for review; `contract.py` reads the numbers the specification fixes.

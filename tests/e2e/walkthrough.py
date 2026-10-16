@@ -22,7 +22,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
-DEMO_WORLD = sys.argv[2] if len(sys.argv) > 2 else "W3401"          # the demonstration world of the current experiment
+DEMO_WORLD = sys.argv[2] if len(sys.argv) > 2 else "W5401"          # the demonstration world of the current experiment
 OUT = Path(__file__).resolve().parents[2] / "reports" / "ui" / date.today().isoformat()
 OUT.mkdir(parents=True, exist_ok=True)
 TRUTH_WORDS = ("y_abuse", "abused returns in the simulation", "really abusers", "deceptive", "temporary use return", "persona")
@@ -83,8 +83,10 @@ with sync_playwright() as pw:
     check("upload names the missing files", "Missing: manifest.json" in main_text(page))
     shot(page, "02-datasets-and-runs")
 
-    # ---- customer queue, by keyboard
-    page.get_by_role("link", name="View results").first.click()
+    check("every scored run offers its results", page.get_by_role("link", name="View results").count() >= 1)
+
+    # ---- customer queue, by keyboard: the workspace's queue is the newest run of the latest snapshot (AM-68)
+    page.get_by_role("link", name="Customer queue", exact=True).click()
     settle(page)
     check("queue route carries the run", "/runs/run-" in page.url and page.url.endswith("/customers"), page.url)
     rows = page.locator("main table tbody tr").count()
@@ -141,7 +143,7 @@ with sync_playwright() as pw:
     page.get_by_role("button", name="Add a note only").focus()
     page.keyboard.press("Enter")
     page.wait_for_function(f"document.querySelector('main').innerText.includes('Walkthrough note {stamp}')", timeout=15000)
-    check("note appended and shown with its origin run", f"Walkthrough note {stamp}" in main_text(page) and "written on run" in main_text(page))
+    check("note appended and shown with its origin run", f"Walkthrough note {stamp}" in main_text(page) and "written on the" in main_text(page) and "(this run)" in main_text(page))
     page.reload()
     settle(page)
     check("note persists after reload", f"Walkthrough note {stamp}" in main_text(page))
@@ -159,6 +161,41 @@ with sync_playwright() as pw:
     shot(page, "07b-case-refusal")
     page.go_back()
     page.go_back()
+    settle(page)
+
+    # ---- history across monthly snapshots of the same world (contract 1.15.0; RUNBOOK 4.3 loads the July and August snapshots)
+    page.get_by_role("link", name="Overview").click()
+    settle(page)
+    text = main_text(page)
+    check("the overview compares the queue with the previous snapshot of the same world",
+          "Since the previous snapshot of W5401 (09 Aug 2026)" in text and "Also in the previous queue" in text and "New to the queue" in text)
+    shot(page, "15-overview-history")
+    queue_href = page.get_by_role("link", name="Customer queue", exact=True).get_attribute("href")
+    page.goto(BASE + queue_href + "?history=decided_before")
+    settle(page)
+    text = main_text(page)
+    check("the history filter finds the customers decided on an earlier snapshot",
+          "W5401-C08645" in text and "W5401-C07084" in text and "rejected on the 09 Aug 2026 snapshot by Ravi" in text
+          and "approved on the 09 Aug 2026 snapshot by Asha" in text, text[:120])
+    shot(page, "16-queue-history")
+    page.goto(BASE + queue_href + "/W5401-C08645?tab=history")
+    settle(page)
+    text = main_text(page)
+    check("a case decided last month comes back as this month's own case, with the decision shown on it",
+          "Rejected on the 09 Aug 2026 snapshot by Ravi" in text and "this snapshot's review starts on" in text)
+    check("the history tab shows the customer in every snapshot of the world",
+          all(d in text for d in ("09 Jul 2026", "09 Aug 2026", "09 Sep 2026")) and "History across snapshots" in text and "Rejected" in text)
+    shot(page, "17-case-history")
+    page.get_by_role("tab", name="notes (2)").click()
+    settle(page)
+    check("notes follow the customer and say which snapshot they were written on", "written on the 09 Aug 2026 snapshot" in main_text(page))
+    page.get_by_role("tab", name="history").click()
+    settle(page)
+    page.get_by_role("link", name="open this case there").nth(1).click()
+    settle(page)
+    check("the history links to the same customer in an earlier snapshot, where its review stays decided",
+          "W5401-C08645" in main_text(page) and "Rejected" in main_text(page) and queue_href.split("/")[2] not in page.url, page.url)
+    page.goto(BASE + queue_href)                   # back to the latest snapshot's run for the rest of the walkthrough
     settle(page)
 
     # ---- styles
@@ -231,7 +268,8 @@ with sync_playwright() as pw:
     shot(page, "12-overview-narrow")
 
     # the unknown run's 404 and the staged second-reviewer 409 are the two refusals this walkthrough asks for
-    expected_failures = [r for r in failed_requests if "run-does-not-exist" in r or (r.startswith("409 ") and r.endswith("/reviews"))]
+    # plus the curves refused for a run on an earlier snapshot, whose customers had acted less than the published truth says
+    expected_failures = [r for r in failed_requests if "run-does-not-exist" in r or (r.startswith("409 ") and (r.endswith("/reviews") or "/curves?" in r))]
     unexpected = [r for r in failed_requests if r not in expected_failures]
     check("no unexpected failed request", not unexpected, unexpected[:3])
     real_errors = [e for e in console_errors if "run-does-not-exist" not in e and "404" not in e and "409" not in e]

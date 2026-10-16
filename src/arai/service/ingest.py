@@ -38,6 +38,16 @@ def _truth(path: Path) -> tuple:
     return world, rows
 
 
+def _truth_cutoff(artifact_root, world: str | None) -> str | None:
+    """The cutoff of the snapshot a truth export describes: the world's own snapshot, as the generator wrote it. A world can
+    have earlier snapshots (decision AM-68) whose customers had acted less, so truth applies to this one only. None when
+    the world's manifest is not in the artifact root."""
+    if world is None:
+        return None
+    manifest = Path(artifact_root) / "worlds" / world / "operational" / "manifest.json"
+    return json.loads(manifest.read_text(encoding="utf-8"))["cutoff"] if manifest.is_file() else None
+
+
 def sync_published(config: ServiceConfig, store: Store) -> list:
     """Load every published experiment report, with its truth export, into the database. Returns the identifiers."""
     root = Path(config.artifact_root) / "experiments"
@@ -49,9 +59,10 @@ def sync_published(config: ServiceConfig, store: Store) -> list:
         base = path.parents[1]
         rel = lambda p: p.relative_to(config.artifact_root).as_posix() if p.is_file() else None  # noqa: E731
         world, rows = _truth(path.with_name("truth.parquet"))
+        cutoff = _truth_cutoff(config.artifact_root, world)
         store.load_experiment({"id": report["summary"]["experiment_id"], "config_hash": report["summary"]["config_hash"],
                                "report_key": rel(path), "selection_key": rel(base / "selection.json"),
-                               "test_key": rel(base / "reports" / "test.json")}, report, world, rows)
+                               "test_key": rel(base / "reports" / "test.json")}, report, world, rows, cutoff)
         loaded.append(report["summary"]["experiment_id"])
     return loaded
 

@@ -93,6 +93,8 @@ export type CustomerFilters = {
   exclude_reviewer: string;
   // contract 1.13.0: the cleared heavy returners view, filtered by the server rather than page by page in the browser
   cleared_heavy?: boolean;
+  // contract 1.15.0: the customer against earlier snapshots of its world
+  history?: "all" | "new_in_queue" | "repeat_in_queue" | "decided_before";
 };
 
 /** The address of the queue's CSV export for the same filters the list uses (contract 1.14.0). */

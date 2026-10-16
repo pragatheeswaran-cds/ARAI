@@ -4,7 +4,9 @@ A story and a click-by-click flow for a 20 to 25 minute demonstration of the ret
 built from it is in `docs/demo-deck/`. Every number
 below is what the screens show for the demonstration world W5401 scored on experiment 4, on its latest run
 (`run-020e5490d88f48c28e8c`, re-scored 16 Oct 2026 under API contract 1.14.0 with the revised ring rule). The first
-run of 15 Oct (`run-ed95a0e2fd3e49a69d4d`) has the same scores, ranks and selection. Screenshots are in
+run of 15 Oct (`run-ed95a0e2fd3e49a69d4d`) has the same scores, ranks and selection. Since API contract 1.15.0 the
+same world also holds its snapshots of 9 July and 9 August, the same customers a month and two months earlier, so a
+customer's history shows on the queue, the case and the Overview (RUNBOOK.md section 4.1). Screenshots are in
 `reports/ui/2026-10-16/`.
 
 The data is simulated. Say so at the start and at the end: the application reads a synthetic world of 10,000
@@ -133,6 +135,9 @@ defaults.
    `scoring_ready` and `promoted_model_ready` must both be `true` and `model_kind` must be `supervised`.
 2. Open http://127.0.0.1:8000. The Overview must show 5,676 eligible customers and 284 selected for W5401. If it
    says no scored run is available, register and score W5401 (RUNBOOK.md section 4), about 15 seconds.
+2b. Load the July and August snapshots of W5401 and the three August review outcomes (RUNBOOK.md section 4.1: one
+   `arai snapshot` command, two registrations and scores, `scripts\history_demo.py`). The Overview must then show
+   **Since the previous snapshot of W5401 (09 Aug 2026)**: 249, 35, 22 and 2.
 3. Type your first reviewer name (Arjun) in the header. The name is kept in the browser only.
 4. Know the state the walkthrough leaves behind: the top-ranked case W5401-C03245 is already **in review**, opened
    by "Walkthrough reviewer", with a few walkthrough notes on it. That is useful (section 4.4 uses it); do not
@@ -152,10 +157,10 @@ defaults.
 | 0 to 2 | Why return rate is the wrong queue | Overview | 209 customers the model selects that the rule does not, and the reverse |
 | 2 to 6 | The queue a reviewer sees | Customer queue | Tiers anchored to the budget, Escalate against Hold, rings grouped, the rule's rank beside the model's |
 | 6 to 13 | One case end to end | Customer case, W5401-C03245 | Expected against actual, why the score, reason codes, notes, the second-reviewer rule |
-| 13 to 16 | A ring | Customer case, W5401-C08645 | Five linked accounts, one coordinated claim match, wardrobing indicator elevated |
-| 16 to 19 | Products, not people | Style investigation | Two styles with similar return rates and different stories; whose problem each is |
+| 13 to 17 | A ring, and the same ring last month | Customer case, W5401-C08645, then its History tab | Five linked accounts, one coordinated claim match; rejected on the August snapshot, back at rank 4 as September's own case |
+| 17 to 19 | Products, not people | Style investigation | Two styles with similar return rates and different stories; whose problem each is |
 | 19 to 23 | What the numbers rest on | Evaluation | Curves, precision against the rule, honest customers reviewed, final test, limits |
-| 23 to 25 | How a new month gets in | Datasets & runs | Eight files, validation, the stage stepper, cancel |
+| 23 to 25 | How a new month gets in | Datasets & runs, then the Overview | Eight files, validation, the stepper; the same customers next month: 249 again, 35 new, 22 left |
 
 If time is short, drop the ring scene and the upload scene; the story holds without them.
 
@@ -317,6 +322,15 @@ Compare with rank 3, W5401-C05428, whose ring has 3 of 5 members in the queue an
 history: the linked-accounts panel still lists that member inside the ring, unranked, so the reviewer knows the
 fifth account exists.
 
+**The same ring last month (one minute).** Back on W5401-C08645, point at the callout above the tabs: *Rejected on
+the 09 Aug 2026 snapshot by Ravi.* Open the **History** tab (screenshot `17-case-history.png`): rank 11 on 9 July,
+rank 4 on 9 August, rank 4 now; Escalate each time; 26, 30 and 33 units requested back; the August review opened by
+Asha and rejected by Ravi, with both notes on the **Notes** tab marked as written on the August snapshot. Say: "Next
+month's export brings the same customers with the same identifiers, so the product remembers. But last month's
+decision does not decide this month's evidence: the case is new again, with the decision on it." Then open
+W5401-C05428 from the queue: its History shows it climbing from rank 38 to 23 to 3 while its August review waited
+for a second reviewer.
+
 ### 4.5 Style investigation (16 to 19 minutes)
 
 Screenshots `10-styles.png`, `08-styles-targeting.png`, `09-style-detail.png`.
@@ -395,6 +409,15 @@ Click **Datasets & runs**. Show, without necessarily doing it:
 If you do register W5401 again, the server answers with the existing dataset (same manifest hash) and a new run
 can be started with a fresh idempotency key; previous runs and notes stay.
 
+**A new month.** The dataset list shows W5401 three times: **09 Jul 2026**, **09 Aug 2026** and **09 Sep 2026**, the
+same 10,000-customer world exported on three dates (9,502, 9,791 and 10,000 accounts as new customers sign up). Say:
+"Next month's export is not a new world. It is the next snapshot of the same customers." Go to the **Overview**
+(screenshot `15-overview-history.png`): **Since the previous snapshot of W5401 (09 Aug 2026)**: 249 customers are in
+both queues, 35 are new to this one, 22 left it, 2 were decided last month (1 rejected, 1 approved). Click **New to
+the queue**: the queue filters to those 35, each marked "new to the queue since 09 Aug 2026 (rank ... then)".
+For the money question: in the simulation, 28 of those 35 are abusers and 8 of them first acted after 9 August
+(offline, from the simulation's truth; `records/2026-10-16-monthly-snapshots.md`), not on screen.
+
 ---
 
 ## 5. Closing (one minute)
@@ -419,6 +442,7 @@ step is the same pipeline on a real month of returns, with the same evaluation p
 | Why are the bundle ids different from the experiment record? | The manifest hashes the dependency lock and library versions as well as the code and seeds. Scores, ranks and selections reproduce exactly; the ids differ when the environment does. |
 | Can this run on our data? | The data contract (manifest plus seven tables) is the interface; the pipeline, the evaluation page and the final-test discipline are the same. The results on this page are from a simulator and say nothing yet about real returns. |
 | Why is this family not marked as a ring? (W5401-C07084) | Since contract 1.14.0 a group whose accounts share only an address and a device needs two matching claims or two members in the queue to be a ring. Family members at an address where parcels go missing can both claim "not received" on the same order within days for honest reasons; under the first rule 4 such families in this run were called rings. The revision was checked on the five validation worlds before it shipped (`records/2026-10-16-community-kind-rule-revision.md`); it gave up one real coordination group out of 183, whose member stays in the queue as Hold. |
+| What happens next month? | The next export of the same customers registers as a new snapshot of the same world. Each snapshot is scored on its own; notes and earlier decisions stay with the customer; the queue marks who is new, who is back and who was decided before; the review starts afresh each month so last month's reading never decides this month's evidence. Different worlds or retailers are never linked. |
 | Can we hand this list to our policy team? | Yes: **Export this view as CSV** on the queue (every row of the current filters, with refunds and who decided each case, no note text), and **Download case summary** on a case. |
 | What happens when no model passes the gate? | The baseline return-rate ranking is served, the banner says why, the score column is relabelled a return-rate percentile, and the comparison views disappear. `tests/e2e/fallback_check.py` demonstrates it. |
 

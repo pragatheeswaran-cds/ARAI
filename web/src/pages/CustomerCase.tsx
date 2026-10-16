@@ -4,9 +4,9 @@ import { ApiError, api, newKey, type Case, type Community, type Curves, type Dis
 import { useReviewer, useWorkspace } from "../App";
 import { Chips, GateBadge, SCORE_HELP, StateBadge, TierBadge, workflowNote } from "../components/CustomerTable";
 import { Badge, Callout, CopyId, ErrorBox, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, rupees, shortId, useLoad } from "../components/ui";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_LABEL, caseSummary, clearedHeavyReturner, notObserved, rawRate } from "../derive";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_LABEL, caseSummary, clearedHeavyReturner, earlierDecisionNote, historyNote, notObserved, rawRate, snapshotDate } from "../derive";
 
-const TABS = ["evidence", "returns", "linked accounts", "notes"] as const;
+const TABS = ["evidence", "returns", "linked accounts", "history", "notes"] as const;
 type Tab = (typeof TABS)[number];
 const SHARES = new Set(["share", "share of requested units", "share of claim lines", "share of window", "share of item-return lines"]);
 const PANEL_LABEL = { expected: "Expected vs actual", returns: "Return behaviour", linked: "Linked accounts", wardrobing: "Wardrobing" } as const;
@@ -681,21 +681,109 @@ function Slider({ data, distribution, curves }: { data: Case; distribution: Scor
   );
 }
 
+// ---------------------------------------------------------------- history across snapshots (contract 1.15.0)
+type HistoryEntry = Case["history"][number];
+
+/** One sentence over the snapshots: how often the customer was in the queue and how its reviews ended. */
+export function historySummary(history: HistoryEntry[], worldId: string): string {
+  const present = history.filter((h) => h.present);
+  const queued = present.filter((h) => h.selected_for_review).map((h) => snapshotDate(h.cutoff));
+  const decided = present.filter((h) => h.workflow && (h.workflow.state === "approved" || h.workflow.state === "rejected"));
+  const parts = [`${present.length} of ${history.length} scored snapshot(s) of ${worldId} include this customer`];
+  parts.push(queued.length ? `selected for review on ${queued.length}: ${queued.join(", ")}` : "never selected for review");
+  for (const h of decided) parts.push(`${h.workflow!.state} on ${snapshotDate(h.cutoff)} by ${h.workflow!.decided_by}`);
+  return parts.join("; ") + ".";
+}
+
+function History({ data, runId }: { data: Case; runId: string }) {
+  const history = data.history;
+  if (history.length < 2) {
+    return (
+      <Panel title="History across snapshots">
+        <p className="muted">
+          This is the only scored snapshot of {data.world_id}. When a later export of the same customers is registered and scored, this tab shows the
+          customer in each snapshot: rank, recommendation, returns, refunds and how its review ended.
+        </p>
+      </Panel>
+    );
+  }
+  return (
+    <Panel title="History across snapshots" aside={<span className="small">same customer, same identifier, each snapshot scored on its own</span>}>
+      <p>{historySummary(history, data.world_id)}</p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Snapshot (cutoff)</th>
+              <th scope="col">Rank / score</th>
+              <th scope="col">Recommendation</th>
+              <th scope="col">Returns and refunds</th>
+              <th scope="col">Review there</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((h) => (
+              <tr key={h.dataset_id} className={h.current ? "current" : undefined}>
+                <td>
+                  <strong>{snapshotDate(h.cutoff)}</strong>
+                  <small>{h.current ? "this snapshot" : h.present ? <Link to={`/runs/${h.run_id}/customers/${data.customer.customer_id}`}>open this case there</Link> : ""}</small>
+                </td>
+                {!h.present ? (
+                  <td colSpan={4} className="muted">
+                    Not in this snapshot: the account did not exist yet at that cutoff.
+                  </td>
+                ) : (
+                  <>
+                    <td>
+                      {h.rank ? `Rank ${number(h.rank)}` : "not ranked"}
+                      <small>{h.risk_score === null ? "" : `score ${h.risk_score.toFixed(1)}`}{h.selected_for_review ? " / selected for review" : ""}</small>
+                    </td>
+                    <td>
+                      <GateBadge gate={h.gate_outcome} />
+                      <small>{h.community_kind ? `in a ${h.community_kind}` : "no linked group"}</small>
+                    </td>
+                    <td>
+                      {h.mature_requested_units} / {h.mature_purchased_units} units
+                      <small>{h.refunded_inr === null ? "refunds n/a" : `${rupees(h.refunded_inr)} refunded`}</small>
+                    </td>
+                    <td>
+                      {h.workflow ? STATE_LABEL[h.workflow.state] : "n/a"}
+                      <small>
+                        {h.workflow?.decided_by ? `by ${h.workflow.decided_by}` : h.workflow?.opened_by ? `opened by ${h.workflow.opened_by}` : ""}
+                        {h.notes ? `${h.workflow?.decided_by || h.workflow?.opened_by ? " / " : ""}${h.notes} note(s)` : ""}
+                      </small>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="small muted">
+        Each row is read from that snapshot's own stored results; nothing is recomputed or carried between snapshots. The review runs per snapshot, so a
+        decision on an earlier snapshot does not decide this one. {runId === data.run_id ? "" : ""}
+      </p>
+    </Panel>
+  );
+}
+
 // ---------------------------------------------------------------- notes
 function Notes({ data, runId }: { data: Case; runId: string }) {
   return (
     <Panel title={data.reviews.length ? `${data.reviews.length} entr(ies), oldest first` : "No entry yet"}>
       <p className="muted">
-        Entries are append only and stay with this customer across runs of the same world. To correct one, add another. The reviewer name is free
-        text, not a verified identity.
+        Entries are append only and stay with this customer across runs and snapshots of the same world. To correct one, add another. The reviewer
+        name is free text, not a verified identity.
       </p>
       {data.reviews.map((review) => (
         <article className="note" key={review.review_id}>
           <Badge text={review.kind} tone={review.kind === "approve" ? "green" : review.kind === "reject" ? "amber" : "gray"} /> <Badge text={review.disposition} tone="green" />
           <p>{review.note}</p>
           <small>
-            {review.reviewer_name} / {ist(review.created_at)} / written on run {shortId(review.run_id, 12)}
-            {review.run_id === runId ? " (this run)" : " (another run of this world)"} / bundle {shortId(review.model_id, 14)}
+            {review.reviewer_name} / {ist(review.created_at)} / written on the {snapshotDate(review.snapshot_cutoff)} snapshot
+            {review.dataset_id === data.dataset_id ? (review.run_id === runId ? " (this run)" : " (another run of this snapshot)") : " (an earlier or later snapshot)"} / run{" "}
+            {shortId(review.run_id, 12)} / bundle {shortId(review.model_id, 14)}
           </small>
         </article>
       ))}
@@ -746,6 +834,12 @@ export function CustomerCase() {
             </button>
           </p>
           <ClearedHeader data={data} />
+          {c.earlier_decision && (
+            <Callout>
+              {earlierDecisionNote(c)?.replace(/^./, (x) => x.toUpperCase())}. That decision belongs to that snapshot; this snapshot's review starts on
+              its own. See the History tab and the notes.
+            </Callout>
+          )}
           <div className="stats">
             <Stat
               name={fallback ? "Return-rate percentile" : "Score and tier"}
@@ -760,7 +854,9 @@ export function CustomerCase() {
             <Stat
               name="Status"
               value={<StateBadge customer={c} compact />}
-              note={[workflowNote(c), c.selected_for_review ? "selected for review" : c.eligibility_status === "eligible" ? "not selected: in the log" : "not ranked"].filter(Boolean).join(" / ")}
+              note={[workflowNote(c), c.selected_for_review ? "selected for review" : c.eligibility_status === "eligible" ? "not selected: in the log" : "not ranked", historyNote(c)]
+                .filter(Boolean)
+                .join(" / ")}
             />
             <Stat
               name="Linked accounts"
@@ -810,6 +906,7 @@ export function CustomerCase() {
                 {tab === "evidence" && <Evidence data={data} runId={runId} />}
                 {tab === "returns" && <Returns data={data} runId={runId} />}
                 {tab === "linked accounts" && <Linked data={data} runId={runId} />}
+                {tab === "history" && <History data={data} runId={runId} />}
                 {tab === "notes" && <Notes data={data} runId={runId} />}
               </div>
             </div>

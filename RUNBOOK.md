@@ -45,6 +45,9 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | **Load data** | | |
 | Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
+| W5401 as of 9 July and 9 August (the same customers, earlier cutoffs) | `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` | 4.1 |
+| Register and score those snapshots | the browser or the `curl.exe` calls of section 4 with `worlds\W5401.as-of-2026-07-09\operational`, then `...2026-08-09` | 4.1 |
+| Record the August review outcomes the history screens show | `uv run --no-sync python scripts\history_demo.py` | 4.1 |
 | Validate a snapshot without registering it | `uv run arai validate <folder>` | 5 |
 | Export the queue as CSV (any filters of the list) | queue page **Export this view as CSV**, or `curl.exe -s -o queue.csv "http://127.0.0.1:8000/api/v1/runs/<run_id>/customers/export?review_only=true"` | 5 |
 | **Check** | | |
@@ -320,6 +323,32 @@ curl.exe -s -X POST http://127.0.0.1:8000/api/v1/runs -H "content-type: applicat
   -d '{\"dataset_id\":\"ds-27bd9b52167d935eaf7a\",\"idempotency_key\":\"demo-1\"}'
 ```
 
+### 4.1 Earlier monthly snapshots of W5401 (customer history)
+
+A world is one population of customers; each upload of it is a **snapshot** at its cutoff, and a customer keeps the
+same identifier in every snapshot (decision AM-68). Registering W5401 again with another cutoff therefore adds a
+snapshot of the same world instead of being refused, and the queue, the case and the Overview show each customer's
+history across the snapshots. Different worlds are never linked.
+
+```powershell
+# 1. write W5401 as it stood on 9 July and 9 August (about 15 seconds each; replayed from the generator, checked as
+#    prefixes of W5401; written beside it as worlds\W5401.as-of-<date> and in the private folder)
+uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09
+
+# 2. register and score both, as in section 4, with these folders instead of worlds\W5401\operational:
+#    data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-07-09\operational
+#    data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-08-09\operational
+
+# 3. record three August review outcomes (a rejection, an approval, one awaiting approval); safe to run twice
+uv run --no-sync python scripts\history_demo.py
+```
+
+The order does not matter: the workspace always opens on the newest run of the latest snapshot (9 September).
+Expected: July 256 selected of 5,119 eligible; August 271 of 5,408; and on the September Overview a panel **Since the
+previous snapshot of W5401 (09 Aug 2026)** reading 249 also in the previous queue, 35 new, 22 left, 2 decided on an
+earlier snapshot. The review workflow runs per snapshot: a case decided in August is a new case in September, with
+the August decision shown on it. `db-clean --all --world W5401` removes every snapshot's runs and notes together.
+
 ---
 
 ## 5. Validate that it is working
@@ -348,7 +377,7 @@ curl.exe -s http://127.0.0.1:8000/api/v1/runs       # the latest run should be "
 ```
 
 Then open http://127.0.0.1:8000: the Overview should show 5,676 eligible customers and 284 selected for world
-W5401.
+W5401 (the 9 September snapshot), and with the snapshots of section 4.1 the panel comparing it with 9 August.
 
 ### Full check before a demonstration
 
@@ -356,13 +385,14 @@ Run these in order. Each line says what a good result looks like.
 
 ```powershell
 # 1. Python tests. They start their own temporary PostgreSQL; the running server is not touched.
-uv run --no-sync pytest -q                          # "216 passed" in about 8 minutes
+uv run --no-sync pytest -q                          # "221 passed" in about 8 minutes
 
 # 2. Front-end tests and type check
-cd web; npm test; npx tsc --noEmit; cd ..            # "21 passed"; tsc prints nothing
+cd web; npm test; npx tsc --noEmit; cd ..            # "28 passed"; tsc prints nothing
 
-# 3. Browser walkthrough of the running application (needs the server up with a scored run; uses Edge, headless)
-uv run --no-sync python tests\e2e\walkthrough.py     # "54 of 54 checks passed"
+# 3. Browser walkthrough of the running application (needs the server up with W5401 and its snapshots of section 4.1
+#    scored; uses Edge, headless)
+uv run --no-sync python tests\e2e\walkthrough.py     # "61 of 61 checks passed"
 
 # 4. Baseline-fallback check (starts its own temporary instance on port 8011: stop the baseline rehearsal first)
 uv run --no-sync python tests\e2e\fallback_check.py  # "11 of 11 checks passed"

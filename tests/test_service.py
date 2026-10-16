@@ -1754,3 +1754,111 @@ def test_the_stage_log_and_the_done_summary_and_a_cancel_at_either_end(client, e
     assert result_rows(store, running["run_id"]) == dict.fromkeys(RESULT_TABLES, 0)
     assert client.get(f"{API}/runs/{running['run_id']}/customers").status_code == 409
     assert client.post(f"{API}/runs/NOPE/cancel").status_code == 404
+
+
+# ------------------------------------------------------------------ snapshots of one world and a customer's history (AM-68)
+def _publish_truth(env, world, world_id: str) -> None:
+    truth = world.truth["customer_truth"]
+    published = env["root"] / "experiments" / "EXP-TEST" / "published"
+    published.mkdir(parents=True, exist_ok=True)
+    report = {"summary": {"experiment_id": "EXP-TEST", "config_hash": "0" * 64, "selection_status": "selected", "selected_model_id": env["model_id"],
+                          "selected_candidate_id": "logreg_c1", "final_test_status": "not_run"}}
+    (published / "experiment.json").write_text(json.dumps(report), encoding="utf-8")
+    pd.DataFrame({"world_id": world_id, "customer_id": truth["customer_id"], "y_abuse": truth["y_abuse"].astype(int),
+                  "action_types": ""}).to_parquet(published / "truth.parquet", index=False)
+
+
+def test_snapshots_of_one_world_keep_the_customer_and_its_history(client, env, written, earlier):
+    """A later export of the same customers is a new snapshot of the same world. Each snapshot's scores are its own, notes follow
+    the customer, the workflow runs per snapshot, and the queue, the case and the run place the customer against the earlier one."""
+    import csv
+    import io
+    first = scored_run(client, env, earlier, key="earlier")
+    second = scored_run(client, env, written, key="later")
+    assert first["world_id"] == second["world_id"] and first["dataset_id"] != second["dataset_id"] and first["cutoff"] < second["cutoff"]
+    assert register(client, earlier)["dataset_id"] == first["dataset_id"]                  # the same snapshot again: the same dataset
+    conforms("Run", second)
+    conforms("RunPage", client.get(f"{API}/runs").json())
+    assert first["previous_snapshot"] is None
+    previous = second["previous_snapshot"]
+    assert (previous["run_id"], previous["dataset_id"], previous["cutoff"]) == (first["run_id"], first["dataset_id"], first["cutoff"])
+
+    before = {c["customer_id"]: c for c in all_pages(client, f"{API}/runs/{first['run_id']}/customers", {"review_only": "false"})}
+    after = all_pages(client, f"{API}/runs/{second['run_id']}/customers", {"review_only": "false"})
+    queued_before = {i for i, c in before.items() if c["selected_for_review"]}
+    queued_after = {c["customer_id"] for c in after if c["selected_for_review"]}
+    assert (previous["repeat"], previous["new"], previous["left"]) == (
+        len(queued_before & queued_after), len(queued_after - queued_before), len(queued_before - queued_after))
+    assert set(before) <= {c["customer_id"] for c in after}                                  # the same identifiers, more of them later
+    for c in after:                                    # each row's previous field is the customer's own row in the earlier run
+        seen = c["previous"]
+        assert seen["run_id"] == first["run_id"] and seen["present"] == (c["customer_id"] in before)
+        if seen["present"]:
+            old = before[c["customer_id"]]
+            assert (seen["rank"], seen["risk_score"], seen["selected_for_review"]) == (old["rank"], old["risk_score"], old["selected_for_review"])
+        else:
+            assert seen["rank"] is None and seen["selected_for_review"] is None
+    assert all(c["previous"] is None and c["earlier_decision"] is None for c in before.values())
+    url = f"{API}/runs/{second['run_id']}/customers"
+    new = {c["customer_id"] for c in all_pages(client, url, {"history": "new_in_queue"})}
+    repeat = {c["customer_id"] for c in all_pages(client, url, {"history": "repeat_in_queue"})}
+    assert new == queued_after - queued_before and repeat == queued_after & queued_before and repeat
+
+    # a case decided on the earlier snapshot: the decision stays with that snapshot, the later case starts its own review
+    target = sorted(repeat)[0]
+    for number, (name, kind) in enumerate((("Asha", "open"), ("Ravi", "reject"))):
+        made = client.post(f"{API}/runs/{first['run_id']}/customers/{target}/reviews",
+                           json={"reviewer_name": name, "kind": kind, "disposition": "needs_investigation",
+                                 "note": f"{kind} on the earlier snapshot", "idempotency_key": f"earlier-{number}"})
+        assert made.status_code == 201, made.text
+        conforms("Review", made.json())
+        assert (made.json()["dataset_id"], made.json()["snapshot_cutoff"]) == (first["dataset_id"], first["cutoff"])
+    case = client.get(f"{API}/runs/{second['run_id']}/customers/{target}").json()
+    conforms("Case", case)
+    customer = case["customer"]
+    assert customer["workflow"]["state"] == "new"                                            # not decided on this snapshot
+    assert customer["earlier_decision"]["state"] == "rejected" and customer["earlier_decision"]["decided_by"] == "Ravi"
+    assert customer["earlier_decision"]["cutoff"] == first["cutoff"]
+    assert [r["snapshot_cutoff"] for r in case["reviews"]] == [first["cutoff"]] * 2         # the notes follow the customer
+    history = case["history"]
+    assert [h["run_id"] for h in history] == [first["run_id"], second["run_id"]] and [h["current"] for h in history] == [False, True]
+    assert history[0]["workflow"]["state"] == "rejected" and history[0]["workflow"]["decided_by"] == "Ravi"
+    assert (history[0]["notes"], history[1]["notes"]) == (2, 0) and all(h["present"] for h in history)
+    assert (history[0]["rank"], history[1]["rank"]) == (before[target]["rank"], customer["rank"])
+    assert history[1]["gate_outcome"] == customer["gate_outcome"] and history[1]["tier"] == customer["tier"]
+    assert [c["customer_id"] for c in all_pages(client, url, {"review_only": "false", "history": "decided_before"})] == [target]
+    assert client.get(f"{API}/runs/{second['run_id']}", params={}).json()["previous_snapshot"]["rejected_before"] == 1
+
+    # the later snapshot's review is its own: it opens although the earlier one was decided, and the earlier one stays decided
+    opened = client.post(f"{API}/runs/{second['run_id']}/customers/{target}/reviews",
+                         json={"reviewer_name": "Asha", "kind": "open", "disposition": "unresolved", "note": "back in the queue",
+                               "idempotency_key": "later-0"})
+    assert opened.status_code == 201 and opened.json()["dataset_id"] == second["dataset_id"]
+    assert client.get(f"{API}/runs/{first['run_id']}/customers/{target}").json()["customer"]["workflow"]["state"] == "rejected"
+    assert client.get(f"{API}/runs/{second['run_id']}/customers/{target}").json()["customer"]["workflow"]["state"] == "in_review"
+    # an account that signed up after the earlier cutoff shows as absent from that snapshot in its history
+    later_account = next(c["customer_id"] for c in after if c["customer_id"] not in before)
+    absent = client.get(f"{API}/runs/{second['run_id']}/customers/{later_account}").json()["history"]
+    assert [h["present"] for h in absent] == [False, True] and absent[0]["rank"] is None
+
+    # the export carries the history columns, read from the same items
+    text = client.get(f"{API}/runs/{second['run_id']}/customers/export", params={"review_only": "false", "history": "decided_before"}).text
+    rows = list(csv.reader(io.StringIO(text)))
+    row = dict(zip(rows[0], rows[1]))
+    assert len(rows) == 2 and row["customer_id"] == target and row["previous_cutoff"] == first["cutoff"][:10]
+    assert row["previous_rank"] == str(before[target]["rank"]) and row["previous_in_queue"] == "yes"
+    assert row["earlier_decision"] == f"rejected on the {first['cutoff'][:10]} snapshot by Ravi" and row["cutoff"] == second["cutoff"][:10]
+
+
+def test_evaluation_truth_applies_only_to_the_snapshot_it_describes(client, env, written, earlier, world):
+    """Truth export rows are the world's own snapshot's; on an earlier snapshot fewer customers had acted, so curves refuse it."""
+    first = scored_run(client, env, earlier, key="earlier")
+    second = scored_run(client, env, written, key="later")
+    target = env["root"] / "worlds" / world.world_id / "operational"
+    target.mkdir(parents=True)
+    shutil.copy(written["operational"] / "manifest.json", target / "manifest.json")
+    _publish_truth(env, world, second["world_id"])
+    assert ingest.sync_published(env["config"], Store(env["config"].database_url)) == ["EXP-TEST"]
+    refused = client.get(f"{API}/experiments/EXP-TEST/curves", params={"run_id": first["run_id"]})
+    assert refused.status_code == 409 and refused.json()["error_code"] == "world_mismatch" and "snapshot" in refused.json()["message"]
+    assert client.get(f"{API}/experiments/EXP-TEST/curves", params={"run_id": second["run_id"]}).status_code == 200

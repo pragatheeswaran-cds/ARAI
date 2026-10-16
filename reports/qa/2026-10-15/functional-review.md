@@ -226,7 +226,8 @@ already speak of recall.
 2. **No export or hand-off.** A queue or a case cannot be exported for the returns-policy or customer-service team.
 3. **No history across months.** Customer identifiers are scoped to a snapshot (W5401-C00001), so next month's
    upload starts with no notes and no prior decisions. By design for simulated worlds; a real deployment needs a
-   stable customer key across snapshots.
+   stable customer key across snapshots. *Addressed on 16 Oct 2026 by change 5 (AM-68): a world now holds monthly
+   snapshots of the same customers.*
 4. **No delivery-proof data.** Every "not received" claim sits on a line the carrier marked delivered. Proof of
    delivery (photo, signature, location) is the signal returns teams rely on most for non-receipt claims, and the
    data contract has no field for it. Finding 1 is partly a consequence: without it, a failing address and a lying
@@ -246,7 +247,7 @@ not an authenticated identity.
   date strings flagged it wrongly.
 - Customers with too little history have no tier and no gate outcome; the contract makes both nullable.
 
-## 8. Proposed changes, awaiting decision
+## 8. Changes made from this review
 
 | # | Change | Kind | Covers | Status |
 |---|---|---|---|---|
@@ -254,6 +255,7 @@ not an authenticated identity.
 | 2 | Label counts as excluding withdrawn requests; explain Approve and Reject in returns terms | UI copy | findings 4, 5 | done 16 Oct 2026 |
 | 3 | Refine the ring kind rule for address-and-device-only communities | decision D3 change, re-score | finding 1 | done 16 Oct 2026 (AM-66) |
 | 4 | Refund value at stake on case, queue and Overview; export; cleared reasons that name what is absent | backlog | gaps 1 and 2, finding 2 | done 16 Oct 2026 (AM-67) |
+| 5 | Customer history across monthly snapshots of the same world | contract 1.15.0, schema version 11 | gap 3 | done 16 Oct 2026 (AM-68) |
 
 **What changes 1 and 2 did.**
 
@@ -299,4 +301,26 @@ Checked after the change: type check clean, 21 web tests, UI build, browser walk
   account, no late returns, no linked accounts".
 
 Checked after the change: 216 Python tests, 24 web tests, walkthrough 54 of 54, fallback 11 of 11,
+specification package PASS.
+
+**What change 5 did (API contract 1.15.0).**
+
+- *Snapshots of one world (AM-68).* A world is one population of customers and a dataset is one snapshot of it at a
+  cutoff; the same customer keeps its identifier in every snapshot, and different worlds are never linked. A later
+  export of W5401 registers as a new snapshot instead of being refused. W5401 as of 9 July and 9 August was replayed from
+  the generator's own timelines (`arai snapshot`) and checked to be a prefix of the September world
+  (`records/2026-10-16-monthly-snapshots.md`).
+- *History on screen.* The queue's Status / history column says how an earlier snapshot's review ended ("rejected on
+  the 09 Aug 2026 snapshot by Ravi") and where the customer stood ("also in the 09 Aug 2026 queue (rank 4)", "new to the
+  queue since ..."), with a History filter; the case has a History tab with the customer in every snapshot and notes
+  that say which snapshot they were written on; the Overview compares the review set with the previous snapshot's
+  (249 in both, 35 new, 22 left); the export carries the history columns.
+- *Review cycle per snapshot.* Open, approval and decision run per snapshot: a case decided in August comes back in
+  September as that month's own case, with the August decision shown on it, so last month's reading never silently
+  decides this month's evidence.
+- *What the movement means* (offline, each snapshot's own truth): 80%, 79% and 82% of the July, August and September
+  review sets are abusers; 28 of the 35 customers new to September's queue are abusers, 8 of whom first acted after
+  9 August.
+
+Checked after the change: 221 Python tests, 28 web tests, walkthrough 61 of 61 (six history checks), fallback 11 of 11,
 specification package PASS.

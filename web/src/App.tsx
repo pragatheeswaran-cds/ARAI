@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { NavLink, Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
 import { allPages, api, type Dataset, type ExperimentSummary, type Health, type Run } from "./api";
 import { PageTitle, ist, number, shortId, useLoad } from "./components/ui";
-import { datasetName } from "./derive";
+import { datasetName, latestSnapshotRun } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
 import { CustomerQueue } from "./pages/CustomerQueue";
 import { Datasets } from "./pages/Datasets";
@@ -193,7 +193,7 @@ export default function App() {
   const workspace = useMemo<Workspace>(() => {
     const runs = loaded.data?.runs ?? [];
     const fromUrl = match?.params.runId ? runs.find((r) => r.run_id === match.params.runId) : undefined;
-    const run = fromUrl ?? runs.find((r) => r.status === "succeeded") ?? null;
+    const run = fromUrl ?? latestSnapshotRun(runs);
     const health = loaded.data?.health ?? null;
     return {
       health,

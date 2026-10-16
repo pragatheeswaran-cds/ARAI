@@ -4,7 +4,7 @@ import { ApiError, api, queueExportUrl, type Customer, type CustomerFilters } fr
 import { useReviewer, useWorkspace } from "../App";
 import { CustomerTable, SCORE_HELP, TAGS, tagLabel } from "../components/CustomerTable";
 import { Callout, ErrorBox, PageTitle, Panel, number, percent, useLoad } from "../components/ui";
-import { GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL } from "../derive";
+import { GATE_HELP, GATE_LABEL, HISTORY_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, snapshotDate } from "../derive";
 
 const COMPARISONS: Record<CustomerFilters["comparison"], string> = {
   all: "All",
@@ -14,7 +14,7 @@ const COMPARISONS: Record<CustomerFilters["comparison"], string> = {
 };
 const EMPTY: CustomerFilters = {
   review_only: true, eligibility: "all", search: "", evidence: "", disposition: "all", comparison: "all", wardrobing: "all", community: "all",
-  community_id: "", tier: "all", gate: "all", state: "all", exclude_reviewer: "",
+  community_id: "", tier: "all", gate: "all", state: "all", exclude_reviewer: "", history: "all",
 };
 
 /** Cases a second person must decide, without the ones this reviewer opened. */
@@ -58,6 +58,7 @@ export function CustomerQueue() {
     tier: (params.get("tier") ?? "all") as CustomerFilters["tier"],
     gate: (params.get("gate") ?? "all") as CustomerFilters["gate"],
     state: (params.get("state") ?? "all") as CustomerFilters["state"],
+    history: (params.get("history") ?? "all") as NonNullable<CustomerFilters["history"]>,
   };
   const grouped = params.get("group") === "ring";
   const key = JSON.stringify([runId, filters]);
@@ -177,6 +178,18 @@ export function CustomerQueue() {
               ))}
             </select>
           </label>
+          {run?.previous_snapshot && (
+            <label title={`Against the previous snapshot of ${run.world_id}, cutoff ${snapshotDate(run.previous_snapshot.cutoff)}. The same customer keeps its identifier across snapshots.`}>
+              History
+              <select value={filters.history} onChange={(e) => set("history", e.target.value)}>
+                {(Object.keys(HISTORY_LABEL) as (keyof typeof HISTORY_LABEL)[]).map((value) => (
+                  <option key={value} value={value}>
+                    {HISTORY_LABEL[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             Wardrobing indicator
             <select value={filters.wardrobing} onChange={(e) => set("wardrobing", e.target.value)}>

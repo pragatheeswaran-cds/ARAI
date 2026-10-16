@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Customer, Run, Style } from "./api";
-import { clearedHeavyReturner, groupByCommunity, headlinePair, stepper, thresholdFor } from "./derive";
+import { clearedHeavyReturner, earlierDecisionNote, groupByCommunity, headlinePair, historyNote, latestSnapshotRun, snapshotDate, stepper, thresholdFor } from "./derive";
 
 const run = (over: Partial<Run>): Run =>
   ({
@@ -108,5 +108,40 @@ describe("contract 1.14.0 helpers", () => {
     expect(text).toContain("Asha (open, needs investigation): Checked the timing.");
     expect(text).not.toContain("purchase");
     expect(text.toLowerCase()).not.toContain("fraud");
+  });
+});
+
+describe("snapshots of one world (contract 1.15.0)", () => {
+  const before = (over: object) => ({ cutoff: "2026-08-09T18:29:59Z", run_id: "run-aug", present: true, rank: 40, risk_score: 96.1, selected_for_review: true, workflow_state: null, ...over });
+  it("names a snapshot by its cutoff date in IST", () => {
+    expect(snapshotDate("2026-08-09T18:29:59Z")).toBe("09 Aug 2026");
+    expect(snapshotDate(null)).toBe("n/a");
+  });
+  it("places a customer against the previous snapshot in one phrase", () => {
+    expect(historyNote({ selected_for_review: true, previous: null, earlier_decision: null })).toBeNull();
+    expect(historyNote({ selected_for_review: true, previous: before({}), earlier_decision: null })).toBe("also in the 09 Aug 2026 queue (rank 40)");
+    expect(historyNote({ selected_for_review: true, previous: before({ selected_for_review: false, rank: 1200 }), earlier_decision: null })).toBe(
+      "new to the queue since 09 Aug 2026 (rank 1,200 then)",
+    );
+    expect(historyNote({ selected_for_review: false, previous: before({}), earlier_decision: null })).toBe("left the queue since 09 Aug 2026 (rank 40 then)");
+    expect(historyNote({ selected_for_review: false, previous: before({ selected_for_review: false }), earlier_decision: null })).toBeNull();
+    expect(historyNote({ selected_for_review: true, previous: before({ present: false, rank: null, selected_for_review: null }), earlier_decision: null })).toBe(
+      "new account since 09 Aug 2026",
+    );
+  });
+  it("says how an earlier snapshot's review ended", () => {
+    const decision = { state: "rejected" as const, decided_by: "Ravi", decided_at: "2026-08-12T10:00:00Z", cutoff: "2026-08-09T18:29:59Z" };
+    expect(earlierDecisionNote({ selected_for_review: true, previous: null, earlier_decision: decision })).toBe("rejected on the 09 Aug 2026 snapshot by Ravi");
+  });
+  it("opens the workspace on the newest run of the latest snapshot, whatever order snapshots were scored in", () => {
+    const runs = [
+      { run_id: "aug-rescore", status: "succeeded" as const, cutoff: "2026-08-09T18:29:59Z" },
+      { run_id: "sep-running", status: "running" as const, cutoff: "2026-09-09T18:29:59Z" },
+      { run_id: "sep", status: "succeeded" as const, cutoff: "2026-09-09T18:29:59Z" },
+      { run_id: "sep-older", status: "succeeded" as const, cutoff: "2026-09-09T18:29:59Z" },
+      { run_id: "jul", status: "succeeded" as const, cutoff: "2026-07-09T18:29:59Z" },
+    ];
+    expect(latestSnapshotRun(runs)?.run_id).toBe("sep");
+    expect(latestSnapshotRun([])).toBeNull();
   });
 });

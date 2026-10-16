@@ -214,3 +214,7 @@ button.quiet { background: transparent; border: 1px solid var(--line); color: #2
 
 /* contract 1.14.0: action rows above a panel */
 .actions { margin: 0 0 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* history across snapshots of one world (contract 1.15.0) */
+td small.history { font-style: italic; }
+td small.history.decided { color: var(--ink-2); font-style: normal; font-weight: 600; }
+tr.current td { background: var(--page); }

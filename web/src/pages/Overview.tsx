@@ -3,7 +3,7 @@ import { api } from "../api";
 import { useWorkspace } from "../App";
 import { CustomerTable } from "../components/CustomerTable";
 import { Callout, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, useLoad } from "../components/ui";
-import { inrLakh } from "../derive";
+import { inrLakh, snapshotDate } from "../derive";
 
 export function Overview() {
   const { run, runs, experiment, fallback, health } = useWorkspace();
@@ -92,6 +92,37 @@ export function Overview() {
           )}
         </Panel>
       </div>
+      {run.previous_snapshot && (
+        <Panel title={`Since the previous snapshot of ${run.world_id} (${snapshotDate(run.previous_snapshot.cutoff)})`}>
+          <div className="stats">
+            <Stat
+              name="Also in the previous queue"
+              value={number(run.previous_snapshot.repeat)}
+              note={<Link to={`/runs/${run.run_id}/customers?history=repeat_in_queue`}>open them</Link>}
+            />
+            <Stat
+              name="New to the queue"
+              value={number(run.previous_snapshot.new)}
+              note={<Link to={`/runs/${run.run_id}/customers?history=new_in_queue`}>open them</Link>}
+            />
+            <Stat name="Left the queue" value={number(run.previous_snapshot.left)} note="selected then, not now" />
+            <Stat
+              name="Decided on an earlier snapshot"
+              value={number(run.previous_snapshot.approved_before + run.previous_snapshot.rejected_before)}
+              note={
+                <Link to={`/runs/${run.run_id}/customers?history=decided_before`}>
+                  {number(run.previous_snapshot.rejected_before)} rejected, {number(run.previous_snapshot.approved_before)} approved
+                </Link>
+              }
+            />
+          </div>
+          <Callout>
+            The same customers keep their identifiers from one snapshot to the next, so their notes and earlier decisions stay with them. Each snapshot
+            is scored on its own; the review runs per snapshot, so a case decided last month comes back as a new case when it is selected again, with
+            the earlier decision shown on it.
+          </Callout>
+        </Panel>
+      )}
       {run.refunds && (
         <Panel title="Refunds paid to the customers in each queue">
           <div className="tablewrap">

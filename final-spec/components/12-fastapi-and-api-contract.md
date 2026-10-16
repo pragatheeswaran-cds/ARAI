@@ -18,6 +18,8 @@ Contract 1.13.0 (AM-64): the review workflow is a closed state machine (case_alr
 
 Contract 1.14.0 (AM-66, AM-67): Customer carries refunded_inr, claim_refunded_inr and absent_signals; Run carries refunds for the review set and the rule's set; GET /runs/{run_id}/customers/export answers the filtered queue as CSV with the list's filters (no cursor or limit), and the community kind text states the revised rule. All read from stored results; nothing is rescored.
 
+Contract 1.15.0 (AM-68): a dataset is a snapshot of a world at its cutoff; POST /datasets with another cutoff of a registered world creates a new dataset. Customer carries previous (the same customer in the previous snapshot: present, rank, score, selected, where its review ended there) and earlier_decision (the latest earlier snapshot whose review ended in approve or reject); Run carries previous_snapshot (repeat, new, left, approved_before, rejected_before); Case carries history (one entry per scored snapshot); Review carries dataset_id and snapshot_cutoff. The list and export take history = new_in_queue, repeat_in_queue or decided_before, and the export adds previous_cutoff, previous_rank, previous_in_queue, earlier_decision and cutoff. Workflow rules (409 case_already_open, case_not_open, case_decided, second_reviewer_required) apply within one snapshot. Curves answer 409 world_mismatch for a run on another snapshot than the one the truth export describes.
+
 Local explicit CORS UI origins; VM same-origin reverse proxy shared login covers both UI and API. No app signup/profile/password endpoints. Experiment truth reveal separated from inference and synthetic-labelled.
 
 ## Inputs, outputs and dependencies

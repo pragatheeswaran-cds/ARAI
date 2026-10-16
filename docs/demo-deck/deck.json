@@ -26,6 +26,7 @@
     "finaltest",
     "limits",
     "upload",
+    "history",
     "close"
   ],
   "sections": {
@@ -50,7 +51,7 @@
       "start": "curve"
     },
     "s6": {
-      "description": "How a new month gets in, and the three takeaways.",
+      "description": "How a new month gets in, the same customers next month, and the three takeaways.",
       "start": "upload"
     }
   },

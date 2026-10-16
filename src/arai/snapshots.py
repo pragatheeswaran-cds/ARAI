@@ -106,8 +106,8 @@ def _within(truth: dict, customers: set, orders: set, snapshot) -> dict:
     return out
 
 
-def build_earlier(world_id: str, as_of: date) -> World:
-    """Replay the world's generation and settle it at `as_of`."""
+def replay(world_id: str) -> WorldBuilder:
+    """The world's generation stages run up to the abusive actions, with every planned timeline still unsettled."""
     builder = WorldBuilder(_seed_of(world_id))
     if builder.ctx.world_id != world_id:
         raise ValueError(f"seed {_seed_of(world_id)} generates {builder.ctx.world_id}, not {world_id}")
@@ -116,6 +116,12 @@ def build_earlier(world_id: str, as_of: date) -> World:
     builder.build_orders()
     builder.build_honest_returns()
     builder.build_abuse()
+    return builder
+
+
+def build_earlier(world_id: str, as_of: date) -> World:
+    """Replay the world's generation and settle it at `as_of`."""
+    builder = replay(world_id)
     return settle(builder, _settled_at(builder, as_of))
 
 

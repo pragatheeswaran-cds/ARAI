@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 1.14.0
+  version: 1.15.0
   description: Local profile has no app authentication. VM reverse proxy requires
     Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
     application errors follow Error; proxy auth response may be plain text.
@@ -116,7 +116,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '200':
-          description: Identical already registered dataset
+          description: Identical already registered dataset. A dataset is one snapshot of a world at its cutoff (contract
+            1.15.0, AM-68) - another cutoff of the same world is a new dataset (201); the same world and cutoff with other
+            content is 409 world_content_differs.
           content:
             application/json:
               schema:
@@ -646,6 +648,21 @@ paths:
         schema:
           type: boolean
           default: false
+      - name: history
+        in: query
+        required: false
+        description: Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this
+          review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both,
+          decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and
+          reviews, nothing recomputed.
+        schema:
+          type: string
+          enum:
+          - all
+          - new_in_queue
+          - repeat_in_queue
+          - decided_before
+          default: all
   /runs/{run_id}/customers/export:
     get:
       operationId: exportCustomers
@@ -653,7 +670,8 @@ paths:
         or service team. Takes the list's filters (no cursor, no limit). Columns - rank, customer_id, score, tier,
         recommendation, primary_signals, rule_rank, rule_selected, mature_requested_units, mature_purchased_units,
         refunded_inr, claim_refunded_inr, linked_accounts, community_id, wardrobing, cleared_reason, not_observed, status,
-        opened_by, decided_by, latest_reading, run_id, world_id. A cell of free text that starts like a spreadsheet formula
+        opened_by, decided_by, latest_reading, previous_cutoff, previous_rank, previous_in_queue, earlier_decision, run_id,
+        world_id, cutoff (the history columns since contract 1.15.0). A cell of free text that starts like a spreadsheet formula
         is prefixed with a quote. No note text is exported.
       responses:
         '200':
@@ -842,6 +860,21 @@ paths:
         schema:
           type: boolean
           default: false
+      - name: history
+        in: query
+        required: false
+        description: Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this
+          review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both,
+          decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and
+          reviews, nothing recomputed.
+        schema:
+          type: string
+          enum:
+          - all
+          - new_in_queue
+          - repeat_in_queue
+          - decided_before
+          default: all
   /runs/{run_id}/customers/{customer_id}:
     get:
       operationId: getCustomerCase
@@ -1534,6 +1567,7 @@ components:
       additionalProperties: false
       required:
       - run_id
+      - previous_snapshot
       - dataset_id
       - world_id
       - model_id
@@ -1745,6 +1779,44 @@ components:
               $ref: '#/components/schemas/RefundTotals'
             rule_set:
               $ref: '#/components/schemas/RefundTotals'
+        previous_snapshot:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - dataset_id
+          - run_id
+          - cutoff
+          - repeat
+          - new
+          - left
+          - approved_before
+          - rejected_before
+          description: Contract 1.15.0 (AM-68). This run's review set against the previous snapshot of the same world (the
+            latest earlier cutoff with a succeeded run, read from its latest succeeded run) - customers in both review sets,
+            new to this one, gone from it, and how many of this review set had their review end in approve or reject on an
+            earlier snapshot. Null until the run succeeded and on a world's first scored snapshot.
+          properties:
+            dataset_id: *id001
+            run_id: *id001
+            cutoff:
+              type: string
+              format: date-time
+            repeat:
+              type: integer
+              minimum: 0
+            new:
+              type: integer
+              minimum: 0
+            left:
+              type: integer
+              minimum: 0
+            approved_before:
+              type: integer
+              minimum: 0
+            rejected_before:
+              type: integer
+              minimum: 0
     RefundTotals:
       type: object
       additionalProperties: false
@@ -1805,6 +1877,8 @@ components:
       additionalProperties: false
       required:
       - customer_id
+      - previous
+      - earlier_decision
       - eligibility_status
       - raw_score
       - risk_score
@@ -1897,6 +1971,71 @@ components:
             - supported_links
           description: Contract 1.14.0. For an eligible customer outside the review set, the evidence tags the customer
             does not carry, so the cleared view can say what was not observed. Null for a selected or unranked customer.
+        previous:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - cutoff
+          - run_id
+          - present
+          - rank
+          - risk_score
+          - selected_for_review
+          - workflow_state
+          description: Contract 1.15.0 (AM-68). The same customer in the previous snapshot of its world - absent (present
+            false, an account that did not exist yet) or its rank, score, place in that review set and where its review
+            ended there (null with no workflow event). Null when the run has no previous snapshot.
+          properties:
+            cutoff:
+              type: string
+              format: date-time
+            run_id: *id001
+            present:
+              type: boolean
+            rank:
+              type: integer
+              nullable: true
+            risk_score:
+              type: number
+              nullable: true
+            selected_for_review:
+              type: boolean
+              nullable: true
+            workflow_state:
+              type: string
+              nullable: true
+              enum:
+              - in_review
+              - awaiting_approval
+              - approved
+              - rejected
+              - null
+        earlier_decision:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - state
+          - decided_by
+          - decided_at
+          - cutoff
+          description: Contract 1.15.0 (AM-68). The latest earlier snapshot of the world on which this customer's review
+            ended in a decision, with who decided and when. The workflow runs per snapshot, so a decision there does not
+            decide this snapshot's case. Null without one.
+          properties:
+            state:
+              type: string
+              enum:
+              - approved
+              - rejected
+            decided_by: *id001
+            decided_at:
+              type: string
+              format: date-time
+            cutoff:
+              type: string
+              format: date-time
         basket_expectation:
           type: object
           nullable: true
@@ -2047,8 +2186,8 @@ components:
           - decided_by
           - decided_at
           description: Where the case stands in the review workflow, derived on read from the customer's reviews in this
-            world and never stored. The latest open, request_approval, approve or reject decides the state; with no such
-            event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in
+            snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open,
+            request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in
             the log) and every other customer is new. A note or feedback never moves the state. opened_by names the
             reviewer of the latest open; the server refuses an approve or reject by that reviewer (409
             second_reviewer_required).
@@ -2138,6 +2277,8 @@ components:
       - disposition
       - note
       - created_at
+      - dataset_id
+      - snapshot_cutoff
       properties:
         review_id: *id001
         world_id: *id001
@@ -2165,6 +2306,14 @@ components:
         created_at:
           type: string
           format: date-time
+        dataset_id:
+          type: string
+          description: Contract 1.15.0 (AM-68). The snapshot the note was written on. Notes follow the customer across the
+            snapshots of its world; open, approval and decision events count only in their own snapshot.
+        snapshot_cutoff:
+          type: string
+          format: date-time
+          description: Contract 1.15.0. The cutoff of that snapshot.
     TimelineEvent:
       type: object
       additionalProperties: false
@@ -2568,6 +2717,7 @@ components:
       - rules_fired
       - memo
       - reviews
+      - history
       properties:
         run_id: *id001
         dataset_id: *id001
@@ -2835,6 +2985,153 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Review'
+          description: Every note on this customer in any snapshot of its world, oldest first.
+        history:
+          type: array
+          description: Contract 1.15.0 (AM-68). The customer in every scored snapshot of its world, oldest cutoff first, each
+            read from that snapshot's stored results (this run for this run's snapshot, otherwise the snapshot's latest
+            succeeded run). Nothing is recomputed or carried from one snapshot to another.
+          items:
+            $ref: '#/components/schemas/HistoryEntry'
+    HistoryEntry:
+      type: object
+      additionalProperties: false
+      required:
+      - dataset_id
+      - cutoff
+      - run_id
+      - model_kind
+      - current
+      - present
+      - eligibility_status
+      - rank
+      - risk_score
+      - tier
+      - gate_outcome
+      - selected_for_review
+      - mature_requested_units
+      - mature_purchased_units
+      - refunded_inr
+      - evidence_tags
+      - community_kind
+      - workflow
+      - notes
+      properties:
+        dataset_id: *id001
+        cutoff:
+          type: string
+          format: date-time
+        run_id: *id001
+        model_kind:
+          type: string
+          enum:
+          - supervised
+          - unsupervised
+          - baseline_fallback
+        current:
+          type: boolean
+          description: True for the snapshot of the run being viewed.
+        present:
+          type: boolean
+          description: False when the account did not exist yet at that cutoff; every other value is then null or empty.
+        eligibility_status:
+          type: string
+          nullable: true
+          enum:
+          - eligible
+          - insufficient_history
+          - null
+        rank:
+          type: integer
+          nullable: true
+        risk_score:
+          type: number
+          nullable: true
+        tier:
+          type: string
+          nullable: true
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - null
+        gate_outcome:
+          type: string
+          nullable: true
+          enum:
+          - ESCALATE
+          - HOLD
+          - WARNING
+          - LOW
+          - null
+        selected_for_review:
+          type: boolean
+          nullable: true
+        mature_requested_units:
+          type: integer
+          nullable: true
+        mature_purchased_units:
+          type: integer
+          nullable: true
+        refunded_inr:
+          type: number
+          nullable: true
+        evidence_tags:
+          type: array
+          items:
+            type: string
+        community_kind:
+          type: string
+          nullable: true
+          enum:
+          - ring
+          - household
+          - null
+        workflow:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required:
+          - state
+          - opened_by
+          - opened_at
+          - decided_by
+          - decided_at
+          description: Where the case stands in the review workflow, derived on read from the customer's reviews in this
+            snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open,
+            request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in
+            the log) and every other customer is new. A note or feedback never moves the state. opened_by names the
+            reviewer of the latest open; the server refuses an approve or reject by that reviewer (409
+            second_reviewer_required).
+          properties:
+            state:
+              type: string
+              enum:
+              - new
+              - in_review
+              - awaiting_approval
+              - approved
+              - rejected
+              - auto_logged
+            opened_by:
+              type: string
+              nullable: true
+            opened_at:
+              type: string
+              format: date-time
+              nullable: true
+            decided_by:
+              type: string
+              nullable: true
+              description: The reviewer of the approve or reject that is the latest workflow event; null otherwise.
+            decided_at:
+              type: string
+              format: date-time
+              nullable: true
+        notes:
+          type: integer
+          minimum: 0
+          description: Notes written on that snapshot.
     StyleDetail:
       type: object
       additionalProperties: false

@@ -3,7 +3,7 @@
     {
       "check": "health reports the baseline, not a promoted model",
       "ok": true,
-      "detail": "{'alive': True, 'scoring_ready': True, 'promoted_model_ready': False, 'model_kind': 'baseline_fallback', 'queue_depth': 0, 'worker_seconds_since_seen': 0.352413}"
+      "detail": "{'alive': True, 'scoring_ready': True, 'promoted_model_ready': False, 'model_kind': 'baseline_fallback', 'queue_depth': 0, 'worker_seconds_since_seen': 0.354255}"
     },
     {
       "check": "the baseline run succeeds with complete counts",

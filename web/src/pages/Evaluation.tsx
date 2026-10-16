@@ -299,7 +299,7 @@ function HeroCurves({ experimentId }: { experimentId: string }) {
     }
   }, [experimentId, run?.run_id]);
   if (!run) return <p className="muted">Curves need a scored run on the demonstration world; none is selected.</p>;
-  if (state.data?.mismatch) return <p className="muted">The selected run is not on the demonstration world whose truth was published, so no curve is drawn for it.</p>;
+  if (state.data?.mismatch) return <p className="muted">The selected run is not on the snapshot whose truth was published (another world, or an earlier snapshot of the demonstration world, when fewer customers had acted), so no curve is drawn for it.</p>;
   const curves = state.data?.curves ?? null;
   if (!curves) return <LoadState state={state} />;
   const W = 640, H = 300, L = 48, R = 16, T = 12, B = 36;

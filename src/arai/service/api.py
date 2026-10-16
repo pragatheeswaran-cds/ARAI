@@ -93,7 +93,8 @@ RUN_SUMMARY_FIELDS = {                             # Run field -> key of the sum
     "styles_with_verdict": "styles_with_verdict"}
 
 
-def run_body(row: dict, summary: dict | None = None, memos: dict | None = None, refunds: dict | None = None) -> dict:
+def run_body(row: dict, summary: dict | None = None, memos: dict | None = None, refunds: dict | None = None,
+             previous: dict | None = None) -> dict:
     """A run as the contract shows it. `summary` is what scoring recorded, given only for a succeeded run; `memos` is how far its
     investigation memos are (null until it succeeded)."""
     summary = summary or {}
@@ -108,14 +109,16 @@ def run_body(row: dict, summary: dict | None = None, memos: dict | None = None, 
             "selected_count": row["selected_count"], "model_only_count": row["model_only_count"],
             "baseline_only_count": row["baseline_only_count"], "warnings": summary.get("warnings") or [], "memos": memos,
             "stage_log": [{"stage": entry["stage"], "at": entry["at"]} for entry in (row.get("stage_log") or [])],
-            "refunds": refunds,
+            "refunds": refunds, "previous_snapshot": previous,
             **{field: summary.get(key) for field, key in RUN_SUMMARY_FIELDS.items()}}
 
 
 def review_body(row: dict) -> dict:
     return {"review_id": row["id"], "world_id": row["world_id"], "customer_id": row["customer_id"], "run_id": row["run_id"],
             "model_id": row["model_id"], "reviewer_name": row["reviewer_name"], "kind": row["kind"], "disposition": row["disposition"],
-            "note": row["note"], "created_at": _iso(row["created_at"])}
+            "note": row["note"], "created_at": _iso(row["created_at"]),
+            # contract 1.15.0 (AM-68): notes follow the customer across snapshots; each says which snapshot it was written on
+            "dataset_id": row["dataset_id"], "snapshot_cutoff": _iso(row["snapshot_cutoff"])}
 
 
 class Service:
@@ -166,7 +169,8 @@ class Service:
         """A run as the contract shows it, with the warnings recorded when it was scored."""
         succeeded = row["status"] == "succeeded" and row["summary"] is not None
         return run_body(row, row["summary"] if row["status"] == "succeeded" else None, views.memo_progress(self.store, row),
-                        self.store.run_refunds(row["id"]) if succeeded else None)
+                        self.store.run_refunds(row["id"]) if succeeded else None,
+                        views.snapshot_comparison(self.store, row) if succeeded else None)
 
     def succeeded_run(self, run_id: str) -> dict:
         """The run, if its results can be read. Results exist exactly for succeeded runs: both are one transaction."""
@@ -400,7 +404,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                       tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
                       state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
-                      exclude_reviewer: str | None = Query(None, max_length=100), cleared_heavy: bool = False) -> dict:
+                      exclude_reviewer: str | None = Query(None, max_length=100), cleared_heavy: bool = False,
+                      history: Literal["all", "new_in_queue", "repeat_in_queue", "decided_before"] = "all") -> dict:
         """The queue's filters, shared by the list and its export. Filters choose what is shown, never a score or a selection."""
         if evidence is not None and evidence not in scoring.TAGS:
             raise ApiError(422, "invalid_request", "Unknown evidence tag.",
@@ -408,7 +413,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         return {"review_only": review_only, "eligibility": eligibility, "search": (search or "").strip() or None,
                 "evidence": evidence, "disposition": disposition, "comparison": comparison, "wardrobing": wardrobing,
                 "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate,
-                "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None, "cleared_heavy": cleared_heavy}
+                "state": state, "exclude_reviewer": (exclude_reviewer or "").strip() or None, "cleared_heavy": cleared_heavy,
+                "history": history}
 
     @api.get("/runs/{run_id}/customers")
     def list_customers(run_id: str, cursor: str | None = None, limit: int = limit_query, filters: dict = Depends(queue_filters)):
@@ -442,7 +448,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
 
     def _case_customer(run_id: str, customer_id: str) -> tuple:
         run = service.succeeded_run(run_id)
-        return run, service.store.run_customer(run_id, customer_id, run["world_id"])   # a customer must belong to the run: otherwise 404
+        # a customer must belong to the run (otherwise 404); its workflow is read in the run's snapshot (AM-68)
+        return run, service.store.run_customer(run_id, customer_id, run["world_id"], run["dataset_id"])
 
     @api.get("/runs/{run_id}/customers/{customer_id}")
     def get_customer_case(run_id: str, customer_id: str):
@@ -466,7 +473,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
             raise ApiError(422, "invalid_request", "A decision carries a reading: approve or reject with needs_investigation or "
                                                    "likely_legitimate, not unresolved.",
                            [{"rule_id": "request.decision_disposition", "table": None, "row_key": "disposition", "count": 1}])
-        review = {"world_id": run["world_id"], "customer_id": customer_id, "run_id": run_id, "model_id": run["model_id"],
+        review = {"world_id": run["world_id"], "dataset_id": run["dataset_id"], "customer_id": customer_id, "run_id": run_id,
+                  "model_id": run["model_id"],
                   "reviewer_name": body.reviewer_name.strip(), "disposition": body.disposition, "note": body.note, "kind": body.kind}
         if not review["reviewer_name"]:
             raise ApiError(422, "invalid_request", "A reviewer name is required.")
@@ -515,6 +523,10 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if experiment["truth_world_id"] is None or run["world_id"] != experiment["truth_world_id"]:
             raise ApiError(409, "world_mismatch", "Curves need a run scored on the experiment's demonstration world, whose synthetic "
                                                   "truth was published; this run is on another world or no truth was published.")
+        if experiment.get("truth_cutoff") is not None and run["cutoff"] != experiment["truth_cutoff"]:
+            raise ApiError(409, "world_mismatch", "Curves need a run on the snapshot the synthetic truth describes "
+                                                  f"(cutoff {_iso(experiment['truth_cutoff'])[:10]}); this run is on another "
+                                                  "snapshot of the same world, whose customers had acted less by then.")
         return views.curves(service.store, experiment, run, max_points)
 
     @api.get("/experiments/{experiment_id}/truth")

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ApiError, allPages, api, newKey, type Dataset, type Run } from "../api";
 import { useWorkspace } from "../App";
 import { Badge, Callout, ErrorBox, LoadState, PageTitle, Panel, Row, ist, label, number, shortId, useLoad } from "../components/ui";
-import { seconds, stepper } from "../derive";
+import { seconds, snapshotDate, stepper } from "../derive";
 
 const TABLES = ["customer_master", "sku_master", "reason_code", "sales_order", "sales_order_line", "return_order", "return_order_line"];
 const REQUIRED = ["manifest.json", ...TABLES.map((name) => name + ".csv")];
@@ -43,7 +43,9 @@ function Upload({ onRegistered }: { onRegistered: () => void }) {
     setBusy(true);
     try {
       const dataset = await api.registerDataset(form);
-      setMessage(`World ${dataset.world_id} is registered (${number(dataset.customer_count)} customers). Its content can no longer change.`);
+      setMessage(
+        `World ${dataset.world_id}, snapshot of ${snapshotDate(dataset.cutoff)}, is registered (${number(dataset.customer_count)} customers). Its content can no longer change; a later export of the same customers registers as a new snapshot of the same world.`,
+      );
       if (input.current) input.current.value = "";
       onRegistered();
     } catch (failure) {
@@ -103,7 +105,7 @@ function RunRow({ run, onRetry, onCancel }: { run: Run; onRetry: (run: Run) => v
       <td>
         {shortId(run.run_id, 14)}
         <small>
-          {run.world_id} / submitted {ist(run.created_at)}
+          {run.world_id} snapshot {snapshotDate(run.cutoff)} / submitted {ist(run.created_at)}
         </small>
       </td>
       <td>
@@ -257,7 +259,7 @@ export function Datasets() {
             <table>
               <thead>
                 <tr>
-                  <th scope="col">World</th>
+                  <th scope="col">World / snapshot</th>
                   <th scope="col">Customers</th>
                   <th scope="col">History / cutoff</th>
                   <th scope="col">Validation</th>
@@ -269,7 +271,7 @@ export function Datasets() {
                 {datasets.data.map((dataset) => (
                   <tr key={dataset.dataset_id}>
                     <td>
-                      {dataset.world_id}
+                      {dataset.world_id} <strong>{snapshotDate(dataset.cutoff)}</strong>
                       <small>
                         {label(dataset.purpose)} / schema {dataset.schema_version} / INR
                       </small>

@@ -87,7 +87,7 @@ def write_memos(config: ServiceConfig, store: Store, run_id: str) -> dict | None
     """Draft the investigation memos of a succeeded run from each case as the API serves it. Nothing here can fail the run."""
     try:
         run = store.get_run(run_id)
-        case_of = lambda customer_id: views.case_body(store, run, store.run_customer(run_id, customer_id, run["world_id"]),  # noqa: E731
+        case_of = lambda customer_id: views.case_body(store, run, store.run_customer(run_id, customer_id, run["world_id"], run["dataset_id"]),  # noqa: E731
                                                       lambda r: r)
         return memo.write_memos(config, store, run_id, case_of)
     except Exception:                                                # noqa: BLE001  the run has succeeded; memos are a draft on top

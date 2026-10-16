@@ -16,6 +16,8 @@ Contract 1.13.0 (AM-64): the append-only rule is unchanged; what the workflow ac
 
 Contract 1.14.0 (AM-67): refund totals are aggregates over run_timeline (amount_inr, line_status, event_type) at read time; no table or column is added and results stay write-once. Runs scored before line statuses were stored answer null refunds.
 
+Contract 1.15.0 (AM-68), migration 0011: datasets is unique on (world_id, cutoff) instead of world_id; reviews gains dataset_id (the snapshot of the origin run, backfilled from runs, not null) with an index on (world_id, customer_id, dataset_id, kind, created_at, id), and the workflow state is the latest workflow event of the customer in that snapshot; experiments gains truth_cutoff, read at ingest from the truth world's own manifest. Reviews stay append only and span the snapshots of a world.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Dataset/job/model/experiment/review events.

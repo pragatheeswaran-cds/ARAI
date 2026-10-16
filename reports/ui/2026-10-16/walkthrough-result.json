@@ -40,7 +40,7 @@
     {
       "check": "no training, refund, block or delete control exists",
       "ok": true,
-      "detail": "validate and register score with the active bundle view results view results view results view results"
+      "detail": "validate and register score with the active bundle score with the active bundle score with the active bundle view result"
     },
     {
       "check": "upload refuses a wrong file set before sending",
@@ -49,6 +49,11 @@
     },
     {
       "check": "upload names the missing files",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "every scored run offers its results",
       "ok": true,
       "detail": ""
     },
@@ -163,6 +168,36 @@
       "detail": ""
     },
     {
+      "check": "the overview compares the queue with the previous snapshot of the same world",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the history filter finds the customers decided on an earlier snapshot",
+      "ok": true,
+      "detail": "ARAI / CASE QUEUE\nCase queue\n\nFilters change what is shown. They never change a score or the run's review selection.\n\nSe"
+    },
+    {
+      "check": "a case decided last month comes back as this month's own case, with the decision shown on it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the history tab shows the customer in every snapshot of the world",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "notes follow the customer and say which snapshot they were written on",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the history links to the same customer in an earlier snapshot, where its review stays decided",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/runs/run-d8e466b13a52463b8f27/customers/W5401-C08645"
+    },
+    {
       "check": "style queue lists every style with a verdict",
       "ok": true,
       "detail": "37"
@@ -273,6 +308,6 @@
       "detail": "[]"
     }
   ],
-  "passed": 54,
+  "passed": 61,
   "failed": 0
 }

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Customer, PrimarySignal, Run } from "../api";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, clearedHeavyReturner, groupByCommunity, notObserved, rawRate } from "../derive";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, clearedHeavyReturner, earlierDecisionNote, groupByCommunity, historyNote, notObserved, rawRate } from "../derive";
 import { Badge, CopyId, label, number, percent, rupees } from "./ui";
 
 export const SCORE_HELP =
@@ -52,10 +52,14 @@ export function workflowNote(customer: Customer): string | null {
 }
 export function StateBadge({ customer, compact = false }: { customer: Customer; compact?: boolean }) {
   const note = workflowNote(customer);
+  const history = historyNote(customer);
+  const decided = earlierDecisionNote(customer);
   return (
     <>
       <Badge text={STATE_LABEL[customer.workflow.state]} className={`state-${customer.workflow.state}`} tone="gray" />
       {!compact && note && <small>{note}</small>}
+      {!compact && decided && <small className="history decided">{decided}</small>}
+      {!compact && history && <small className="history">{history}</small>}
     </>
   );
 }
@@ -96,7 +100,11 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
             <th scope="col" title="Units requested for return on mature sale lines (rejected requests count, withdrawn ones do not), and refunds paid">
               Requested / mature units
             </th>
-            {!compact && <th scope="col">Status</th>}
+            {!compact && (
+              <th scope="col" title="Where the review stands in this snapshot, and where the customer stood in earlier snapshots of the same world">
+                Status / history
+              </th>
+            )}
             {!compact && <th scope="col">Latest note</th>}
           </tr>
         </thead>

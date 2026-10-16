@@ -42,16 +42,22 @@ OUT_OF_SCOPE_MESSAGE = ("Open, request approval, approve and reject apply to a c
                         "customers outside the queue.")
 
 
+def snapshot_conflict_message(world_id: str, cutoff) -> str:
+    return (f"World {world_id} already has a snapshot at cutoff {cutoff} with different content; a snapshot's content is "
+            "immutable. A later export of the same customers is a new snapshot with its own cutoff.")
+
+
 def same_reviewer(a: str, b: str) -> bool:
     """Reviewer names are free text: the second-reviewer rule compares them without regard to case or spacing."""
     return " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
-# the latest workflow event and the latest open of a customer in its world, joined to a customer row c
+# the latest workflow event and the latest open of a customer in this snapshot of its world (decision AM-68: the workflow
+# runs per snapshot, notes span them), joined to a customer row c; placeholders in order: world, snapshot, world, snapshot
 WORKFLOW_JOINS = """LEFT JOIN LATERAL (SELECT w.kind, w.reviewer_name, w.created_at FROM reviews w
-                                      WHERE w.world_id = %(world_id)s AND w.customer_id = c.customer_id
+                                      WHERE w.world_id = %s AND w.dataset_id = %s AND w.customer_id = c.customer_id
                                         AND w.kind IN ('open', 'request_approval', 'approve', 'reject')
                                       ORDER BY w.created_at DESC, w.id DESC LIMIT 1) wf ON true
                    LEFT JOIN LATERAL (SELECT o.reviewer_name, o.created_at FROM reviews o
-                                      WHERE o.world_id = %(world_id)s AND o.customer_id = c.customer_id AND o.kind = 'open'
+                                      WHERE o.world_id = %s AND o.dataset_id = %s AND o.customer_id = c.customer_id AND o.kind = 'open'
                                       ORDER BY o.created_at DESC, o.id DESC LIMIT 1) opened ON true"""
 WORKFLOW_FIELDS = ("wf.kind AS workflow_kind, wf.reviewer_name AS workflow_reviewer, wf.created_at AS workflow_at, "
                    "opened.reviewer_name AS opened_by, opened.created_at AS opened_at")
@@ -62,6 +68,17 @@ STATE_SQL = {"in_review": "wf.kind = 'open'", "awaiting_approval": "wf.kind = 'r
              "rejected": "wf.kind = 'reject'",
              "auto_logged": f"{_NO_EVENT} AND c.eligibility_status = 'eligible' AND NOT c.selected_for_review",
              "new": f"{_NO_EVENT} AND NOT (c.eligibility_status = 'eligible' AND NOT c.selected_for_review)"}
+# a customer's place against earlier snapshots of its world (decision AM-68); %(previous_run)s is the reference run of the
+# previous snapshot (null when there is none), %(world_id)s and %(cutoff)s the current snapshot's
+_IN_PREVIOUS_QUEUE = ("EXISTS (SELECT 1 FROM run_customers p WHERE p.run_id = %(previous_run)s AND p.customer_id = c.customer_id "
+                      "AND p.selected_for_review)")
+_DECIDED_BEFORE = ("EXISTS (SELECT 1 FROM datasets d WHERE d.world_id = %(world_id)s AND d.cutoff < %(cutoff)s AND "
+                   "(SELECT w.kind FROM reviews w WHERE w.world_id = d.world_id AND w.dataset_id = d.id AND w.customer_id = c.customer_id "
+                   "AND w.kind IN ('open', 'request_approval', 'approve', 'reject') ORDER BY w.created_at DESC, w.id DESC LIMIT 1) "
+                   "IN ('approve', 'reject'))")
+HISTORY_SQL = {"new_in_queue": f"c.selected_for_review AND NOT {_IN_PREVIOUS_QUEUE}",
+               "repeat_in_queue": f"c.selected_for_review AND {_IN_PREVIOUS_QUEUE}",
+               "decided_before": _DECIDED_BEFORE}
 GATE_SQL = {"ESCALATE": f"c.selected_for_review AND {_ESCALATE}", "HOLD": f"c.selected_for_review AND NOT {_ESCALATE}",
             "WARNING": f"c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND {_WARNING}",
             "LOW": f"c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND NOT {_WARNING}"}
@@ -129,15 +146,17 @@ class Store:
 
     # ------------------------------------------------------------------ datasets
     def register_dataset(self, row: dict) -> tuple:
-        """(dataset, created). The same world with the same content returns the existing row; other content conflicts."""
+        """(dataset, created). A dataset is one snapshot of a world, at its cutoff (decision AM-68): the same snapshot with the
+        same content returns the existing row, the same snapshot with other content conflicts, another cutoff of the same
+        world is a new snapshot."""
         with self.transaction() as db:
             db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("dataset:" + row["world_id"],))
-            existing = db.execute("SELECT * FROM datasets WHERE world_id = %s", (row["world_id"],)).fetchone()
+            existing = db.execute("SELECT * FROM datasets WHERE world_id = %s AND cutoff = %s::timestamptz",
+                                  (row["world_id"], row["cutoff"])).fetchone()
             if existing:
                 if existing["manifest_hash"] == row["manifest_hash"]:
                     return existing, False
-                raise Conflict("world_content_differs", f"World {row['world_id']} is already registered with different content; "
-                                                        "a world's content is immutable.")
+                raise Conflict("world_content_differs", snapshot_conflict_message(row["world_id"], row["cutoff"]))
             created = db.execute(
                 """INSERT INTO datasets (id, world_id, manifest_hash, schema_version, cutoff, history_start, purpose, customer_count, artifact_key)
                    VALUES (%(id)s, %(world_id)s, %(manifest_hash)s, %(schema_version)s, %(cutoff)s, %(history_start)s, %(purpose)s,
@@ -202,7 +221,7 @@ class Store:
             out = {name: db.execute(f"SELECT count(*) AS n FROM {name}").fetchone()["n"]
                    for name in ("datasets", "runs", "reviews", "run_memos", "models", "experiments")}
             out["result_rows"] = sum(db.execute(f"SELECT count(*) AS n FROM {name}").fetchone()["n"] for name in RESULT_TABLES)
-            out["worlds"] = [r["world_id"] for r in db.execute("SELECT world_id FROM datasets ORDER BY world_id").fetchall()]
+            out["worlds"] = [r["world_id"] for r in db.execute("SELECT DISTINCT world_id FROM datasets ORDER BY world_id").fetchall()]
         return out
 
     def wipe(self, notes: bool = False, runs: bool = False, datasets: bool = False, world_id: str | None = None) -> dict:
@@ -239,9 +258,66 @@ class Store:
                                                    AND response_ref NOT IN (SELECT id FROM reviews)""").rowcount
         return removed
 
-    def dataset_by_world(self, world_id: str) -> dict | None:
+    def dataset_by_snapshot(self, world_id: str, cutoff: str) -> dict | None:
         with self.transaction() as db:
-            return db.execute("SELECT * FROM datasets WHERE world_id = %s", (world_id,)).fetchone()
+            return db.execute("SELECT * FROM datasets WHERE world_id = %s AND cutoff = %s::timestamptz", (world_id, cutoff)).fetchone()
+
+    # ------------------------------------------------------------------ snapshots of a world and a customer's history (AM-68)
+    def snapshots(self, world_id: str) -> list:
+        """Every snapshot of a world with a succeeded run, oldest cutoff first, each with its reference run: the latest
+        succeeded run on that snapshot."""
+        with self.transaction() as db:
+            return db.execute("""SELECT DISTINCT ON (d.cutoff) d.id AS dataset_id, d.cutoff, r.id AS run_id, r.model_id, m.kind AS model_kind
+                                 FROM datasets d JOIN runs r ON r.dataset_id = d.id AND r.status = 'succeeded'
+                                 JOIN models m ON m.id = r.model_id
+                                 WHERE d.world_id = %s ORDER BY d.cutoff, r.created_at DESC, r.id DESC""", (world_id,)).fetchall()
+
+    def previous_rows(self, run_id: str, dataset_id: str, world_id: str, customer_ids: list) -> dict:
+        """customer_id -> the customer's row in the run `run_id` of an earlier snapshot, with the last workflow event of that
+        snapshot. Customers who were not in that snapshot are absent."""
+        if not customer_ids:
+            return {}
+        with self.transaction() as db:
+            rows = db.execute(f"""SELECT c.customer_id, c.rank, c.risk_score, c.selected_for_review, c.eligibility_status,
+                                         wf.kind AS workflow_kind, wf.reviewer_name AS workflow_reviewer, wf.created_at AS workflow_at
+                                  FROM run_customers c {WORKFLOW_JOINS}
+                                  WHERE c.run_id = %s AND c.customer_id = ANY(%s)""",
+                              (world_id, dataset_id, world_id, dataset_id, run_id, list(customer_ids))).fetchall()
+        return {row["customer_id"]: row for row in rows}
+
+    def earlier_decisions(self, world_id: str, cutoff, customer_ids: list) -> dict:
+        """customer_id -> the latest snapshot before `cutoff` whose workflow ended in a decision: {kind, reviewer_name,
+        created_at, cutoff}. A snapshot whose last workflow event is an open or a request for approval ended undecided."""
+        if not customer_ids:
+            return {}
+        with self.transaction() as db:
+            rows = db.execute("""SELECT DISTINCT ON (customer_id) customer_id, kind, reviewer_name, created_at, cutoff FROM (
+                                     SELECT DISTINCT ON (w.customer_id, w.dataset_id) w.customer_id, w.kind, w.reviewer_name,
+                                            w.created_at, d.cutoff
+                                     FROM reviews w JOIN datasets d ON d.id = w.dataset_id
+                                     WHERE w.world_id = %s AND d.cutoff < %s AND w.customer_id = ANY(%s)
+                                       AND w.kind IN ('open', 'request_approval', 'approve', 'reject')
+                                     ORDER BY w.customer_id, w.dataset_id, w.created_at DESC, w.id DESC) last
+                                 WHERE kind IN ('approve', 'reject') ORDER BY customer_id, cutoff DESC""",
+                              (world_id, cutoff, list(customer_ids))).fetchall()
+        return {row["customer_id"]: row for row in rows}
+
+    def snapshot_comparison(self, run_id: str, previous_run_id: str, world_id: str, cutoff) -> dict:
+        """The review set against the previous snapshot's: customers in both, new to it, gone from it; and how many customers
+        of the current review set were decided in an earlier snapshot, by decision."""
+        with self.transaction() as db:
+            row = db.execute("""SELECT count(*) FILTER (WHERE c.selected_for_review AND p.selected_for_review) AS repeat,
+                                       count(*) FILTER (WHERE c.selected_for_review AND NOT coalesce(p.selected_for_review, false)) AS new,
+                                       count(*) FILTER (WHERE p.selected_for_review AND NOT coalesce(c.selected_for_review, false)) AS left
+                                FROM (SELECT customer_id, selected_for_review FROM run_customers WHERE run_id = %s) c
+                                FULL JOIN (SELECT customer_id, selected_for_review FROM run_customers WHERE run_id = %s) p
+                                  ON p.customer_id = c.customer_id""", (run_id, previous_run_id)).fetchone()
+            queued = [r["customer_id"] for r in db.execute("SELECT customer_id FROM run_customers WHERE run_id = %s AND selected_for_review",
+                                                           (run_id,)).fetchall()]
+        decided = self.earlier_decisions(world_id, cutoff, queued)
+        return {"repeat": row["repeat"], "new": row["new"], "left": row["left"],
+                "approved_before": sum(d["kind"] == "approve" for d in decided.values()),
+                "rejected_before": sum(d["kind"] == "reject" for d in decided.values())}
 
     def get_dataset(self, dataset_id: str) -> dict:
         with self.transaction() as db:
@@ -470,20 +546,22 @@ class Store:
         - when `in_queue` is given, the four workflow kinds apply only to a customer selected for review and feedback only
           to the others (409 out_of_scope). A note is always allowed."""
         scope = f"reviews:{review['world_id']}:{review['customer_id']}"
+        snapshot = review["dataset_id"]                                      # the workflow runs per snapshot (AM-68)
         with self.transaction() as db:
             db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (scope,))                # one customer's reviews at a time
             seen = db.execute("SELECT * FROM idempotency WHERE scope = %s AND key = %s", (scope, idempotency_key)).fetchone()
             if seen:
                 if seen["request_hash"] != body_hash:
                     raise Conflict("idempotency_conflict", "This idempotency key was already used with a different note.")
-                return db.execute("SELECT * FROM reviews WHERE id = %s", (seen["response_ref"],)).fetchone(), False
+                return db.execute("""SELECT v.*, d.cutoff AS snapshot_cutoff FROM reviews v JOIN datasets d ON d.id = v.dataset_id
+                                     WHERE v.id = %s""", (seen["response_ref"],)).fetchone(), False
             kind = review["kind"]
             if in_queue is not None and ((kind in WORKFLOW_KINDS and not in_queue) or (kind == "feedback" and in_queue)):
                 raise Conflict("out_of_scope", OUT_OF_SCOPE_MESSAGE)
             if kind in WORKFLOW_KINDS:
                 latest = db.execute("""SELECT kind, reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s
-                                         AND kind = ANY(%s) ORDER BY created_at DESC, id DESC LIMIT 1""",
-                                    (review["world_id"], review["customer_id"], list(WORKFLOW_KINDS))).fetchone()
+                                         AND dataset_id = %s AND kind = ANY(%s) ORDER BY created_at DESC, id DESC LIMIT 1""",
+                                    (review["world_id"], review["customer_id"], snapshot, list(WORKFLOW_KINDS))).fetchone()
                 state = latest["kind"] if latest else None                       # the latest workflow event is the state
                 if kind == "open":
                     if state in ("open", "request_approval"):
@@ -495,38 +573,47 @@ class Store:
                         raise Conflict("case_decided", CASE_DECIDED_MESSAGE)
                     if kind == "request_approval" and state == "request_approval":
                         raise Conflict("case_already_open", APPROVAL_ALREADY_REQUESTED_MESSAGE)
-                    opened = db.execute("""SELECT reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s AND kind = 'open'
-                                           ORDER BY created_at DESC, id DESC LIMIT 1""", (review["world_id"], review["customer_id"])).fetchone()
+                    opened = db.execute("""SELECT reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s AND dataset_id = %s
+                                           AND kind = 'open' ORDER BY created_at DESC, id DESC LIMIT 1""",
+                                        (review["world_id"], review["customer_id"], snapshot)).fetchone()
                     if kind != "request_approval" and same_reviewer(opened["reviewer_name"], review["reviewer_name"]):
                         raise Conflict("second_reviewer_required", SECOND_REVIEWER_MESSAGE)
-            row = db.execute("""INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind)
-                                VALUES (%(id)s, %(world_id)s, %(customer_id)s, %(run_id)s, %(model_id)s, %(reviewer_name)s,
-                                        %(disposition)s, %(note)s, %(kind)s) RETURNING *""", dict(review, id=new_id("rev"))).fetchone()
+            row = db.execute("""WITH added AS (
+                                    INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind,
+                                                         dataset_id)
+                                    VALUES (%(id)s, %(world_id)s, %(customer_id)s, %(run_id)s, %(model_id)s, %(reviewer_name)s,
+                                            %(disposition)s, %(note)s, %(kind)s, %(dataset_id)s) RETURNING *)
+                                SELECT added.*, d.cutoff AS snapshot_cutoff FROM added JOIN datasets d ON d.id = added.dataset_id""",
+                             dict(review, id=new_id("rev"))).fetchone()
             db.execute("INSERT INTO idempotency (scope, key, request_hash, response_ref) VALUES (%s, %s, %s, %s)",
                        (scope, idempotency_key, body_hash, row["id"]))
             return row, True
 
     def list_reviews(self, world_id: str, customer_id: str, after: tuple | None = None, limit: int | None = None) -> list:
-        """Notes for a customer of a world, oldest first, whichever run they were written under."""
+        """Notes for a customer of a world, oldest first, whichever run and snapshot they were written under; each row carries
+        the cutoff of its snapshot."""
         values = [world_id, customer_id]
         extra = ""
         if after:
-            extra = " AND (created_at, id) > (%s, %s)"
+            extra = " AND (v.created_at, v.id) > (%s, %s)"
             values += list(after)
         tail = ""
         if limit is not None:
             tail = " LIMIT %s"
             values.append(limit)
         with self.transaction() as db:
-            return db.execute(f"SELECT * FROM reviews WHERE world_id = %s AND customer_id = %s{extra} ORDER BY created_at, id{tail}",
+            return db.execute(f"""SELECT v.*, d.cutoff AS snapshot_cutoff FROM reviews v JOIN datasets d ON d.id = v.dataset_id
+                                  WHERE v.world_id = %s AND v.customer_id = %s{extra} ORDER BY v.created_at, v.id{tail}""",
                               values).fetchall()
 
     # ------------------------------------------------------------------ run results (written once, read by the API)
-    def run_customers(self, run_id: str, world_id: str, filters: dict, after: int | None, limit: int, rules: dict | None = None) -> list:
-        """One page of the queue in queue order, each row with the customer's latest disposition in this world.
+    def run_customers(self, run_id: str, world_id: str, filters: dict, after: int | None, limit: int, rules: dict | None = None,
+                      dataset_id: str | None = None) -> list:
+        """One page of the queue in queue order, each row with the customer's latest disposition in this world and its workflow
+        in this snapshot (`dataset_id`).
 
         Filters only choose what is shown. `search` is a case-insensitive substring of the identifier. `rules` holds
-        the run's numbers the tier and gate filters read (medium_from, heavy_cutoff).
+        the run's numbers the tier, gate and history filters read (medium_from, heavy_cutoff, previous_run, world_id, cutoff).
         """
         clauses, values = ["c.run_id = %s"], [world_id, run_id]
         rules = rules or {}
@@ -535,7 +622,7 @@ class Store:
         if filters.get("exclude_reviewer"):
             clauses.append("coalesce(opened.reviewer_name, '') <> %s")
             values.append(filters["exclude_reviewer"])
-        for name, table in (("tier", TIER_SQL), ("gate", GATE_SQL)):
+        for name, table in (("tier", TIER_SQL), ("gate", GATE_SQL), ("history", HISTORY_SQL)):
             if filters.get(name, "all") != "all":
                 clause = table[filters[name]]
                 values += [rules[key] for key in re.findall(r"%\((\w+)\)s", clause)]       # one value per placeholder, in order
@@ -581,7 +668,7 @@ class Store:
             clauses.append("c.queue_position > %s")
             values.append(after)
         with self.transaction() as db:
-            joins = WORKFLOW_JOINS % {"world_id": "%s"}
+            joins = WORKFLOW_JOINS
             return db.execute(f"""SELECT c.*, latest.disposition AS latest_disposition, {COMMUNITY_FIELDS}, {WORKFLOW_FIELDS}
                                   FROM run_customers c
                                   LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
@@ -590,17 +677,17 @@ class Store:
                                                      ORDER BY r.created_at DESC, r.id DESC LIMIT 1) latest ON true
                                   {joins}
                                   WHERE {' AND '.join(clauses)} ORDER BY c.queue_position LIMIT %s""",
-                              (world_id, world_id, *values, limit)).fetchall()
+                              (world_id, world_id, dataset_id, world_id, dataset_id, *values[1:], limit)).fetchall()
 
-    def run_customer(self, run_id: str, customer_id: str, world_id: str | None = None) -> dict:
-        """The customer's result row, with the kind and size of the community it belongs to and, given the world, the latest
-        workflow event and open of its reviews (null columns without one)."""
+    def run_customer(self, run_id: str, customer_id: str, world_id: str | None = None, dataset_id: str | None = None) -> dict:
+        """The customer's result row, with the kind and size of the community it belongs to and, given the world and snapshot,
+        the latest workflow event and open of its reviews in that snapshot (null columns without one)."""
         with self.transaction() as db:
-            joins = WORKFLOW_JOINS % {"world_id": "%s"}
             row = db.execute(f"""SELECT c.*, {COMMUNITY_FIELDS}, {WORKFLOW_FIELDS} FROM run_customers c
                                  LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
-                                 {joins}
-                                 WHERE c.run_id = %s AND c.customer_id = %s""", (world_id, world_id, run_id, customer_id)).fetchone()
+                                 {WORKFLOW_JOINS}
+                                 WHERE c.run_id = %s AND c.customer_id = %s""",
+                             (world_id, dataset_id, world_id, dataset_id, run_id, customer_id)).fetchone()
         if not row:
             raise NotFound("customer in this run")
         return row
@@ -745,15 +832,16 @@ class Store:
         return [row["customer_id"] for row in rows]
 
     # ------------------------------------------------------------------ experiments (published offline, loaded by the worker)
-    def load_experiment(self, row: dict, report: dict, truth_world_id: str | None, truth_rows: list) -> None:
+    def load_experiment(self, row: dict, report: dict, truth_world_id: str | None, truth_rows: list, truth_cutoff: str | None = None) -> None:
         """Store a published experiment report and replace its truth export, together."""
         with self.transaction() as db:
-            db.execute("""INSERT INTO experiments (id, config_hash, report_key, selection_key, test_key, report, truth_world_id)
-                          VALUES (%(id)s, %(config_hash)s, %(report_key)s, %(selection_key)s, %(test_key)s, %(report)s, %(truth_world_id)s)
+            db.execute("""INSERT INTO experiments (id, config_hash, report_key, selection_key, test_key, report, truth_world_id, truth_cutoff)
+                          VALUES (%(id)s, %(config_hash)s, %(report_key)s, %(selection_key)s, %(test_key)s, %(report)s, %(truth_world_id)s,
+                                  %(truth_cutoff)s)
                           ON CONFLICT (id) DO UPDATE SET config_hash = EXCLUDED.config_hash, report_key = EXCLUDED.report_key,
                               selection_key = EXCLUDED.selection_key, test_key = EXCLUDED.test_key, report = EXCLUDED.report,
-                              truth_world_id = EXCLUDED.truth_world_id""",
-                       dict(row, report=Jsonb(report), truth_world_id=truth_world_id))
+                              truth_world_id = EXCLUDED.truth_world_id, truth_cutoff = EXCLUDED.truth_cutoff""",
+                       dict(row, report=Jsonb(report), truth_world_id=truth_world_id, truth_cutoff=truth_cutoff))
             db.execute("DELETE FROM experiment_truth WHERE experiment_id = %s", (row["id"],))
             self._copy(db, "experiment_truth", ("experiment_id", row["id"]), ["position", "customer_id", "y_abuse", "action_types"],
                        truth_rows)

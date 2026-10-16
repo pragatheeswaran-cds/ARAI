@@ -186,3 +186,53 @@ export function caseSummary(data: CaseLike): string {
   ];
   return lines.filter((line, i) => line !== "" || lines[i - 1] !== "").join("\n") + "\n";
 }
+
+// ---------------------------------------------------------------- snapshots of one world (contract 1.15.0, decision AM-68)
+/** A snapshot named by its cutoff date in IST, e.g. "09 Aug 2026" (a cutoff is the last second of that day). */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function snapshotDate(cutoff: string | null | undefined): string {
+  if (!cutoff) return "n/a";
+  const date = new Date(cutoff);
+  if (Number.isNaN(date.getTime())) return cutoff.slice(0, 10);
+  // the IST calendar date, spelt the same in every browser (locales disagree on "Sep" and "Sept")
+  const local = new Date(date.getTime() + 330 * 60 * 1000);
+  return `${String(local.getUTCDate()).padStart(2, "0")} ${MONTHS[local.getUTCMonth()]} ${local.getUTCFullYear()}`;
+}
+
+export const HISTORY_LABEL: Record<"all" | "new_in_queue" | "repeat_in_queue" | "decided_before", string> = {
+  all: "Any",
+  new_in_queue: "New to the queue since the previous snapshot",
+  repeat_in_queue: "Also in the previous snapshot's queue",
+  decided_before: "Decided on an earlier snapshot",
+};
+
+type HistoryLike = Pick<Customer, "selected_for_review" | "previous" | "earlier_decision">;
+
+/** Where the customer stood in the previous snapshot, in one phrase; null when there is no previous snapshot or nothing to say
+ *  (outside the queue then and now). */
+export function historyNote(customer: HistoryLike): string | null {
+  const before = customer.previous;
+  if (!before) return null;
+  const when = snapshotDate(before.cutoff);
+  if (!before.present) return `new account since ${when}`;
+  const rank = before.rank ? `rank ${before.rank.toLocaleString("en-IN")}` : "not ranked";
+  if (customer.selected_for_review) return before.selected_for_review ? `also in the ${when} queue (${rank})` : `new to the queue since ${when} (${rank} then)`;
+  return before.selected_for_review ? `left the queue since ${when} (${rank} then)` : null;
+}
+
+/** The latest earlier snapshot whose review ended in a decision, in one phrase; null without one. */
+export function earlierDecisionNote(customer: HistoryLike): string | null {
+  const decision = customer.earlier_decision;
+  if (!decision) return null;
+  return `${decision.state} on the ${snapshotDate(decision.cutoff)} snapshot by ${decision.decided_by}`;
+}
+
+/** The newest succeeded run of the latest snapshot: the workspace opens there, whatever order snapshots were scored in. */
+export function latestSnapshotRun<T extends Pick<Run, "status" | "cutoff">>(runs: T[]): T | null {
+  let best: T | null = null;
+  for (const run of runs) {           // runs arrive newest first, so the first run of the latest cutoff is the newest of it
+    if (run.status !== "succeeded") continue;
+    if (!best || new Date(run.cutoff).getTime() > new Date(best.cutoff).getTime()) best = run;
+  }
+  return best;
+}
