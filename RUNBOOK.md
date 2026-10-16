@@ -1,7 +1,8 @@
 # ARAI runbook: start, stop, validate
 
 Commands are for PowerShell, run from the repository root
-(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `v4`.
+(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `lint-cleanup`, which contains every earlier
+branch (`git fetch origin; git checkout lint-cleanup`).
 
 The application serves experiment 4 (EXP-20261005-04). Its data, bundles and local database are in
 `data\EXP-20261005-04\` (`artifacts`, `private`, `postgres`). The folders `data\artifacts`, `data\private` and
@@ -24,7 +25,10 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | **Set up** | | |
 | Python environment from the lock | `uv sync` | 1.1 |
 | Build the UI (after any change under `web\`) | `cd web; npm install; npm run build; cd ..` | 1.2 |
-| Reproduce the experiment artifacts from seeds (fresh clone only) | the offline pipeline in `README.md`, in order | 1.3 |
+| UI development server with live reload (API on 8000) | `cd web; npm run dev` (http://127.0.0.1:5173) | 1.2 |
+| Regenerate the UI's API types after a contract change | `cd web; npm run api-types; cd ..` | 1.2 |
+| Generate the synthetic data and reproduce the experiment from seeds (fresh clone only) | the eleven commands of section 1.3, in order | 1.3 |
+| One more synthetic world from a new seed | `uv run arai generate --seed <seed no experiment has used>` | 1.3 |
 | Rebuild the rehearsal fixture after bundles changed | `uv run arai baseline-rehearsal --fresh` then commit `rehearsal\baseline` | 1.4 |
 | **Start and stop** | | |
 | Start the product instance (port 8000) | `uv run arai local` | 2.1 |
@@ -35,6 +39,7 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Stop it | Ctrl+C; by port: the two lines in 2.2 (`Stop-Process`, then `pg_ctl.exe stop -D .\rehearsal\baseline\postgres -m fast`) | 2.2 |
 | Both for a demonstration | terminal 1 `uv run arai baseline-rehearsal`, terminal 2 `uv run arai local` | 2.3 |
 | Docker Compose up, status, logs | `docker compose up --build -d`; `docker compose ps`; `docker compose logs -f worker` | 3 |
+| API and worker against your own PostgreSQL, without Docker | `uv run arai db-migrate`; `uv run arai serve`; `uv run arai worker` (with `DATABASE_URL`) | 3.1 |
 | Docker Compose down, keep or drop the database | `docker compose down`; `docker compose down -v` | 3 |
 | **Clean up** | | |
 | Look before cleaning | `uv run arai db-clean --all --dry-run` | 2.4 |
@@ -61,9 +66,14 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Latest run | `curl.exe -s http://127.0.0.1:8000/api/v1/runs` | 5 |
 | Python tests | `uv run --no-sync pytest -q` | 5 |
 | Front-end tests and type check | `cd web; npm test; npx tsc --noEmit; cd ..` | 5 |
+| Python lint | `uvx ruff@0.16.8 check src tests scripts` | 5 |
 | Browser walkthrough (instance up, run scored) | `uv run --no-sync python tests\e2e\walkthrough.py` | 5 |
 | Baseline-fallback check (port 8011 free) | `uv run --no-sync python tests\e2e\fallback_check.py` | 5 |
 | Specification package | `uv run --no-sync python final-spec\tools\verify_package.py`; after edits `uv run --no-sync python scripts\spec_package.py` | 5 |
+| Wireframe opens offline (acceptance OPS-AC-02) | `uv run --no-sync python tests\e2e\wireframe_offline_check.py` | 5 |
+| Re-check experiment 4 against its records (read-only, about half a minute) | `uv run --no-sync python scripts\verify_experiment.py` | 7 |
+| Linked-account communities on generated worlds (offline diagnostics) | `uv run --no-sync python scripts\community_check.py --seed 5101 5102`; `uv run --no-sync python scripts\community_rule_check.py --world W5201 W5202 W5203 W5204 W5205 W5401` | 7 |
+| Package the synthetic data with its truth and guide for sharing | `uv run --no-sync python scripts\package_experiment_data.py --experiment EXP-20261005-04 --guide docs\experiment-4-data-guide.md` | 7 |
 | Re-publish the bundles after a code change the run warns about | `uv run --no-sync arai publish --demo-world W5401`, then restart | 6 |
 
 On macOS or Linux the same commands work with forward slashes, `curl` for `curl.exe`, and the `pg_ctl` binary under
@@ -107,6 +117,16 @@ cd ..
 Rebuild the UI (`npm run build`) only after changing something under `web\`. Without `web\dist` the instances
 start as API only and say so.
 
+While changing the UI, a development server reloads on every save and forwards `/api` to the instance on port 8000
+(`$env:ARAI_API = "http://127.0.0.1:8010"` first to use another one):
+
+```powershell
+cd web
+npm run dev                  # http://127.0.0.1:5173; Ctrl+C stops it
+npm run api-types            # after a change to final-spec\contracts\openapi.yaml: regenerates src\api-types.ts
+cd ..
+```
+
 ### 1.3 The experiment artifacts
 
 Both local instances read the experiment's artifacts from `data\EXP-20261005-04\artifacts`: the worlds (the
@@ -114,6 +134,40 @@ demonstration world W5401 among them), the model and baseline bundles, and the p
 are not in git. On this machine they already exist. On a fresh clone, either copy the `data` folder across or
 reproduce it from the seeds with the offline pipeline in `README.md` (about 40 minutes; it reproduces the selected
 model and the final test exactly, with new bundle ids).
+
+To generate the synthetic data and reproduce the experiment on a fresh clone, run these in order (a
+10,000-customer world takes about 15 seconds; the whole sequence about 40 minutes). The order is enforced:
+training and the dry run refuse to run once validation worlds exist, selection needs the dry run, and the test
+runs once.
+
+```powershell
+uv run arai generate --seed 5101 5102 5103 5104 5105 5106 5107 5108 5109 5110 5501 5502 5503 5504 5505 5506 5507 5508 5509 5510 5511   # training and stress worlds
+uv run arai train                     # freeze features, fit nine candidates and two references
+uv run arai dry-run                   # gate dry run and calibration check, before any validation world
+uv run arai ablation                  # what the result depends on (training worlds; can run at any point)
+uv run arai stress                    # the frozen models on the stress worlds; diagnostic
+uv run arai generate --seed 5201 5202 5203 5204 5205   # validation worlds
+uv run arai select                    # apply the gate, freeze the selection
+uv run arai generate --seed 5301 5302 5303 5304 5305   # test worlds
+uv run arai test                      # the final test: runs once
+uv run arai generate --seed 5401      # demonstration world W5401
+uv run arai publish --demo-world W5401   # bundles, active pointer, published experiment report
+```
+
+Every command uses the experiment named in `final-spec\contracts\experiment.yaml` and its data folder. A world's
+seed and the commit reproduce it byte for byte. One more world for your own exploration takes a seed no experiment
+has used (the command refuses the seeds of earlier experiments). A seed outside the contract gives 1,000 customers;
+`--customers 10000` gives the full size and names the world with it (`W9001N10000`):
+
+```powershell
+uv run arai generate --seed 9001                         # about 3 seconds; writes data\EXP-20261005-04\artifacts\worlds\W9001
+uv run arai validate data\EXP-20261005-04\artifacts\worlds\W9001\operational   # "violations": [] and exit code 0, or nonzero if rejected
+uv run arai generate --seed 9001 --customers 10000       # the same simulator at full size, as W9001N10000
+```
+
+Register it like any snapshot (section 4) to see it in the workbench.
+
+The earlier monthly snapshots of W5401 used by the history screens are written by `arai snapshot` (section 4.1).
 
 Check that they are there:
 
@@ -423,6 +477,24 @@ docker compose down -v             # stop and delete the database (datasets, run
 The Compose stack has its own database, so the demonstration world must be registered and scored in it
 separately (section 4, using port 8080).
 
+### 3.1 API and worker against your own PostgreSQL (no Docker)
+
+For a server with PostgreSQL already installed. `arai local` does all of this in one process with an embedded
+database; these commands keep the parts separate, as the Compose stack does. Set the environment first (the full
+list is in `.env.example`):
+
+```powershell
+$env:DATABASE_URL = "postgresql://arai:<password>@127.0.0.1:5432/arai"
+$env:ARTIFACT_ROOT = "data\EXP-20261005-04\artifacts"    # the default already
+uv run arai db-migrate                  # applies the schema; "applied: nothing new" when it is current
+uv run arai serve --port 8000           # the API only (terminal 1); --with-worker also runs the worker in it
+uv run arai worker                      # the single scoring worker (terminal 2)
+```
+
+`arai serve` serves the API, not the UI: put `web\dist` behind a web server that forwards `/api` (as
+`deploy\nginx.conf` does), or use `npm run dev` (section 1.2). On a shared server set `APP_PROFILE=vm`, the
+`BASIC_AUTH_*` settings and single sign-on (section 2.6).
+
 ---
 
 ## 4. Load and score the demonstration world
@@ -624,3 +696,28 @@ or 5301-5305, and never a world of an earlier experiment (the command refuses th
 
 Server logs are in the terminal where `arai local` or `arai baseline-rehearsal` runs (or `docker compose logs api worker`). Every error the
 API returns carries a `request_id`; search the log for it.
+
+---
+
+## 7. Offline checks and sharing the synthetic data
+
+None of these needs a running instance; each reads the experiment's data folder and changes nothing in it.
+
+```powershell
+# Re-check experiment 4 against its records: hashes, seeds, the order of events, the final test re-scored
+# (docs\experiment-4-verification-guide.md says what each check means)
+uv run --no-sync python scripts\verify_experiment.py                  # every check, about half a minute
+uv run --no-sync python scripts\verify_experiment.py --no-recompute   # without re-scoring the test worlds
+
+# Linked-account communities (rings and households) on generated worlds: the community-kind checks of
+# records\2026-10-15-community-kind-check.md and records\2026-10-16-community-kind-rule-revision.md
+uv run --no-sync python scripts\community_check.py --seed 5101 5102
+uv run --no-sync python scripts\community_rule_check.py --world W5201 W5202 W5203 W5204 W5205 W5401
+
+# Package the synthetic data, its truth, its configuration and the guide as zip archives under
+# data\exports\<experiment>\ (not in git), after checking every file against the hashes recorded at generation
+uv run --no-sync python scripts\package_experiment_data.py --experiment EXP-20261005-04 --guide docs\experiment-4-data-guide.md
+```
+
+The exploration scripts of experiment 4 (`scripts\exploration\`) are explained, with their commands, in
+`docs\experiment-4-verification-guide.md`.

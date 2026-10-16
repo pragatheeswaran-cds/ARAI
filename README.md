@@ -15,12 +15,14 @@ ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
 Existing code/synthetic-data assets remain preserved; the final package bundles the required inputs.
 
-## Code (branch `v4`)
+## Code
+
+The latest work is on branch `lint-cleanup`, which contains every earlier branch (`git checkout lint-cleanup`).
 
 The Python side is managed with [uv](https://docs.astral.sh/uv/); every dependency lives in the project's `.venv`.
 The web side is a React/Vite app under `web/`.
 
-**Day-to-day operation (start, stop, validate, troubleshoot) is in [RUNBOOK.md](RUNBOOK.md).**
+**Day-to-day operation (set up, generate data, start, stop, validate, troubleshoot) is in [RUNBOOK.md](RUNBOOK.md); its section 0 lists every command.**
 
 ### Run the demonstration locally (no Docker)
 
@@ -56,14 +58,14 @@ Its `private` folder (simulation truth) is never visible to serving.
 ### Offline pipeline, in order
 
 ```
-uv run arai generate --seed 5101 ... 5110 5501 ... 5510   # development worlds of the current contract (experiment 4)
+uv run arai generate --seed 5101 5102 5103 5104 5105 5106 5107 5108 5109 5110 5501 5502 5503 5504 5505 5506 5507 5508 5509 5510 5511   # training and stress worlds of the current contract (experiment 4)
 uv run arai train                          # freeze features, fit nine candidates and two references
 uv run arai dry-run                        # gate dry run and calibration check, before any validation world
 uv run arai ablation                       # what the result depends on, and which honest groups are reviewed (training worlds)
 uv run arai stress                         # the frozen models on the stress worlds; diagnostic, selects nothing
-uv run arai generate --seed 5201 ... 5205  # validation worlds
+uv run arai generate --seed 5201 5202 5203 5204 5205  # validation worlds
 uv run arai select                         # apply the gate, freeze the selection
-uv run arai generate --seed 5301 ... 5305  # test worlds
+uv run arai generate --seed 5301 5302 5303 5304 5305  # test worlds
 uv run arai test                           # the final test: runs once
 uv run arai generate --seed 5401           # demonstration world
 uv run arai publish --demo-world W5401     # bundles, active pointer, published experiment report
@@ -88,6 +90,7 @@ points serving at the new bundle only after the report is written.
 uv run pytest                              # 234 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
 cd web && npm test                         # front-end unit tests
 uv run python tests/e2e/walkthrough.py     # browser walkthrough against a running `arai local`
+uvx ruff@0.16.8 check src tests scripts    # lint (rules in pyproject.toml)
 ```
 
 ### Where things are
