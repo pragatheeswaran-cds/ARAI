@@ -1,0 +1,278 @@
+{
+  "base": "http://127.0.0.1:8000",
+  "browser": "chromium 141.0.7390.37",
+  "checks": [
+    {
+      "check": "root redirects to the overview",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/overview"
+    },
+    {
+      "check": "overview shows eligible, selected and excluded counts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "overview compares model and rule with neutral wording",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "header carries run, bundle and cutoff",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "synthetic data is labelled on every page",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no truth on the overview",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "datasets page lists the dataset, its hash and the run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no training, refund, block or delete control exists",
+      "ok": true,
+      "detail": "validate and register score with the active bundle view results view results view results"
+    },
+    {
+      "check": "upload refuses a wrong file set before sending",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "upload names the missing files",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "queue route carries the run",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers"
+    },
+    {
+      "check": "queue opens on the review set",
+      "ok": true,
+      "detail": "50"
+    },
+    {
+      "check": "queue shows the return-rate rule rank beside the model rank",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "keyboard filter change updates the address",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers?show=all"
+    },
+    {
+      "check": "comparison filter lists rule-only selections",
+      "ok": true,
+      "detail": "292 W5401-C02250copy\ncleared heavy returner \u00b7 below the review threshold\n\t95.4\tMedium\tWarning\tTwo or more transaction cl"
+    },
+    {
+      "check": "search by identifier finds the customer",
+      "ok": true,
+      "detail": "W5401-C03245"
+    },
+    {
+      "check": "queue shows no truth",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case opens from the keyboard",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers/W5401-C03245"
+    },
+    {
+      "check": "case shows observed and expected with denominators",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case shows the served tier, recommendation and status with their caveats",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case breaks the score down without parts that add up",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case shows the memo only by status",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case separates the wardrobing indicator",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case says evidence, not verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case shows no truth",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case tab returns opens from the keyboard",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers/W5401-C03245?tab=returns"
+    },
+    {
+      "check": "return behaviour shows reason codes, never free text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "case tab linked accounts opens from the keyboard",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers/W5401-C03245?tab=linked+accounts"
+    },
+    {
+      "check": "case tab notes opens from the keyboard",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/customers/W5401-C03245?tab=notes"
+    },
+    {
+      "check": "note appended and shown with its origin run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "note persists after reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "approving one's own case is refused in the server's words",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "style queue lists every style with a verdict",
+      "ok": true,
+      "detail": "37"
+    },
+    {
+      "check": "the headline pair sets a quality style beside an abuse target",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "state filter narrows the style queue",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "check": "style detail has the four drawers and the SKU drill-down",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "style page never clears or condemns a customer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "style links through to a customer case",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "browser back returns to the style",
+      "ok": true,
+      "detail": "http://127.0.0.1:8000/runs/run-a6f3c6eec78d416dae84/styles/BB-JKT-02"
+    },
+    {
+      "check": "evaluation shows selection separately from the final test",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation lists rule, references and every candidate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation shows the error account and the calibration disclosure",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation discloses the timing dependence",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation leads with both dependences and says how honest repeat claimants are treated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation shows honest-group review rates and the stress worlds",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the scorecard shows every gate group of the experiment",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "truth is hidden until asked for",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "evaluation draws the hero curves with the budget marker and the run manifest",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "truth reveal is labelled as simulation and compares both rankings",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "an unknown run shows a truthful error, not an empty list",
+      "ok": true,
+      "detail": "ARAI / CASE QUEUE\nCase queue\n\nFilters change what is shown. They never change a "
+    },
+    {
+      "check": "unknown page offers the overview",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no horizontal page scroll on a phone-width screen",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "check": "no unexpected failed request",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "check": "no console error",
+      "ok": true,
+      "detail": "[]"
+    }
+  ],
+  "passed": 54,
+  "failed": 0
+}

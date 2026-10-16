@@ -93,7 +93,9 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
                 Return-rate rule
               </th>
             )}
-            <th scope="col">Requested / mature units</th>
+            <th scope="col" title="Units requested for return on mature sale lines; rejected requests count, withdrawn ones do not">
+              Requested / mature units
+            </th>
             {!compact && <th scope="col">Status</th>}
             {!compact && <th scope="col">Latest note</th>}
           </tr>

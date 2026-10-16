@@ -134,7 +134,9 @@ function Expected({ data }: { data: Case }) {
   const expectedRate = valueOf(data, "expected_return_rate");
   return (
     <Panel title="Expected vs actual returns" aside={<span className="small">units on mature sale lines</span>}>
-      <Row name="Actual units requested for return">{number(b.actual_units)} of {number(b.purchased_units)} bought</Row>
+      <Row name="Actual units requested for return" note="Rejected requests count, because an attempt is evidence; withdrawn requests do not">
+        {number(b.actual_units)} of {number(b.purchased_units)} bought
+      </Row>
       <Row name="Expected for this basket" note="From other customers who bought the same products">
         {b.expected_units.toFixed(1)}
       </Row>
@@ -223,13 +225,22 @@ function Evidence({ data, runId }: { data: Case; runId: string }) {
 // ---------------------------------------------------------------- return behaviour
 function Returns({ data, runId }: { data: Case; runId: string }) {
   const returns = data.timeline.filter((e) => e.event_type !== "purchase");
+  const withdrawn = returns.filter((e) => e.line_status === "withdrawn").length; // listed, never counted in the evidence
   const purchases = data.timeline.filter((e) => e.event_type === "purchase");
   const orders = new Map<string, typeof purchases>();
   for (const p of purchases) if (p.order_id) orders.set(p.order_id, [...(orders.get(p.order_id) ?? []), p]);
   const bracketed = Array.from(orders.values()).filter((lines) => new Set(lines.map((l) => l.style_id)).size < lines.length);
   return (
     <>
-      <Panel title="Return behaviour" aside={<span className="small">{returns.length} request line(s)</span>}>
+      <Panel
+        title="Return behaviour"
+        aside={
+          <span className="small">
+            {returns.length} request line(s)
+            {withdrawn ? `, ${withdrawn} withdrawn and not counted` : ""}
+          </span>
+        }
+      >
         {returns.length === 0 ? (
           <p className="muted">No return request is recorded for this customer.</p>
         ) : (
@@ -252,7 +263,10 @@ function Returns({ data, runId }: { data: Case; runId: string }) {
                   <tr key={e.source_ref}>
                     <td>
                       {ist(e.observed_at)}
-                      <small>{e.event_type === "transaction_claim" ? "transaction claim" : "return request"}</small>
+                      <small>
+                        {e.event_type === "transaction_claim" ? "transaction claim" : "return request"}
+                        {e.line_status === "withdrawn" ? " / withdrawn by the customer, not counted" : e.line_status ? ` / ${label(e.line_status)}` : ""}
+                      </small>
                     </td>
                     <td>
                       {e.order_id ?? ""}
@@ -281,7 +295,10 @@ function Returns({ data, runId }: { data: Case; runId: string }) {
             </table>
           </div>
         )}
-        <Callout>Reason codes come from the codebook. The customer's free-text reason is never read or shown.</Callout>
+        <Callout>
+          Reason codes come from the codebook. The customer's free-text reason is never read or shown. Every request line is listed; the counts in
+          the evidence leave out requests the customer withdrew and keep rejected ones.
+        </Callout>
       </Panel>
       <Panel title="Orders" aside={<span className="small">{purchases.length} sale line(s) in {orders.size} order(s)</span>}>
         {bracketed.length > 0 && (
@@ -589,6 +606,11 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
         </span>
       </form>
       {error && <ErrorBox error={error} />}
+      <p className="small">
+        <b>What a decision means.</b> Open takes the case into review. Approve records a second reviewer's sign-off on the case with the reading
+        chosen above; Reject records that the second reviewer does not sign it off. Neither approves, refuses or reverses a return or a refund:
+        nothing here reaches the order or refund system.
+      </p>
       <p className="muted">
         The gate rule says {data.customer.gate_outcome ? GATE_LABEL[data.customer.gate_outcome] : "n/a"} for this case. It is a presentation rule, not a decision;
         the decision is yours and a second person's. Every action is appended, never edited.

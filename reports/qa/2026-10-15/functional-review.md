@@ -248,9 +248,31 @@ not an authenticated identity.
 
 ## 8. Proposed changes, awaiting decision
 
-| # | Change | Kind | Covers |
-|---|---|---|---|
-| 1 | Correct the cleared-reason wording, the two narrative lines and the household line in the demo script and deck; add W5401's own figures (232 against 75; Rs 23.7 lakh against Rs 8.0 lakh) | docs only | findings 2, 3, 1 (wording) |
-| 2 | Label counts as excluding withdrawn requests; explain Approve and Reject in returns terms | UI copy | findings 4, 5 |
-| 3 | Refine the ring kind rule for address-and-device-only communities | decision D3 change, re-score | finding 1 |
-| 4 | Refund value at stake on case, queue and Overview; export; cleared reasons that name what is absent | backlog | gaps 1 and 2, finding 2 |
+| # | Change | Kind | Covers | Status |
+|---|---|---|---|---|
+| 1 | Correct the cleared-reason wording, the two narrative lines and the household line in the demo script and deck; add W5401's own figures (232 against 75; Rs 23.7 lakh against Rs 8.0 lakh) | docs only | findings 2, 3, 1 (wording) | done 16 Oct 2026 |
+| 2 | Label counts as excluding withdrawn requests; explain Approve and Reject in returns terms | UI copy | findings 4, 5 | done 16 Oct 2026 |
+| 3 | Refine the ring kind rule for address-and-device-only communities | decision D3 change, re-score | finding 1 | open, awaiting decision |
+| 4 | Refund value at stake on case, queue and Overview; export; cleared reasons that name what is absent | backlog | gaps 1 and 2, finding 2 | open |
+
+**What changes 1 and 2 did.**
+
+- *Demo script* (`docs/demo-script.md`): the week-one line now says half of the false non-receipt claimants stay
+  below the heavy-returner line and the rule finds fewer than one in three of them, and that the rule finds one ring
+  member in four; the cleared-view step says most rows read "below the review threshold" and gives 21 of 443 as the
+  error rate if asked; the ring scene points at the payment edge and names the household limit; the Evaluation scene
+  reads the full-budget figures off the page (232 and 18 against 75 and 209) and gives the refund figures as coming
+  from this review, not from a screen; a new question to expect covers "why is this family a ring".
+- *Deck* (`docs/demo-deck`, and the hosted copy): slides 2 (notes), 6, 8, 13 and 15 carry the same corrections; slide 15
+  shows the full-budget and refund figures, the latter labelled as not on screen.
+- *Case page*: "Actual units requested for return" notes that rejected requests count and withdrawn ones do not; the
+  Returns tab heading counts withdrawn lines ("22 request line(s), 1 withdrawn and not counted" on W5401-C05428), each
+  withdrawn row says "withdrawn by the customer, not counted", other rows show their status, and the callout states the
+  rule. The queue's "Requested / mature units" header carries the same rule as a tooltip.
+- *Decision panel*: a "What a decision means" paragraph: Open takes the case into review; Approve records a second
+  reviewer's sign-off with the reading chosen; Reject records that the second reviewer does not sign it off; neither
+  approves, refuses or reverses a return or a refund, and nothing reaches the order or refund system. The button labels
+  and the API are unchanged.
+
+Checked after the change: type check clean, 21 web tests, UI build, browser walkthrough 54 of 54 (screenshots in
+`reports/ui/2026-10-16`).
