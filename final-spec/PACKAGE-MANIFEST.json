@@ -4,7 +4,7 @@
   "created": "2026-09-26",
   "amended": "2026-10-14",
   "files_sha256": {
-    "acceptance-register.csv": "b37f27c96ae74597c5c0d62dc15c9b22607016e8e399053c8cea0bb6c680ec06",
+    "acceptance-register.csv": "fc1b59c1bfd3bb5b2be0efca488ae0f7cb344773d01c67c822f294419818499b",
     "assets/festive-windows.yaml": "ebf90d1688929879b3315f46413f5193b48d27686423000a96c5f6bdbbedb3c8",
     "assets/profile-config.yaml": "9c6b7e905c5ebcdefa1b4fcd9055062a1fa69f005af1e0ccbabee0438774fcb5",
     "assets/reason_codes.csv": "a62965040742c75ca646039fda9986d2a95d37656707b2c442213d0b3c5b5c7d",

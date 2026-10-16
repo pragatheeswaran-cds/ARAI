@@ -1,0 +1,81 @@
+{
+  "criterion": "OPS-AC-02",
+  "executed_at": "2026-10-16T16:48:25+00:00",
+  "machine": "Linux 6.18.44-fc-v139 (x86_64)",
+  "browser": "chromium 141.0.7390.37",
+  "mode": "file:// from a copy of final-spec alone, in a path with spaces; browser offline, every non-file request refused",
+  "checks": [
+    {
+      "check": "opens from disk in a path with spaces",
+      "passed": true,
+      "detail": "ARAI / Clickable wireframe"
+    },
+    {
+      "check": "navigation lists the five screens",
+      "passed": true,
+      "detail": "['Overview', 'Datasets & runs', 'Customer queue', 'Style investigation', 'Evaluation']"
+    },
+    {
+      "check": "overview screen renders",
+      "passed": true,
+      "detail": "ARAI / Overview\nOverview\n\nComplete eight-customer illustrative cohort. Navigation fixtures, not model results.\n\nEligible"
+    },
+    {
+      "check": "customers screen renders",
+      "passed": true,
+      "detail": "ARAI / Customer queue\nCustomer queue\n\nFilters change this view, never the run-bound top-5% selection.\n\nSearch customer I"
+    },
+    {
+      "check": "styles screen renders",
+      "passed": true,
+      "detail": "ARAI / Style investigation\nStyle investigation\n\nStyle-level evidence with SKU drill-down and explicit support.\n\nEvidence"
+    },
+    {
+      "check": "datasets screen renders",
+      "passed": true,
+      "detail": "ARAI / Datasets & runs\nDatasets & runs\n\nSeven operational CSVs plus manifest. Upload and job behavior are simulated.\n\nPo"
+    },
+    {
+      "check": "evaluation screen renders",
+      "passed": true,
+      "detail": "ARAI / Evaluation\nEvaluation\n\nIllustrative multi-world scorecard, separate from the eight-customer navigation cohort. No"
+    },
+    {
+      "check": "a customer case opens",
+      "passed": true,
+      "detail": "Back to Customer queue\nARAI / Customer C-005\nCustomer C-005\n\nObserved evidence, not confirmed misconduct.\n\nReview status"
+    },
+    {
+      "check": "a simulated run completes",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "truth is revealed only on request",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "a failed final test shows the banner",
+      "passed": true,
+      "detail": "Final-test gate failed: no model promoted. Raw-return-rate ranking is active. Evidence remains available; no trained-mod"
+    },
+    {
+      "check": "the original PDF link resolves inside the package",
+      "passed": true,
+      "detail": "../reference/ARAI-original.pdf"
+    },
+    {
+      "check": "no request left the machine",
+      "passed": true,
+      "detail": "[]"
+    },
+    {
+      "check": "no console error",
+      "passed": true,
+      "detail": "[]"
+    }
+  ],
+  "passed": 14,
+  "total": 14
+}
