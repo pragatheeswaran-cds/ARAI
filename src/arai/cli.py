@@ -53,6 +53,32 @@ def _existing_generator(world, artifact_root) -> dict | None:
     return {key: generator[key] for key in ("config_sha256", "code_sha256")}
 
 
+def _snapshot(args) -> int:
+    """Earlier snapshots of a generated world: the same customers as exported on an earlier date (decision AM-68)."""
+    from datetime import date
+
+    from arai import snapshots
+    from arai.generator.world import load_world
+    later = load_world(args.world, args.artifact_root, args.private_root) if args.check else None
+    for text in args.as_of:
+        started = time.time()
+        as_of = date.fromisoformat(text)
+        world = snapshots.build_earlier(args.world, as_of)
+        out = snapshots.write_earlier(world, as_of, args.artifact_root, args.private_root)
+        report = validate_world(out["operational"])
+        print(f"{args.world} as of {as_of}: {len(world.tables['customer_master'])} customers, {world.summary['sales_order']} orders, "
+              f"{world.summary['return_order_line']} return lines in {time.time() - started:.1f}s -> {out['operational']}")
+        if not report.accepted:
+            print(json.dumps(report.to_dict(), indent=2))
+            return 1
+        if later is not None:
+            problems = {name: found for name, found in snapshots.prefix_differences(world.tables, later.tables).items() if found}
+            print("  a prefix of the world's own snapshot" if not problems else f"  NOT a prefix: {problems}")
+            if problems:
+                return 1
+    return 0
+
+
 def _validate(args) -> int:
     report = validate_world(args.directory)
     print(json.dumps(report.to_dict(), indent=2))
@@ -390,6 +416,14 @@ def main(argv=None) -> int:
     generate.add_argument("--private-root", type=Path, default=None)
     generate.add_argument("--overwrite", action="store_true", help="replace a world that another simulator or contract generated")
     generate.set_defaults(run=_generate)
+    snapshot = commands.add_parser("snapshot", help="write earlier snapshots of a generated world: the same customers on earlier "
+                                                  "cutoffs, replayed from the generator's own timelines")
+    snapshot.add_argument("world", help="a generated world, e.g. W5401")
+    snapshot.add_argument("--as-of", nargs="+", required=True, help="cutoff dates before the world's own, e.g. 2026-07-09 2026-08-09")
+    snapshot.add_argument("--no-check", dest="check", action="store_false", help="skip the prefix check against the world on disk")
+    snapshot.add_argument("--artifact-root", type=Path, default=None)
+    snapshot.add_argument("--private-root", type=Path, default=None)
+    snapshot.set_defaults(run=_snapshot)
     validate = commands.add_parser("validate", help="validate an operational world directory; nonzero exit on rejection")
     validate.add_argument("directory", type=Path)
     validate.set_defaults(run=_validate)
