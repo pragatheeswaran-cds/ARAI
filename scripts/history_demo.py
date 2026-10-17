@@ -1,6 +1,6 @@
 """Record a few review outcomes on an earlier snapshot of the demonstration world, so the history screens have something to show.
 
-The demo's September snapshot of W5401 is preceded by snapshots of 9 July and 9 August (`arai snapshot`, decision AM-68). This
+The demo's September snapshot of W5401 is preceded by monthly snapshots back to 9 October 2025 (`arai snapshot`, decision AM-68). This
 script writes, through the API of a running instance and exactly as a reviewer would, three August outcomes on customers who are
 in the September queue too:
 
@@ -18,7 +18,7 @@ With --load it first registers the world's snapshots from the artifact folder (t
 snapshot that has no succeeded run yet with the active bundle. A snapshot already registered answers with its dataset
 and is not uploaded twice; one already scored is not scored again. So on a laptop the whole history demo is:
 
-    uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09          # once; writes the two earlier snapshots
+    uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09   # once; a year of earlier snapshots
     uv run arai local                                                   # in another terminal
     uv run --no-sync python scripts/history_demo.py --load              # register, score, record the August outcomes
 

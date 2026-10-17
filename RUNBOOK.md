@@ -37,13 +37,15 @@ cd web; npm install; npm run build; cd ..
 #    also rebuild the rehearsal fixture once, because publishing gives the bundles new ids (section 1.4):
 uv run arai baseline-rehearsal --fresh            # Ctrl+C once it says the run succeeded; only for the rehearsal
 
-# 4. W5401 as it stood on 9 July and 9 August, for the customer-history screens (section 4.1)
-uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09
+# 4. W5401 month by month for a year (9 Oct 2025 to 9 Aug 2026; the world itself is 9 Sep 2026), for the
+#    customer-history screens (section 4.1); about 3 minutes
+uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09
 
 # 5. start the instance (terminal 1; leave it running)
 uv run arai local                                  # http://127.0.0.1:8000
 
-# 6. in terminal 2: register and score the three snapshots, then record the August review outcomes (safe to rerun)
+# 6. in terminal 2: register and score the twelve monthly snapshots (about 10 minutes), then record the August
+#    review outcomes (safe to rerun)
 uv run --no-sync python scripts\history_demo.py --load
 ```
 
@@ -114,8 +116,9 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | **Load data** | | |
 | Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
-| W5401 as of 9 July and 9 August (the same customers, earlier cutoffs) | `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` | 4.1 |
-| Register and score the three snapshots, then record the August review outcomes (instance up) | `uv run --no-sync python scripts\history_demo.py --load` | 4.1 |
+| W5401 month by month for a year (the same customers on eleven earlier cutoffs) | `uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09` | 4.1 |
+| Only some months (any dates after 10 Sep 2025 and before 9 Sep 2026) | `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` | 4.1 |
+| Register and score every snapshot on disk, then record the August review outcomes (instance up) | `uv run --no-sync python scripts\history_demo.py --load` | 4.1 |
 | Only the August review outcomes | `uv run --no-sync python scripts\history_demo.py` | 4.1 |
 | Validate a snapshot without registering it | `uv run arai validate <folder>` | 5 |
 | Export the queue as CSV (any filters of the list; reviewers and above) | queue page **Export this view as CSV**, or `curl.exe -s -b arai-cookies.txt -o queue.csv "http://127.0.0.1:8000/api/v1/runs/<run_id>/customers/export?review_only=true"` after signing in (2.5) | 5 |
@@ -594,27 +597,28 @@ history across the snapshots. Different worlds are never linked.
 on an empty database: same numbers, about two minutes):
 
 ```powershell
-# 0. the branch, its environment and its UI (the UI changed on this branch, so rebuild it)
-git fetch origin; git checkout gap3-customer-history; git pull
+# 0. the branch, its environment and its UI (see "Start here" at the top)
+git fetch origin; git checkout lint-cleanup; git pull
 uv sync
 cd web; npm install; npm run build; cd ..
 
-# 1. write W5401 as it stood on 9 July and 9 August (about 15 seconds each). Needs W5401 itself on disk
-#    (data\EXP-20261005-04\artifacts\worlds\W5401, as section 1.3 generates it). The command replays the generator
-#    for seed 5401, so nothing is copied; it checks each snapshot is a prefix of your W5401 and stops if it is not.
-uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09
+# 1. write W5401 as it stood on the 9th of each month from October 2025 to August 2026 (10 to 18 seconds each). Needs
+#    W5401 itself on disk (data\EXP-20261005-04\artifacts\worlds\W5401, as section 1.3 generates it). The command
+#    replays the generator for seed 5401, so nothing is copied; it checks each snapshot is a prefix of your W5401,
+#    and stops (removing that snapshot) if it is not. Rerunning it changes nothing that is already right.
+uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09
 
 # 2. start the instance (terminal 1); the database moves to schema version 11 by itself on the first start
 uv run arai local
 
-# 3. in terminal 2: register and score the three snapshots of W5401 (the ones already registered or scored are
-#    skipped), then record the three August review outcomes. Safe to run again.
+# 3. in terminal 2: register and score every snapshot of W5401 on disk (the ones already registered or scored are
+#    skipped; about a minute each), then record the three August review outcomes. Safe to run again.
 uv run --no-sync python scripts\history_demo.py --load
 ```
 
 The last line it prints must read `Since the previous snapshot (2026-08-09): 249 in both queues, 35 new, 22 left,
 2 decided before`. To confirm that your snapshot files are byte for byte the ones this branch was built with, compare
-two hashes (all fourteen are in `records/2026-10-16-monthly-snapshots.md`):
+two hashes (every file of every month is in `records/2026-10-16-monthly-snapshots.md`):
 
 ```powershell
 Get-FileHash data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-07-09\operational\customer_master.csv   # BD1D31D933D73B34...
@@ -626,7 +630,14 @@ Step 3 by hand instead: register and score each folder as in section 4 (browser 
 `uv run --no-sync python scripts\history_demo.py` without `--load`.
 
 The order does not matter: the workspace always opens on the newest run of the latest snapshot (9 September).
-Expected: July 256 selected of 5,119 eligible; August 271 of 5,408; and on the September Overview a panel **Since the
+Expected, month by month (customers in the snapshot / eligible, that is ranked / selected for review):
+
+| 9 Oct 25 | 9 Nov | 9 Dec | 9 Jan 26 | 9 Feb | 9 Mar | 9 Apr | 9 May | 9 Jun | 9 Jul | 9 Aug | 9 Sep |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 6,210 / 0 / 0 | 6,585 / 621 / 32 | 6,953 / 2,467 / 124 | 7,319 / 3,210 / 161 | 7,709 / 3,670 / 184 | 8,067 / 3,955 / 198 | 8,447 / 4,272 / 214 | 8,802 / 4,555 / 228 | 9,152 / 4,840 / 242 | 9,502 / 5,119 / 256 | 9,791 / 5,408 / 271 | 10,000 / 5,676 / 284 |
+
+In October nobody is ranked yet: after one month of history no customer has the three mature sale lines the model
+needs, and the queue says so. The case's History tab lists every month. On the September Overview a panel **Since the
 previous snapshot of W5401 (09 Aug 2026)** reading 249 also in the previous queue, 35 new, 22 left, 2 decided on an
 earlier snapshot. The review workflow runs per snapshot: a case decided in August is a new case in September, with
 the August decision shown on it. `db-clean --all --world W5401` removes every snapshot's runs and notes together.
@@ -667,7 +678,7 @@ Run these in order. Each line says what a good result looks like.
 
 ```powershell
 # 1. Python tests. They start their own temporary PostgreSQL; the running server is not touched.
-uv run --no-sync pytest -q                          # "234 passed" in about 10 minutes
+uv run --no-sync pytest -q                          # "237 passed" in about 10 minutes
 
 # 2. Front-end tests and type check
 cd web; npm test; npx tsc --noEmit; cd ..            # "30 passed"; tsc prints nothing

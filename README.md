@@ -73,7 +73,7 @@ uv run arai test                           # the final test: runs once
 uv run arai generate --seed 5401           # demonstration world
 uv run arai publish --demo-world W5401     # bundles, active pointer, published experiment report
 uv run arai register data/EXP-20261005-04/artifacts/worlds/W5401/operational   # or upload through the UI
-uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09   # the same customers a month and two months earlier (RUNBOOK 4.1)
+uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09   # the same customers month by month for a year (RUNBOOK 4.1)
 ```
 
 Every command defaults to the experiment named in `final-spec/contracts/experiment.yaml` (now EXP-20261005-04) and
@@ -90,7 +90,7 @@ points serving at the new bundle only after the report is written.
 ### Tests
 
 ```
-uv run pytest                              # 234 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
+uv run pytest                              # 237 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
 cd web && npm test                         # front-end unit tests
 uv run python tests/e2e/walkthrough.py     # browser walkthrough against a running `arai local`
 uvx ruff@0.16.8 check src tests scripts    # lint (rules in pyproject.toml)

@@ -277,7 +277,13 @@ export function CustomerQueue() {
         )}
         {error && <ErrorBox error={error} retry={() => load(null)} />}
         {!error && !loading && shown.length === 0 && (
-          <div className="empty">{view === "cleared" ? "No heavy returner outside the queue in this run." : "No customer matches. Clear the search or change a filter."}</div>
+          <div className="empty">
+            {view === "cleared"
+              ? "No heavy returner outside the queue in this run."
+              : run && run.run_id === runId && run.eligible_count === 0
+                ? "Nobody in this snapshot has three mature sale lines yet, so nobody is ranked or selected for review. Show all customers to see them."
+                : "No customer matches. Clear the search or change a filter."}
+          </div>
         )}
         {shown.length > 0 && <CustomerTable runId={runId} customers={shown} fallback={fallback} run={run} grouped={grouped} />}
         {cursor && (

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -68,14 +69,19 @@ def _snapshot(args) -> int:
         report = validate_world(out["operational"])
         print(f"{args.world} as of {as_of}: {len(world.tables['customer_master'])} customers, {world.summary['sales_order']} orders, "
               f"{world.summary['return_order_line']} return lines in {time.time() - started:.1f}s -> {out['operational']}")
-        if not report.accepted:
-            print(json.dumps(report.to_dict(), indent=2))
+        problems = {name: found for name, found in snapshots.prefix_differences(world.tables, later.tables).items() if found} \
+            if later is not None else {}
+        if not report.accepted or problems:
+            print(json.dumps(report.to_dict(), indent=2) if not report.accepted else f"  NOT a prefix: {problems}")
+            # a snapshot that fails is not left behind, where a later --load would register it
+            for folder in (out["operational"].parent, out["private"]):
+                shutil.rmtree(folder, ignore_errors=True)
+            print(f"  removed {out['name']}")
             return 1
         if later is not None:
-            problems = {name: found for name, found in snapshots.prefix_differences(world.tables, later.tables).items() if found}
-            print("  a prefix of the world's own snapshot" if not problems else f"  NOT a prefix: {problems}")
-            if problems:
-                return 1
+            print("  a prefix of the world's own snapshot")
+        if out["unchanged"]:
+            print("  the same data as already on disk: its manifest is kept, so an instance that registered it accepts it again")
     return 0
 
 
