@@ -38,6 +38,9 @@ is clean.
 
 ## 5. Smaller gaps named in the acceptance register (PARTIAL)
 
+Every criterion of the register, PASS or not, is explained in plain words with its evidence and gap in
+[docs/acceptance-register-explained.md](docs/acceptance-register-explained.md).
+
 | Item | What is missing |
 |---|---|
 | GEN-AC-08 | Coverage and support reports before full generation were produced for the fixture; the current generator revision ran fixtures and training worlds in one batch |
