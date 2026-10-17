@@ -19,6 +19,9 @@ Existing code/synthetic-data assets remain preserved; the final package bundles 
 
 The latest work is on branch `lint-cleanup`, which contains every earlier branch (`git checkout lint-cleanup`).
 
+**New machine or fresh clone?** Start with the section "Start here: a fresh clone on a new machine" at the top of
+[RUNBOOK.md](RUNBOOK.md): the data is not in git, and it lists the people you can sign in as (development login and Keycloak).
+
 The Python side is managed with [uv](https://docs.astral.sh/uv/); every dependency lives in the project's `.venv`.
 The web side is a React/Vite app under `web/`.
 

@@ -15,6 +15,64 @@ it on PATH yet), or call it by its full path:
 
 The demonstration narrative and click-by-click flow are in `docs\demo-script.md`.
 
+## Start here: a fresh clone on a new machine
+
+**What a clone has, and what it does not.** Git holds the code, the specification, the baseline rehearsal fixture
+and the development Keycloak realm. It does not hold the experiment's data (`data\` is ignored: the synthetic
+worlds, the trained model bundles, the published report and the local database) or your `.env`. So a fresh clone
+cannot show anything until the data is there: copy it from a machine that has it, or generate it from the seeds,
+which reproduces the same worlds and the same selected model (step 3).
+
+```powershell
+# 1. the branch with all the work (main does not have it yet)
+git fetch origin
+git checkout lint-cleanup
+
+# 2. the environment and the UI (section 1)
+uv sync
+cd web; npm install; npm run build; cd ..
+
+# 3. the data: EITHER copy the folder data\EXP-20261005-04 from the machine that has it into data\ (then skip to 4),
+#    OR generate it from the seeds: the eleven commands of section 1.3, in order (about 40 minutes); after that,
+#    also rebuild the rehearsal fixture once, because publishing gives the bundles new ids (section 1.4):
+uv run arai baseline-rehearsal --fresh            # Ctrl+C once it says the run succeeded; only for the rehearsal
+
+# 4. W5401 as it stood on 9 July and 9 August, for the customer-history screens (section 4.1)
+uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09
+
+# 5. start the instance (terminal 1; leave it running)
+uv run arai local                                  # http://127.0.0.1:8000
+
+# 6. in terminal 2: register and score the three snapshots, then record the August review outcomes (safe to rerun)
+uv run --no-sync python scripts\history_demo.py --load
+```
+
+Then open http://127.0.0.1:8000 and choose a person. The Overview should show W5401 with 5,676 customers scored
+and 284 in the queue. To check everything: section 5 ("Full check before a demonstration").
+
+**Who you can sign in as.** Two ways, with the same six people and roles:
+
+| Development login (default on a laptop; no password) | Keycloak development realm (`AUTH_MODE=oidc`, section 2.6) | Roles in ARAI |
+|---|---|---|
+| Asha, Ravi, Meera | `asha`, `ravi`, `meera`, password `arai-dev` | reviewer, approver |
+| Arjun | `arjun`, password `arai-dev` | reviewer |
+| Priya | `priya`, password `arai-dev` | viewer |
+| Admin | `admin`, password `arai-dev` | admin (registers and scores snapshots, People & access; does not review) |
+
+The Keycloak side, all defined in `deploy\keycloak\arai-realm.json` and `docker-compose.yml`:
+
+| What | Value |
+|---|---|
+| Start it | `docker compose --profile sso up -d keycloak` (needs Docker and `POSTGRES_PASSWORD` set in `.env`: `Copy-Item .env.example .env`) |
+| Realm | `arai`, at http://127.0.0.1:8081/realms/arai |
+| Admin console (to add people or change groups) | http://127.0.0.1:8081/admin, user `kcadmin`, password `kcadmin-dev` (`KEYCLOAK_ADMIN_USER`, `KEYCLOAK_ADMIN_PASSWORD` in `.env` change them before the first start) |
+| Client ARAI signs in with | `arai`, secret `arai-dev-secret` |
+| Groups that give ARAI roles | `arai-viewers`, `arai-reviewers`, `arai-approvers`, `arai-admins` |
+| ARAI settings for it | the five `$env:` lines of section 2.6, then `uv run arai local` |
+
+These passwords and the secret are for a rehearsal on one machine only; they are in git on purpose and must never be
+used on a shared deployment. Keycloak keeps nothing between restarts here: the realm is imported afresh each start.
+
 ## 0. Every command in one place
 
 Every command that manages the environment, with the section that explains it. Run them from the repository root;
