@@ -163,9 +163,23 @@ local instance, because the two would share the `data\EXP-20261005-04\artifacts`
 
 ### 1.1 Tools and the Python environment
 
+| Tool | Version this was built and checked with | Pinned in |
+|---|---|---|
+| uv | 0.11 | (install it once: https://docs.astral.sh/uv/) |
+| Python | 3.12, installed by uv | `.python-version`, `pyproject.toml`; every library in `uv.lock` |
+| Node.js and npm | Node 22, npm 10 | `web/.nvmrc`; every package in `web/package-lock.json` |
+| PostgreSQL | 16 (embedded by `arai local` through pgserver; the `postgres:16` image under Docker) | `uv.lock`, `docker-compose.yml` |
+| Keycloak (optional) | 26.0 | `docker-compose.yml`, realm in `deploy/keycloak/arai-realm.json` |
+
 ```powershell
 uv sync                      # creates .venv from uv.lock (Python 3.12 and every dependency, pinned)
 ```
+
+What is not in git, and how each is rebuilt: `.venv` (`uv sync`), `web/node_modules` and `web/dist` (`npm install`,
+`npm run build`), `data/` (the generator, section 1.3, from seeds and the tracked configuration in `final-spec/`), the
+rehearsal's database and registered datasets (rebuilt on its first start), and `.env` (copy `.env.example`; every
+setting the code reads is listed there with its default). `code/synthetic-data/` is a teammate's separate repository;
+nothing here reads it.
 
 ### 1.2 Build the UI
 
