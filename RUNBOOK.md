@@ -1,8 +1,8 @@
 # ARAI runbook: start, stop, validate
 
 Commands are for PowerShell, run from the repository root
-(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `lint-cleanup`, which contains every earlier
-branch (`git fetch origin; git checkout lint-cleanup`).
+(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `year-of-snapshots`, which contains every earlier
+branch (`git fetch origin; git checkout year-of-snapshots`).
 
 The application serves experiment 4 (EXP-20261005-04). Its data, bundles and local database are in
 `data\EXP-20261005-04\` (`artifacts`, `private`, `postgres`). The folders `data\artifacts`, `data\private` and
@@ -26,7 +26,7 @@ which reproduces the same worlds and the same selected model (step 3).
 ```powershell
 # 1. the branch with all the work (main does not have it yet)
 git fetch origin
-git checkout lint-cleanup
+git checkout year-of-snapshots
 
 # 2. the environment and the UI (section 1)
 uv sync
@@ -598,7 +598,7 @@ on an empty database: same numbers, about two minutes):
 
 ```powershell
 # 0. the branch, its environment and its UI (see "Start here" at the top)
-git fetch origin; git checkout lint-cleanup; git pull
+git fetch origin; git checkout year-of-snapshots; git pull
 uv sync
 cd web; npm install; npm run build; cd ..
 

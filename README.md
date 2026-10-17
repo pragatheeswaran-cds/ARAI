@@ -17,7 +17,7 @@ Existing code/synthetic-data assets remain preserved; the final package bundles 
 
 ## Code
 
-The latest work is on branch `lint-cleanup`, which contains every earlier branch (`git checkout lint-cleanup`).
+The latest work is on branch `year-of-snapshots`, which contains every earlier branch (`git checkout year-of-snapshots`).
 
 **New machine or fresh clone?** Start with the section "Start here: a fresh clone on a new machine" at the top of
 [RUNBOOK.md](RUNBOOK.md): the data is not in git, and it lists the people you can sign in as (development login and Keycloak).
