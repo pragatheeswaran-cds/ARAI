@@ -13,7 +13,8 @@ If `uv` is "not recognized", open a new terminal (it was installed with winget a
 it on PATH yet), or call it by its full path:
 `C:\Users\<you>\AppData\Local\Microsoft\WinGet\Packages\astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe\uv.exe`.
 
-The demonstration narrative and click-by-click flow are in `docs\demo-script.md`.
+The demonstration narrative and click-by-click flow are in `docs\demo-script.md`. A guided end-to-end lab, from
+generating the data to every screen as each role, is in `HANDS-ON.md`.
 
 ## Start here: a fresh clone on a new machine
 

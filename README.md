@@ -19,6 +19,9 @@ Existing code/synthetic-data assets remain preserved; the final package bundles 
 
 The latest work is on branch `year-of-snapshots`, which contains every earlier branch (`git checkout year-of-snapshots`).
 
+**Want to try it end to end?** [HANDS-ON.md](HANDS-ON.md) is a guided two-hour lab, from generating the data to every
+screen as each role, with what you should see at each step.
+
 **New machine or fresh clone?** Start with the section "Start here: a fresh clone on a new machine" at the top of
 [RUNBOOK.md](RUNBOOK.md): the data is not in git, and it lists the people you can sign in as (development login and Keycloak).
 
