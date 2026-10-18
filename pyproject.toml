@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.14.0",
     "fastapi>=0.115",
+    "httpx>=0.27",                 # the back channel of single sign-on (service/oidc.py); not only a test dependency
     "jsonschema>=4.26.0",
     "networkx>=3.7",
     "numpy>=2.5.3",
@@ -34,7 +35,6 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.27",
     "ipykernel>=7.4.0",
     "jsonschema>=4.26",
     "jupyterlab>=4.6.4",

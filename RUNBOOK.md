@@ -928,7 +928,14 @@ cd /opt/arai/app; sudo docker compose -f docker-compose.yml -f deploy/aws/compos
 ```
 
 Without the folder the instance runs in baseline fallback (section 2.2). Alternatively reproduce it on the VM with the
-offline pipeline of `README.md` (about 40 minutes on a laptop, longer on a t3.medium).
+offline pipeline of `README.md` (about 40 minutes on a laptop, longer on a t3.small).
+
+Then register and score W5401 and its monthly snapshots from the laptop, through the VM's API, as section 4.1 does
+locally; `--basic-auth` carries the shared login (section 8.7) and `--base-url` the public hostname:
+
+```powershell
+uv run --no-sync python scripts\history_demo.py --load --base-url https://arai-demo.duckdns.org --basic-auth "<user>:<password>"
+```
 
 ### 8.5 People
 

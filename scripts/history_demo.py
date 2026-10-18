@@ -24,6 +24,7 @@ and is not uploaded twice; one already scored is not scored again. So on a lapto
 
     uv run --no-sync python scripts/history_demo.py                     # only the outcomes (instance on port 8000)
     uv run --no-sync python scripts/history_demo.py --base-url http://127.0.0.1:8010 --as-of 2026-08-09
+Against the demonstration VM, which sits behind a shared login (RUNBOOK 8.7), add --basic-auth user:password.
 """
 from __future__ import annotations
 
@@ -36,6 +37,8 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+
+BASIC_AUTH: str | None = None     # "user:password" of the shared login in front of the VM's API; sent with every request
 
 TABLES = ("customer_master", "sku_master", "reason_code", "sales_order", "sales_order_line", "return_order", "return_order_line")
 
@@ -88,6 +91,9 @@ def session(base: str, user: str) -> Session:
 def call(who: Session, path: str, body: dict | None = None, raw: bytes | None = None, content_type: str = "application/json") -> dict:
     data = raw if raw is not None else None if body is None else json.dumps(body).encode()
     headers = {"content-type": content_type}
+    if BASIC_AUTH:
+        import base64
+        headers["Authorization"] = "Basic " + base64.b64encode(BASIC_AUTH.encode()).decode()
     if data is not None and who.csrf:
         headers["X-CSRF-Token"] = who.csrf
     request = urllib.request.Request(who.url + "/api/v1" + path, method="POST" if data is not None else "GET", data=data, headers=headers)
@@ -171,7 +177,10 @@ def main() -> int:
     parser.add_argument("--load", action="store_true", help="first register and score the world's snapshots from the artifact folder")
     parser.add_argument("--artifact-root", type=Path, default=None, help="default: the experiment's artifacts folder")
     parser.add_argument("--admin", default="Admin", help="the development-login user who registers and scores (admin role)")
+    parser.add_argument("--basic-auth", default=None, metavar="USER:PASSWORD", help="the shared login in front of the demonstration VM (RUNBOOK 8.7)")
     args = parser.parse_args()
+    global BASIC_AUTH
+    BASIC_AUTH = args.basic_auth
     admin = session(args.base_url, args.admin)
     if args.load:
         # only --load reads the artifact folder

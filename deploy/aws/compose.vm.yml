@@ -16,11 +16,16 @@ services:
   api:
     environment:
       UI_ORIGINS: https://${APP_HOST}
+      AUTH_DEV_ON_VM: "1"                        # AM-74; the base file's list of variables does not carry it
+      AUTH_DEV_USERS: ${AUTH_DEV_USERS:-}
     volumes:
       - /data/artifacts:/data/artifacts
     mem_limit: 600m
 
   worker:
+    environment:
+      AUTH_DEV_ON_VM: "1"
+      AUTH_DEV_USERS: ${AUTH_DEV_USERS:-}
     volumes:
       - /data/artifacts:/data/artifacts
     mem_limit: 900m
