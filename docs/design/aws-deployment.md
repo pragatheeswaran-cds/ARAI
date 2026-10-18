@@ -307,6 +307,7 @@ What exists, what remains, in order, with who does each step and how long it tak
 | Template validated locally; instance type t3.small (the only Free Tier eligible size that fits the credits) | `deploy/aws/stack.yaml` |
 | Repository changes for a public VM without Vercel and without Keycloak (AM-73, AM-74) | commits on `deploy-and-snapshots` |
 | Tests: Python suite, front-end 30 of 30, type check, ruff; the vm sign-in path end to end, 14 of 14 | RUNBOOK section 5 |
+| **19 Oct 2026: steps 1 to 8 of 7.2 done.** Stack `arai-demo` (instance `i-0d72a5fcfd56077c6`, t3.small); parameters; release; bring-up (two fixes on the way: httpx as a runtime dependency, AUTH_DEV_ON_VM passed to the containers); seed data 1.5 GB; W5401 and its eleven earlier snapshots registered and scored (284 selected of 5,676 eligible in September), the August outcomes recorded; OPS-AC-05 7 of 7 automated checks pass, two manual checks pending the owner | https://arai-demo.duckdns.org, `reports/ops-ac-05/2026-10-19/result.json`, acceptance register |
 
 ### 7.2 Remaining steps
 

@@ -16,9 +16,15 @@ $out = Join-Path $PSScriptRoot "..\reports\ops-ac-05\$day"
 New-Item -ItemType Directory -Force $out | Out-Null
 $checks = @()
 
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 function Head($url, $headers = @{}) {
-  try { $r = Invoke-WebRequest -Uri $url -Method Get -MaximumRedirection 0 -Headers $headers -UseBasicParsing; return @{ status = [int]$r.StatusCode; headers = $r.Headers; body = $r.Content } }
-  catch { $resp = $_.Exception.Response; if ($null -eq $resp) { throw }; return @{ status = [int]$resp.StatusCode; headers = @{ Location = $resp.Headers["Location"] }; body = "" } }
+  # a raw request: Windows PowerShell 5.1's Invoke-WebRequest throws on a redirect it may not follow and keeps no response
+  $req = [System.Net.HttpWebRequest]::Create($url); $req.Method = "GET"; $req.AllowAutoRedirect = $false; $req.Timeout = 20000
+  foreach ($k in $headers.Keys) { $req.Headers[$k] = $headers[$k] }
+  try { $resp = $req.GetResponse() } catch [System.Net.WebException] { $resp = $_.Exception.Response; if ($null -eq $resp) { throw } }
+  $body = ""; try { $body = (New-Object IO.StreamReader($resp.GetResponseStream())).ReadToEnd() } catch { }
+  $out = @{ status = [int]$resp.StatusCode; headers = @{ Location = $resp.Headers["Location"] }; body = $body }
+  $resp.Close(); return $out
 }
 
 # 1. HTTP redirects to HTTPS
