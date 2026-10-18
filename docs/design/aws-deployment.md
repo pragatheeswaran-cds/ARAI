@@ -1,0 +1,242 @@
+# Design: deploying ARAI on AWS (Phase 4)
+
+Status: **decided; building** (17 Oct 2026; decision row AM-72). The owner chose the variant of section 2.9 with a Vercel address on top (2.4) and a 20 USD budget. Built: `deploy/aws/*`, `vercel.json`, `scripts/ops_ac_05.ps1`, RUNBOOK section 8. Blocked on 17 Oct 2026 by the account's activation: EC2, S3, SSM and CloudFormation answered "not subscribed" for the account, while IAM and STS worked. Implements decision rows D-043 and D-044 (optional secured cloud VM) and runs
+acceptance criterion OPS-AC-05, which is still "not run" in the acceptance register. The owner's starting
+architecture: EC2 for the backend, RDS for PostgreSQL, S3 for model files, Vercel for the frontend. This document
+checks each of those against what the code assumes today, recommends a shape, and lists the steps and the decisions
+still open.
+
+AWS account 819717422656, region ap-south-1 (Mumbai), worked from the IAM user `arai-admin` through `aws login`.
+
+## 1. What the code assumes today
+
+Read from `docker-compose.yml`, `Dockerfile`, `deploy/Dockerfile.web`, `deploy/nginx.conf`, `src/arai/service/api.py`,
+`src/arai/service/config.py`, `src/arai/bundles.py` and `web/src/api.ts`.
+
+| Assumption | Where | Consequence for the plan |
+|---|---|---|
+| UI and API share one origin. The UI calls relative `/api/...` with `credentials: "same-origin"`; nginx proxies `/api/` to the API container | `web/src/api.ts:73`, `deploy/nginx.conf` | A frontend on another origin (Vercel) must proxy `/api` to the backend, or the session cookie, CSRF header and sign-in redirects stop working |
+| The session cookie is `SameSite=Lax`, `HttpOnly`, and `Secure` on the vm profile; state changes need the CSRF header; CORS allows credentials only for `UI_ORIGINS` | `api.py:393`, `api.py:253` | Works unchanged behind a same-origin proxy. Cross-site cookies would need `SameSite=None` and a code change; not planned |
+| The vm profile refuses to start without `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` and checks the shared login inside the app, not only at nginx | `api.py:234` | The shared login survives any proxy in front, including Vercel |
+| OIDC: issuer must be https, the callback is `OIDC_REDIRECT_URI` on the UI's origin, Keycloak is reached over the back channel | `config.py`, `.env.example` | Keycloak needs its own https hostname; the redirect URI is whatever host the browser uses for the UI |
+| API and worker share one local filesystem, `ARTIFACT_ROOT`: datasets uploaded through the API, model and baseline bundles, run outputs | `api.py:174-199,527-544`, `bundles.py` | API and worker must run on the same machine (or a shared volume). The runtime reads nothing from S3 |
+| Models are **skops** files, not pickles, in a bundle folder with `bundle.json`, `files.json` and SHA-256 of every file; `load_bundle` verifies them by path | `bundles.py:125-151,214-234` | S3 cannot be the runtime model store without an adapter. S3 is right for transfer and backup |
+| PostgreSQL through `DATABASE_URL` with psycopg 3; schema migrates at startup; one database per experiment | `pyproject.toml:14`, `api.py:240` | RDS PostgreSQL 16 works with no code change; add `?sslmode=require` |
+| Keycloak in Compose is `start-dev`, plain http, realm imported from `deploy/keycloak/arai-realm.json` with the client secret `arai-dev-secret` | `docker-compose.yml` | Production needs `start` mode, a database, an https hostname and a new client secret |
+| nginx listens on 80 only; the web container binds to loopback | `deploy/nginx.conf`, `docker-compose.yml` | TLS termination is new work: certificates and a 443 server block |
+| Uploads up to 500 MB, proxy read timeout 300 s | `deploy/nginx.conf` | Any proxy in front must allow this (Vercel does not, see 2.4) |
+| The experiment data (`data/EXP-20261005-04`) is not in git and is not on this machine; reproducing it takes about 40 minutes | RUNBOOK 1.3 | The server is seeded either by copying the folder through S3 or by running the offline pipeline on the server once |
+
+## 2. The proposed architecture, checked
+
+### 2.1 EC2 for the backend: yes
+
+One instance runs Docker Compose with nginx (TLS), the API, the worker and Keycloak. API and worker stay on the same
+box because they share the artifact root (section 1). Keycloak joins them because it needs an https hostname and a
+database anyway, and a second VM would double the cost for a demo.
+
+- Instance: **t3.large** (2 vCPU, 8 GB) in ap-south-1. 8 GB leaves room for Keycloak (about 1 GB), the API, and the
+  worker scoring a 2M-row dataset. t3.medium (4 GB) is the fallback if cost matters more than headroom. x86 is kept so
+  the model reproduction claim (RUNBOOK 1.3, "exactly") is not exposed to a different float path on Graviton.
+- Disk: root 20 GB plus a separate **50 GB gp3** volume mounted at `/data` for the artifact root, so the instance can be
+  rebuilt without touching the data.
+- Access: **no SSH port**. Administration through SSM Session Manager with an instance role; no key pair to lose.
+- Elastic IP so DNS stays stable across stop and start. The VM is stopped between demo sessions.
+- Stack as code: one CloudFormation template under `deploy/aws/` (VPC security groups, instance role, EC2, RDS, S3,
+  budget) so the environment can be torn down and rebuilt and the review can read what exists.
+
+### 2.2 RDS for PostgreSQL: yes, with a note on cost
+
+RDS PostgreSQL 16, **db.t4g.micro**, 20 GB gp3, single AZ, not publicly accessible, security group that accepts 5432
+only from the EC2 security group, `rds.force_ssl` left on, automated backups 7 days. Two databases on it: `arai` and
+`keycloak`.
+
+What it buys over the Compose `db` container: the data survives a VM rebuild, backups are automatic, and the public DB
+port check of OPS-AC-05 is satisfied by construction. What it costs: about 15 USD a month that the Compose container
+would not. The RDS Free Tier (750 hours of db.t4g.micro a month for 12 months, or the credit-based Free Tier for
+accounts opened after July 2025) may cover most of it in the first year. Recommendation: RDS, as proposed.
+
+### 2.3 S3 for model files: yes, as transfer and backup, not as the runtime store
+
+There are no pickle files. The promoted model is a skops bundle that the API and worker read from the artifact
+root by path and verify by SHA-256. Pointing the runtime at S3 means an adapter in `bundles.py`, the dataset
+registration and the run outputs, and a review of the verification path. That is a code project, not a deployment
+step, and it brings nothing for a single VM.
+
+S3 is still used, for three things:
+
+1. **Seeding the server**: the experiment folder (worlds, bundles, published report) is uploaded once from the machine
+   that holds it and synced down to `/data` on the VM. The private truth folder is never uploaded.
+2. **Backup**: a nightly `aws s3 sync` of `/data/artifacts` to the bucket, and a weekly RDS snapshot export is not
+   needed because RDS keeps 7 days of automated backups.
+3. **Evidence**: screenshots and logs of the OPS-AC-05 run, referenced from the acceptance register.
+
+Bucket `arai-819717422656-ap-south-1`, private, Block Public Access on, SSE-S3, versioning on, lifecycle that
+expires noncurrent versions after 30 days. The EC2 instance role is the only principal with object access besides
+`arai-admin`.
+
+### 2.4 Vercel for the frontend: possible, with two real costs; nginx on the VM is the safer default
+
+The UI is a static Vite build that must sit on the same origin as `/api`. On Vercel that is done with a rewrite in
+`vercel.json`:
+
+```json
+{ "rewrites": [ { "source": "/api/:path*", "destination": "https://arai.<domain>/api/:path*" } ] }
+```
+
+Browser to Vercel to the VM. Cookies are set for the Vercel origin, the CSRF header passes through, the Basic login
+prompt passes through, and the OIDC callback becomes `https://<vercel-host>/api/v1/auth/callback`, registered on the
+Keycloak client, with `UI_ORIGINS` set to the Vercel host. No code change in `web/`.
+
+Two consequences follow from Vercel's own limits, documented at
+[vercel.com/docs/limits/overview](https://vercel.com/docs/limits/overview) (proxied request timeout, 30 seconds on
+every plan, returning `ROUTER_EXTERNAL_TARGET_ERROR`):
+
+1. **Dataset uploads through the UI will fail.** A 500 MB upload with file hashing on the server does not finish in
+   30 seconds, and the limit cannot be raised. Workaround: register datasets from the VM itself with the CLI
+   (`arai` has a register command that reads a directory, `cli.py:406`) or with a bearer token straight to
+   `https://arai.<domain>`. Scoring runs are asynchronous and polled, so they are unaffected.
+2. **The IP allowlist of D-044 cannot be enforced at the VM for UI traffic**, because requests arrive from Vercel's
+   edge, whose addresses are not fixed. Either the allowlist moves to Vercel (Deployment Protection, Pro plan), or
+   the owner amends D-044 to "TLS + shared login + single sign-on" for the Vercel path and the allowlist stays only
+   on the VM's own hostname. This is a decision for the owner and should be written into DECISIONS.md either way.
+
+The alternative is what the repository already builds: `deploy/Dockerfile.web` serves the UI from nginx on the VM.
+Zero changes, uploads work, the allowlist works, one hostname, and OPS-AC-05 runs exactly as written.
+
+**Recommendation.** Serve the UI from nginx on the VM for OPS-AC-05 and for anyone who uploads data. If a Vercel
+address is wanted for the demo (a nicer URL, previews per branch), add it as a second origin on top of the same
+backend: it costs one `vercel.json` and one extra redirect URI on the Keycloak client, and the two caveats above apply
+to that address only. Both can run at once.
+
+### 2.5 DNS and TLS
+
+A hostname is required, because Let's Encrypt and Keycloak both need one. Three options, in order of preference:
+
+1. A domain the owner buys or owns, hosted in **Route 53** (about 0.50 USD a month for the zone; a `.com` registration
+   is about 14 USD a year). Certificates by certbot with the Route 53 DNS-01 plugin, so port 80 need not be open to
+   the world and the allowlist stays strict. Hostnames `arai.<domain>` (UI and API) and `auth.<domain>` (Keycloak).
+2. A free dynamic DNS name (DuckDNS). Certificates by HTTP-01, which needs port 80 open to everyone for the challenge;
+   nginx serves only the redirect and `/.well-known/` there. Two names are needed, so two DuckDNS hosts.
+3. Self-signed certificates. Browsers warn, Keycloak's issuer check works only after importing the CA into the API
+   container, and the demo looks unfinished. Not recommended.
+
+### 2.6 Network and security groups
+
+- `sg-web`: 443 from the allowlisted IPs (and, under option 2 of 2.5, 80 from anywhere). Nothing else inbound.
+- `sg-db`: 5432 from `sg-web` only. The RDS instance is not publicly accessible.
+- Outbound from the VM: 443 to anywhere (Let's Encrypt, Docker Hub, the Anthropic API if memos are enabled, S3).
+- Instance role: `AmazonSSMManagedInstanceCore` plus read and write on the one bucket. No access keys on the VM.
+- Secrets (`POSTGRES` passwords, `BASIC_AUTH_PASSWORD`, `OIDC_CLIENT_SECRET`, optional `ANTHROPIC_API_KEY`) live in
+  SSM Parameter Store as SecureString and are rendered into `/opt/arai/.env` (mode 600) by the bring-up script.
+
+### 2.7 Keycloak in production mode
+
+`quay.io/keycloak/keycloak:26` with `start` (not `start-dev`): `KC_DB=postgres` on the RDS `keycloak` database,
+`KC_HOSTNAME=https://auth.<domain>`, `KC_HTTP_ENABLED=true` and `KC_PROXY_HEADERS=xforwarded` behind nginx. The realm
+export is imported once with `--import-realm`, then: new client secret for `arai`, redirect URIs set to the real
+callback addresses, the four groups kept, real people created with temporary passwords and a required password
+change, the test users of the development realm deleted. The bootstrap admin password is rotated after first login.
+
+### 2.8 Monthly cost, approximate, ap-south-1 on-demand
+
+| Item | Running 24/7 | VM stopped between sessions |
+|---|---|---|
+| EC2 t3.large | about 68 USD | 0 |
+| EBS 70 GB gp3 | about 6 USD | about 6 USD |
+| Public IPv4 (Elastic IP) | about 4 USD | about 4 USD |
+| RDS db.t4g.micro + 20 GB | about 17 USD | about 17 USD (or stop it too, up to 7 days at a time) |
+| Route 53 zone | 0.50 USD | 0.50 USD |
+| S3, Parameter Store, data transfer | under 2 USD | under 2 USD |
+| Vercel | Hobby free for non-commercial use, otherwise Pro 20 USD per member | same |
+| **Total** | **about 95 USD** | **about 30 USD** |
+
+Prices are to be confirmed with the pricing API before launch; Free Tier credits for a new account reduce the first
+months. A budget alert at the chosen monthly amount is created first, before any resource.
+
+### 2.9 The cost-effective variant (recommended for a demo on the Free plan)
+
+Checked on 17 Oct 2026 with the Free Tier API: the account is on the **Free account plan**, status not started, with
+**100 USD of credits expiring 17 Apr 2027**, and five one-time activities worth 20 USD each (launch an EC2 instance,
+set up a cost budget, create an RDS or Aurora database, use a Bedrock playground model, create a Lambda web app). A
+Free plan account cannot be billed beyond its credits: when they run out or the plan expires, services stop, and the
+account must be upgraded to a paid plan to continue. The 12-month legacy Free Tier does not apply to this account.
+
+The variant keeps the architecture of 2.1 to 2.7 but removes what costs money without changing the demo:
+
+| Change from the base plan | Saves (per month) | Trade-off |
+|---|---|---|
+| PostgreSQL as the Compose `db` container on the VM's data volume instead of RDS; nightly `pg_dump` to S3 | about 17 USD | the database dies with the VM unless restored from the dump (a few MB: runs, reviews, sign-in log) |
+| t3.medium (2 vCPU, 4 GB) with 2 GB swap and Keycloak's heap capped at 512 MB, instead of t3.large | about 34 USD when running | less headroom while the worker scores a 2M-row dataset; fall back to t3.large if scoring pages |
+| VM stopped outside demo sessions, started by one command | most of the compute cost | a 2 minute start before each session |
+| No Elastic IP; a boot script updates the DNS name with the instance's current public address | about 4 USD when stopped | none visible to users |
+| DuckDNS names instead of a bought domain and Route 53 | 0.50 USD plus 14 USD a year | port 80 open to everyone for certificate renewal (redirect and ACME only); Route 53 domain purchase may not be allowed on the Free plan |
+| UI from nginx on the VM; no Vercel | nothing in money | one URL, uploads and allowlist work (see 2.4) |
+
+Resulting cost, approximate, ap-south-1 on-demand:
+
+| Mode | EC2 t3.medium | EBS 40 GB gp3 | Public IPv4 | S3, Parameter Store | Total |
+|---|---|---|---|---|---|
+| Running 24/7 | about 33 USD | about 4 USD | about 4 USD | under 1 USD | **about 41 USD** |
+| Up about 60 hours a month | about 3 USD | about 4 USD | under 1 USD | under 1 USD | **about 8 USD** |
+
+The 100 USD of credits cover two and a half months always-on, or the whole six months of the plan if the VM runs only
+during sessions. Three of the five activities happen anyway (EC2, budget) or are cheap (an RDS database can be created
+for the credit and deleted the same hour); they add up to 60 USD. The other two take minutes in the console.
+
+## 3. Repository changes
+
+Small, and all under `deploy/` and `docs/` except one new script:
+
+1. `deploy/aws/stack.yaml`: CloudFormation for security groups, instance role, EC2 with the data volume and Elastic IP,
+   RDS, S3 bucket, budget. Parameters: allowlist CIDRs, instance type, hostnames.
+2. `deploy/aws/bringup.sh`: run on the VM through SSM: install Docker, mount `/data`, fetch secrets from Parameter
+   Store into `.env`, obtain certificates, `docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml up -d`.
+3. `deploy/aws/compose.vm.yml`: override that removes the `db` service, sets `DATABASE_URL` to RDS with
+   `sslmode=require`, runs Keycloak in production mode, mounts `/data/artifacts`, and binds nginx to 80 and 443.
+4. `deploy/nginx.vm.conf`: 80 to 443 redirect (and the ACME location under option 2), the 443 server for
+   `arai.<domain>` with the existing `/api/` and static locations, the 443 server for `auth.<domain>` to Keycloak,
+   security headers, `proxy_set_header X-Forwarded-*`.
+5. `vercel.json` at the repository root, only if the Vercel address is wanted: the rewrite above, root directory
+   `web`, build `npm ci && npm run build`, output `dist`. The build reads `../final-spec/contracts/openapi.yaml`, so
+   the Vercel project root must be the repository, not `web/`.
+6. `scripts/ops_ac_05.ps1`: the smoke checks of OPS-AC-05 as a script that writes its evidence: HTTP redirects to HTTPS;
+   an unauthenticated request gets 401; a request from a non-allowlisted address times out (run from a Cloud Shell or a
+   phone hotspot); the RDS endpoint does not answer from outside; Keycloak sign-in as a viewer succeeds; a viewer is
+   refused a reviewer action with 403; a session expires after `SESSION_IDLE_MINUTES`.
+7. Docs: RUNBOOK section 8 "AWS deployment: start, stop, rebuild"; DECISIONS.md row for this design and, if chosen,
+   the D-044 amendment for the Vercel path; `acceptance-register.csv` row OPS-AC-05 with the evidence paths.
+
+Nothing changes under `src/` or `web/src/`.
+
+## 4. Steps, in order
+
+| Step | What | Who | Needs |
+|---|---|---|---|
+| 4.0 | MFA on root and `arai-admin`; budget alert | owner (MFA), Claude (budget) | the monthly amount |
+| 4.1 | S3 bucket, Parameter Store secrets, instance role, security groups, RDS, EC2 with Elastic IP (CloudFormation) | Claude | allowlist IPs, instance size |
+| 4.2 | DNS records for `arai.` and `auth.` pointing at the Elastic IP | owner or Claude (if the zone is in Route 53) | the hostname decision |
+| 4.3 | Bring-up on the VM through SSM: Docker, data volume, certificates, Compose stack with Keycloak in production mode | Claude | 4.1 and 4.2 |
+| 4.4 | Seed the data: upload the experiment folder to S3 from the machine that holds it, sync to `/data` on the VM; or run the offline pipeline on the VM (about 40 minutes) | owner (upload) then Claude | location of `data/EXP-20261005-04` |
+| 4.5 | Keycloak: realm import, new client secret, redirect URIs, real users in their groups, delete test users | Claude, owner sets own password | the user list |
+| 4.6 | Optional: Vercel project with the rewrite; add its callback to the Keycloak client and `UI_ORIGINS` | owner creates the Vercel project, Claude the config | the Vercel decision |
+| 4.7 | OPS-AC-05 smoke checks, evidence to S3 and `reports/ops-ac-05/`, acceptance register, RUNBOOK section 8, DECISIONS row | Claude | 4.3 to 4.5 |
+| 4.8 | AMI snapshot of the finished VM; stop the VM until the next session | Claude | 4.7 |
+
+Steps 4.0 and 4.1 can start as soon as the allowlist, the instance size and the budget amount are known. 4.2 and
+everything after it wait for the hostname.
+
+## 5. Decisions still open for the owner
+
+1. **Hostname**: a domain in Route 53 (recommended), DuckDNS, or self-signed.
+2. **Allowlist**: the public IPv4 addresses of every team member and judge, and whether any change daily.
+3. **Instance size and schedule**: t3.large stopped between sessions (recommended), or another size; the dates the VM
+   must be up.
+4. **Memos**: unavailable on the VM as the vm profile intends (recommended for the demo, no key on the server), or the
+   Anthropic API key in Parameter Store for the worker.
+5. **Keycloak users**: name, e-mail and group for each person; at least one admin e-mail for `ARAI_BOOTSTRAP_ADMINS`.
+6. **Frontend**: nginx on the VM only (recommended for OPS-AC-05), or nginx plus a Vercel address with the two caveats
+   of 2.4, which also needs the D-044 amendment.
+7. **Budget**: the monthly amount for the alert.
+8. **Where the experiment data is**: the folder is not on this machine; the server is seeded from wherever it is, or
+   regenerated on the server.

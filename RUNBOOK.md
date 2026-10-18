@@ -721,3 +721,130 @@ uv run --no-sync python scripts\package_experiment_data.py --experiment EXP-2026
 
 The exploration scripts of experiment 4 (`scripts\exploration\`) are explained, with their commands, in
 `docs\experiment-4-verification-guide.md`.
+
+## 8. AWS demonstration VM (Phase 4)
+
+Design and decisions: `docs/design/aws-deployment.md` (section 2.9 is the variant that is built; decision row AM-72).
+Account 819717422656, region ap-south-1, worked from the IAM user `arai-admin` through `aws login` (never root).
+Claude Code runs the same steps through the AWS MCP tools; the commands are here so a person can do it by hand.
+
+### 8.1 What exists
+
+| Piece | Where | Made by |
+|---|---|---|
+| EC2 instance `arai-demo` (t3.medium, Ubuntu 24.04, 16 GB root, 30 GB `/data` volume, no SSH, SSM only) | CloudFormation stack `arai-demo` | `deploy/aws/stack.yaml` |
+| S3 bucket `arai-819717422656-ap-south-1` (release, seed data, backups, evidence) | same stack | same |
+| Instance role `arai-demo-instance` (SSM, that bucket, `/arai/*` parameters); security group `arai-demo-web` (80, 443) | same stack | same |
+| Budget `arai-monthly`, 20 USD, e-mail at 50 and 80 percent actual and 100 percent forecast | AWS Budgets | created directly with the Budgets API on 17 Oct 2026 |
+| Configuration and secrets | Parameter Store `/arai/config/*` and `/arai/secret/*` | section 8.2 |
+| On the VM: Compose stack (nginx with TLS, api, api_vercel, worker, db, keycloak), DuckDNS timer, certificate renewal, nightly backup | `/opt/arai` | `deploy/aws/bringup.sh` |
+
+Hostnames (DuckDNS, free): `APP_HOST` is the UI and API for the allowlist, `API_HOST` is API only and the upstream of
+the Vercel rewrite, `AUTH_HOST` is Keycloak. One API process holds one sign-in callback, so `api` serves `APP_HOST`
+and `api_vercel` serves the Vercel address; both share the database, the artifact root and the one worker.
+
+### 8.2 Parameter Store
+
+`/arai/config/<NAME>` (String) and `/arai/secret/<NAME>` (SecureString). `bringup.sh` turns each into a shell variable.
+A value that must be empty is written as `-`.
+
+| Name | Kind | Meaning |
+|---|---|---|
+| APP_HOST, API_HOST, AUTH_HOST | config | the three DuckDNS names, e.g. `arai-demo.duckdns.org` |
+| VERCEL_HOST | config | the Vercel address of the UI, e.g. `arai.vercel.app`, once the Vercel project exists |
+| DUCKDNS_DOMAINS | config | the three subdomains without `.duckdns.org`, comma separated |
+| LE_EMAIL | config | Let's Encrypt expiry notices |
+| ALLOWLIST | config | public IPv4 addresses or CIDRs allowed at `APP_HOST`, comma separated (D-044) |
+| BOOTSTRAP_ADMINS | config | e-mail(s) that are admin without a Keycloak group (`ARAI_BOOTSTRAP_ADMINS`) |
+| USERS | config | the people, `username,email,First,Last,group[;group]` records separated by a vertical bar (section 8.5) |
+| POSTGRES_PASSWORD, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD, OIDC_CLIENT_SECRET, KEYCLOAK_ADMIN_PASSWORD | secret | generated once at setup |
+| DUCKDNS_TOKEN | secret | from duckdns.org after signing in |
+| ANTHROPIC_API_KEY | secret | optional; without it every memo is unavailable by design |
+
+```powershell
+aws ssm put-parameter --name /arai/config/ALLOWLIST --type String --overwrite --value "203.0.113.7,198.51.100.0/24"
+aws ssm put-parameter --name /arai/secret/DUCKDNS_TOKEN --type SecureString --overwrite --value "<token>"
+```
+
+### 8.3 Create or update the stack, publish a release, bring the VM up
+
+```powershell
+# 1. the stack (once; the same command changes a parameter later)
+$vpc = aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query "Vpcs[0].VpcId" --output text
+$subnet = aws ec2 describe-subnets --filters Name=vpc-id,Values=$vpc Name=map-public-ip-on-launch,Values=true --query "Subnets[0].SubnetId" --output text
+aws cloudformation deploy --stack-name arai-demo --template-file deploy\aws\stack.yaml --capabilities CAPABILITY_NAMED_IAM --parameter-overrides VpcId=$vpc SubnetId=$subnet
+aws cloudformation describe-stacks --stack-name arai-demo --query "Stacks[0].Outputs" --output table
+
+# 2. the release: an archive of the committed tree (the VM never needs GitHub credentials)
+git archive --format=tar.gz -o $env:TEMP\arai.tar.gz HEAD
+aws s3 cp $env:TEMP\arai.tar.gz s3://arai-819717422656-ap-south-1/release/arai.tar.gz
+
+# 3. bring-up on the VM (idempotent: re-run after any release or parameter change)
+$id = aws cloudformation describe-stacks --stack-name arai-demo --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text
+aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai bringup" --parameters file://deploy\aws\bringup-command.json --query Command.CommandId --output text
+# follow it: aws ssm get-command-invocation --command-id <id> --instance-id $id ; or open a shell (Session Manager plugin):
+aws ssm start-session --target $id
+sudo tail -f /var/log/arai-bringup.log
+```
+
+The first bring-up waits until `APP_HOST` resolves to the instance (the DuckDNS timer runs first), obtains one
+certificate for the three names, starts the stack and runs `deploy/aws/keycloak-setup.sh`.
+
+### 8.4 Seed the experiment data
+
+The VM needs `data/EXP-20261005-04/artifacts` (worlds, bundles, published experiment), never `private/`:
+
+```powershell
+aws s3 sync data\EXP-20261005-04\artifacts s3://arai-819717422656-ap-south-1/seed/artifacts --exclude "datasets/*"
+# then on the VM (SSM shell):
+sudo aws s3 sync s3://arai-819717422656-ap-south-1/seed/artifacts /data/artifacts
+sudo chown -R 1000:1000 /data/artifacts
+cd /opt/arai/app; sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml --profile sso restart api api_vercel worker
+```
+
+Without the folder the instance runs in baseline fallback (section 2.2). Alternatively reproduce it on the VM with the
+offline pipeline of `README.md` (about 40 minutes on a laptop, longer on a t3.medium).
+
+### 8.5 People
+
+`USERS` is read by `keycloak-setup.sh` at every bring-up. New people get a temporary password written to
+`/opt/arai/users-initial-passwords.txt` on the VM (root only; read it over SSM and pass each password on privately);
+Keycloak forces a change at first sign-in. Groups: `arai-viewers`, `arai-reviewers`, `arai-approvers`, `arai-admins`.
+The six development users of `deploy/keycloak/arai-realm.json` are removed unless they appear in `USERS`.
+
+```powershell
+aws ssm put-parameter --name /arai/config/USERS --type String --overwrite --value "asha,asha@example.org,Asha,Rao,arai-reviewers;arai-approvers|you,you@example.org,Your,Name,arai-admins"
+```
+
+### 8.6 Start, stop, backups, restore
+
+```powershell
+aws ec2 stop-instances --instance-ids $id      # between sessions; the volumes and the parameters are all that costs
+aws ec2 start-instances --instance-ids $id     # DuckDNS gets the new address within 30 s; the containers restart themselves
+```
+
+Backups: `/etc/cron.d/arai-backup` runs `deploy/aws/backup.sh` at 02:30 UTC: a dump of `arai` and `keycloak` to
+`s3://.../backup/db/` and a sync of `/data/artifacts` to `s3://.../backup/artifacts/`. Restore a database on a fresh
+VM after bring-up: `zcat arai-<stamp>.sql.gz | docker compose ... exec -T db psql -U arai arai`.
+
+### 8.7 Vercel
+
+Import the GitHub repository as a Vercel project with the repository root as the project root; `vercel.json` sets the
+install and build commands, the output folder `web/dist`, the rewrite of `/api/*` to `https://API_HOST/api/*` and the
+single-page fallback. Then set `/arai/config/VERCEL_HOST` to the Vercel address and re-run bring-up: `api_vercel` gets
+its callback and origin, and the Keycloak client its second redirect URI. Vercel ends proxied requests after 30
+seconds, so dataset uploads are done at `APP_HOST`, not at the Vercel address; everything else behaves the same.
+
+### 8.8 OPS-AC-05
+
+From an allowlisted machine, `.\scripts\ops_ac_05.ps1` with the three hostnames and the shared login writes
+`reports\ops-ac-05\<date>\result.json`. Three checks are manual and listed in the result: the 403 from a
+non-allowlisted address, a sign-in followed by a role refusal, the idle session expiry. Record the outcome and the
+evidence path in `final-spec/acceptance-register.csv`.
+
+### 8.9 Rebuild or tear down
+
+Deleting the stack keeps the bucket (Retain) and snapshots the data volume (Snapshot); a new `aws cloudformation deploy`
+with the same parameters and a bring-up restores the dump and syncs the artifacts back. Tear down for good:
+`aws cloudformation delete-stack --stack-name arai-demo`, then empty and delete the bucket by hand and delete the
+`/arai` parameters.
