@@ -101,6 +101,7 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Both for a demonstration | terminal 1 `uv run arai baseline-rehearsal`, terminal 2 `uv run arai local` | 2.3 |
 | Docker Compose up, status, logs | `docker compose up --build -d`; `docker compose ps`; `docker compose logs -f worker` | 3 |
 | API and worker against your own PostgreSQL, without Docker | `uv run arai db-migrate`; `uv run arai serve`; `uv run arai worker` (with `DATABASE_URL`) | 3.1 |
+| API and worker against Supabase Postgres (database `arai_local_db`) | `$env:DATABASE_URL` from `.env`, then the three commands of 3.1 | 3.2 |
 | Docker Compose down, keep or drop the database | `docker compose down`; `docker compose down -v` | 3 |
 | **Clean up** | | |
 | Look before cleaning | `uv run arai db-clean --all --dry-run` | 2.4 |
@@ -571,6 +572,42 @@ uv run arai worker                      # the single scoring worker (terminal 2)
 `deploy\nginx.conf` does), or use `npm run dev` (section 1.2). On a shared server set `APP_PROFILE=vm`, the
 `BASIC_AUTH_*` settings and single sign-on (section 2.6).
 
+### 3.2 API and worker against Supabase Postgres (no Docker)
+
+Section 3.1 with the database on Supabase instead of a server of your own. ARAI gets a database of its own on the
+project, `arai_local_db`, so it never touches the project's `postgres` database or the tables other applications
+keep there. The `postgres` role of a Supabase project may create databases. Done once on 18 October 2026 for
+project `ndrkejdmaiisdtttsdky`; a new project needs steps 1 and 2 again.
+
+Supabase offers two connection strings (Dashboard, Project Settings, Database). Use the **direct** one,
+`db.<project-ref>.supabase.co:5432`: the **pooler** (`*.pooler.supabase.com`) only serves the `postgres`
+database, not `arai_local_db`. The direct host resolves to an IPv6 address only; from a network without IPv6
+(an AWS VM by default) enable the project's IPv4 add-on, or keep ARAI's tables in the `postgres` database and
+use the pooler.
+
+```powershell
+# 1. once per project: create the database (no psql needed; the environment has psycopg)
+$env:DATABASE_URL = "postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require"
+uv run python -c "import os,psycopg; c=psycopg.connect(os.environ['DATABASE_URL'], autocommit=True); c.execute('create database arai_local_db'); print('created')"
+
+# 2. once per machine: put the string in .env (gitignored; never commit it), pointing at the new database.
+#    URL-encode special characters in the password: $ is %24, @ is %40, # is %23, ! may stay.
+#    DATABASE_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/arai_local_db?sslmode=require
+
+# 3. every terminal: the commands read the environment, not .env, so export it first
+$env:DATABASE_URL = (Get-Content .env | Where-Object { $_ -like 'DATABASE_URL=*' }) -replace '^DATABASE_URL=', ''
+
+# 4. as in 3.1
+uv run arai db-migrate                  # first time: applied: ['0001_initial', ... '0013_single_sign_on']; later: nothing new
+uv run arai serve --port 8000           # terminal 1; --with-worker also runs the worker in it
+uv run arai worker                      # terminal 2
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/health   # alive, scoring_ready and promoted_model_ready: True
+```
+
+Stop with Ctrl+C in each terminal; there is no embedded PostgreSQL to stop. If a terminal is gone, stop the server
+by port with the first two lines of section 2.1 and skip the `pg_ctl` line. Runs, results and notes live on
+Supabase; `arai db-clean` works against it through the same `DATABASE_URL`.
+
 ---
 
 ## 4. Load and score the demonstration world
@@ -776,6 +813,8 @@ or 5301-5305, and never a world of an earlier experiment (the command refuses th
 | Evaluation page is empty after `arai publish` | the report is loaded into the database when the worker starts | restart (local), or `docker compose restart worker` |
 | `web/dist is missing` at start | UI not built | `cd web; npm install; npm run build` |
 | Docker: `POSTGRES_PASSWORD is missing a value` | no `.env` | copy `.env.example` to `.env` and set it |
+| `DATABASE_URL is not set` from `arai db-migrate`, `serve` or `worker` | the commands read the environment, not `.env` | export it first (section 3.2, step 3) |
+| Supabase: `could not translate host name` or a connection timeout to `db.<project-ref>.supabase.co` | the direct host is IPv6 only and this network has no IPv6 | the IPv4 add-on, or the pooler with the `postgres` database (section 3.2) |
 | Walkthrough or fallback check fails on "msedge" | Microsoft Edge not installed | install Edge, or set `ARAI_BROWSER` to a Chromium executable (both scripts read it) |
 
 Server logs are in the terminal where `arai local` or `arai baseline-rehearsal` runs (or `docker compose logs api worker`). Every error the
