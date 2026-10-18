@@ -88,7 +88,9 @@ Resources:
               - Sid: Parameters
                 Effect: Allow
                 Action: [ssm:GetParameter, ssm:GetParameters, ssm:GetParametersByPath]
-                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/arai/*
+                Resource:                                      # the path itself (GetParametersByPath --path /arai) and what is under it
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/arai
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/arai/*
       Tags:
         - { Key: project, Value: ARAI }
 
