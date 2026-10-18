@@ -1,6 +1,6 @@
 # Design: deploying ARAI on AWS (Phase 4)
 
-Status: **decided; building** (17 Oct 2026; decision row AM-72). The owner chose the variant of section 2.9 with a Vercel address on top (2.4) and a 20 USD budget. Built: `deploy/aws/*`, `vercel.json`, `scripts/ops_ac_05.ps1`, RUNBOOK section 8. Blocked on 17 Oct 2026 by the account's activation: EC2, S3, SSM and CloudFormation answered "not subscribed" for the account, while IAM and STS worked. Implements decision rows D-043 and D-044 (optional secured cloud VM) and runs
+Status: **decided; building** (17 Oct 2026, decision row AM-72; amended 18 Oct 2026, AM-73, section 6). The owner chose the variant of section 2.9 with a Vercel address on top (2.4) and a 20 USD budget. Built: `deploy/aws/*`, `vercel.json`, `scripts/ops_ac_05.ps1`, RUNBOOK section 8. Blocked on 17 Oct 2026 by the account's activation: EC2, S3, SSM and CloudFormation answered "not subscribed" for the account, while IAM and STS worked. Implements decision rows D-043 and D-044 (optional secured cloud VM) and runs
 acceptance criterion OPS-AC-05, which is still "not run" in the acceptance register. The owner's starting
 architecture: EC2 for the backend, RDS for PostgreSQL, S3 for model files, Vercel for the frontend. This document
 checks each of those against what the code assumes today, recommends a shape, and lists the steps and the decisions
@@ -240,3 +240,38 @@ everything after it wait for the hostname.
 7. **Budget**: the monthly amount for the alert.
 8. **Where the experiment data is**: the folder is not on this machine; the server is seeded from wherever it is, or
    regenerated on the server.
+
+## 6. Amendments of 18 October 2026 (AM-73)
+
+The account was activated on 18 October 2026 (Free plan, 120 USD of credits after the budget activity, expiring
+18 April 2027). The owner then set two requirements that change section 2.9: the URL must be reachable by anyone,
+and it must stay up continuously for at least three months, after which the VM may be stopped between sessions.
+
+**Public access, no allowlist.** The IP allowlist of D-044 cannot apply to an audience that is not known in advance.
+D-044 is amended for the whole deployment, not only the Vercel path: access control is TLS, the shared login checked
+inside the API (`APP_PROFILE=vm` refuses to start without it), Keycloak sign-in for every action, nginx request limits
+(10 sign-in requests a minute and 20 API requests a second per address, 20 connections per address), security
+headers, and no public Keycloak admin console (`/admin` answers 404; administration is `kcadm.sh` inside the container
+over SSM). The security group was already 80 and 443 from anywhere; the allowlist lived only in nginx and is removed
+there. OPS-AC-05 loses the "non-allowlisted address is blocked" check and gains "admin console hidden" and "sign-in
+rate limited".
+
+**No Vercel.** With a public hostname on the VM the Vercel address adds nothing and costs a second API process. The
+`api_vercel` service, `API_HOST`, `VERCEL_HOST` and `vercel.json` are removed; two hostnames remain, `APP_HOST` and
+`AUTH_HOST`.
+
+**Database: PostgreSQL on the VM, not RDS and not Supabase.** Supabase was tried on 18 October (project
+`ndrkejdmaiisdtttsdky`, database `arai_local_db`, works from the laptop; RUNBOOK 3.2) and dropped for the VM: its
+direct host is IPv6-only, the free Supabase plan cannot buy the IPv4 add-on, and its pooler serves only the `postgres`
+database. RDS was then priced with the pricing API (db.t4g.micro 0.021 USD an hour plus 0.131 USD per GB-month in
+ap-south-1, about 18 USD a month) and dropped for cost: three always-on months with RDS cost about 258 USD over the
+six months, against 160 USD of credits; with PostgreSQL on the VM they cost about 150 USD. The nightly `pg_dump` to S3
+remains the recovery path.
+
+**Schedule and budget.** Always on from bring-up to about 18 January 2027 (about 42 USD a month: t3.medium 0.0448 USD
+an hour, 46 GB gp3, one public IPv4 address at 0.005 USD an hour), then stopped between sessions (about 8 USD a
+month). The budget alert is raised from 20 to 45 USD a month so it fires only on a real overrun. The two remaining
+Free Tier activities (Bedrock playground, Lambda web app) are worth 40 USD more and are done from the console.
+
+**Still open at the time of writing.** The DuckDNS names and token, and the Keycloak user list with at least one
+admin e-mail. Memos stay unavailable on the VM (no key on the server). Section 5 is otherwise closed.

@@ -16,9 +16,12 @@ Parameters:
     AllowedValues: [t3.small, t3.medium, t3.large]
     Description: t3.medium for bring-up; t3.small once real memory use is known; t3.large if scoring pages.
   ImageId:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
-    Description: Ubuntu 24.04 LTS, resolved from Canonical's public parameter at deploy time.
+    Type: AWS::EC2::Image::Id
+    Default: ami-094adff9b24048c5c
+    Description: >-
+      Ubuntu 24.04 LTS amd64 gp3 in ap-south-1 (Canonical, ubuntu-noble-24.04-amd64-server-20261017). Canonical's
+      public SSM parameter is not visible from this account, so the id is pinned here; newest at any time with
+      aws ec2 describe-images --owners 099720109477 --filters "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
   DataVolumeSizeGiB:
     Type: Number
     Default: 30
@@ -96,14 +99,14 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: arai-demo-web
-      # 80 and 443 from anywhere: 80 serves only the certificate challenge and the redirect; on 443 nginx enforces the
-      # IP allowlist for the UI hostname, while the Vercel upstream and Keycloak hostnames rely on the shared login, the
-      # sign-in and Keycloak's own login (D-044 as amended for the Vercel address). No SSH: SSM only.
-      GroupDescription: ARAI demo VM - 80 and 443 from anywhere, allowlist enforced by nginx, no SSH (SSM only)
+      # 80 and 443 from anywhere: 80 serves only the certificate challenge and the redirect; 443 is the public UI, API
+      # and Keycloak behind TLS, the shared login, the sign-in and nginx request limits (D-044 as amended, AM-73).
+      # No SSH: SSM only.
+      GroupDescription: ARAI demo VM - 80 and 443 from anywhere, no SSH (SSM only)
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0, Description: ACME challenge and redirect }
-        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: TLS (allowlist in nginx) }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: "TLS, public" }
       SecurityGroupEgress:
         - { IpProtocol: "-1", CidrIp: 0.0.0.0/0, Description: outbound }
       Tags:
@@ -179,8 +182,9 @@ Resources:
       VolumeId: !Ref DataVolume
       Device: /dev/sdf
 
-  # The 20 USD monthly budget "arai-monthly" was created directly with the Budgets API on 17 Oct 2026 (RUNBOOK 8.1),
-  # before the account was activated for the other services, so it is not part of this stack.
+  # The monthly budget "arai-monthly" (20 USD on 17 Oct 2026, 45 USD since 18 Oct 2026 for the three always-on months)
+  # was created directly with the Budgets API before the account was activated for the other services, so it is not
+  # part of this stack.
 
 Outputs:
   InstanceId:

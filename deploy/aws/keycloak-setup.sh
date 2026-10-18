@@ -1,6 +1,6 @@
 #!/bin/bash
 # Turn the imported development realm (deploy/keycloak/arai-realm.json) into the demonstration realm. Idempotent.
-# Called by bringup.sh with APP_DIR, APP_HOST, VERCEL_HOST, OIDC_CLIENT_SECRET, KEYCLOAK_ADMIN_PASSWORD and USERS set.
+# Called by bringup.sh with APP_DIR, APP_HOST, OIDC_CLIENT_SECRET, KEYCLOAK_ADMIN_PASSWORD and USERS set.
 # USERS: records separated by "|", fields by ",": username,email,First name,Last name,group[;group]
 #   e.g. "asha,asha@example.org,Asha,Rao,arai-reviewers;arai-approvers|admin,you@example.org,Your,Name,arai-admins"
 # New people get a temporary password, written once to /opt/arai/users-initial-passwords.txt (root only); Keycloak asks
@@ -14,13 +14,13 @@ for i in $(seq 1 60); do
   sleep 5
 done
 
-# The client: real secret, the two callbacks (one per API process), the two browser origins.
+# The client: real secret, the callback and the browser origin of the one UI hostname.
 CID=$($KC get clients -r arai -q clientId=arai --fields id --format csv --noquotes | tail -1)
 $KC update "clients/$CID" -r arai \
   -s "secret=$OIDC_CLIENT_SECRET" \
   -s "rootUrl=https://$APP_HOST" -s "baseUrl=https://$APP_HOST" \
-  -s "redirectUris=[\"https://$APP_HOST/api/v1/auth/callback\",\"https://$VERCEL_HOST/api/v1/auth/callback\"]" \
-  -s "webOrigins=[\"https://$APP_HOST\",\"https://$VERCEL_HOST\"]"
+  -s "redirectUris=[\"https://$APP_HOST/api/v1/auth/callback\"]" \
+  -s "webOrigins=[\"https://$APP_HOST\"]"
 $KC update realms/arai -s sslRequired=external -s bruteForceProtected=true
 
 # The development users leave.

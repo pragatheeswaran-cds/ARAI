@@ -855,16 +855,17 @@ Claude Code runs the same steps through the AWS MCP tools; the commands are here
 
 | Piece | Where | Made by |
 |---|---|---|
-| EC2 instance `arai-demo` (t3.medium, Ubuntu 24.04, 16 GB root, 30 GB `/data` volume, no SSH, SSM only) | CloudFormation stack `arai-demo` | `deploy/aws/stack.yaml` |
+| EC2 instance `arai-demo` (t3.medium, Ubuntu 24.04, 16 GB root, 30 GB `/data` volume, no SSH, SSM only; always on until mid January 2027, then stopped between sessions) | CloudFormation stack `arai-demo` | `deploy/aws/stack.yaml` |
 | S3 bucket `arai-819717422656-ap-south-1` (release, seed data, backups, evidence) | same stack | same |
 | Instance role `arai-demo-instance` (SSM, that bucket, `/arai/*` parameters); security group `arai-demo-web` (80, 443) | same stack | same |
-| Budget `arai-monthly`, 20 USD, e-mail at 50 and 80 percent actual and 100 percent forecast | AWS Budgets | created directly with the Budgets API on 17 Oct 2026 |
+| Budget `arai-monthly`, 45 USD (20 until 18 Oct 2026), e-mail at 50 and 80 percent actual and 100 percent forecast | AWS Budgets | created directly with the Budgets API on 17 Oct 2026 |
 | Configuration and secrets | Parameter Store `/arai/config/*` and `/arai/secret/*` | section 8.2 |
-| On the VM: Compose stack (nginx with TLS, api, api_vercel, worker, db, keycloak), DuckDNS timer, certificate renewal, nightly backup | `/opt/arai` | `deploy/aws/bringup.sh` |
+| On the VM: Compose stack (nginx with TLS, api, worker, db, keycloak), DuckDNS timer, certificate renewal, nightly backup | `/opt/arai` | `deploy/aws/bringup.sh` |
 
-Hostnames (DuckDNS, free): `APP_HOST` is the UI and API for the allowlist, `API_HOST` is API only and the upstream of
-the Vercel rewrite, `AUTH_HOST` is Keycloak. One API process holds one sign-in callback, so `api` serves `APP_HOST`
-and `api_vercel` serves the Vercel address; both share the database, the artifact root and the one worker.
+Hostnames (DuckDNS, free): `APP_HOST` is the UI and API, `AUTH_HOST` is Keycloak. Both are public: no IP allowlist
+(D-044 as amended on 18 Oct 2026, AM-73). What protects the instance: TLS, the shared login checked inside the API,
+Keycloak sign-in for every action, nginx request limits (sign-in 10 a minute per address, API 20 a second), and the
+Keycloak admin console is not served (`/admin` answers 404; administration is `kcadm.sh` over SSM, section 8.5).
 
 ### 8.2 Parameter Store
 
@@ -873,11 +874,9 @@ A value that must be empty is written as `-`.
 
 | Name | Kind | Meaning |
 |---|---|---|
-| APP_HOST, API_HOST, AUTH_HOST | config | the three DuckDNS names, e.g. `arai-demo.duckdns.org` |
-| VERCEL_HOST | config | the Vercel address of the UI, e.g. `arai.vercel.app`, once the Vercel project exists |
-| DUCKDNS_DOMAINS | config | the three subdomains without `.duckdns.org`, comma separated |
+| APP_HOST, AUTH_HOST | config | the two DuckDNS names, e.g. `arai-demo.duckdns.org` and `arai-auth.duckdns.org` |
+| DUCKDNS_DOMAINS | config | the two subdomains without `.duckdns.org`, comma separated |
 | LE_EMAIL | config | Let's Encrypt expiry notices |
-| ALLOWLIST | config | public IPv4 addresses or CIDRs allowed at `APP_HOST`, comma separated (D-044) |
 | BOOTSTRAP_ADMINS | config | e-mail(s) that are admin without a Keycloak group (`ARAI_BOOTSTRAP_ADMINS`) |
 | USERS | config | the people, `username,email,First,Last,group[;group]` records separated by a vertical bar (section 8.5) |
 | POSTGRES_PASSWORD, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD, OIDC_CLIENT_SECRET, KEYCLOAK_ADMIN_PASSWORD | secret | generated once at setup |
@@ -885,7 +884,7 @@ A value that must be empty is written as `-`.
 | ANTHROPIC_API_KEY | secret | optional; without it every memo is unavailable by design |
 
 ```powershell
-aws ssm put-parameter --name /arai/config/ALLOWLIST --type String --overwrite --value "203.0.113.7,198.51.100.0/24"
+aws ssm put-parameter --name /arai/config/APP_HOST --type String --overwrite --value "arai-demo.duckdns.org"
 aws ssm put-parameter --name /arai/secret/DUCKDNS_TOKEN --type SecureString --overwrite --value "<token>"
 ```
 
@@ -911,7 +910,7 @@ sudo tail -f /var/log/arai-bringup.log
 ```
 
 The first bring-up waits until `APP_HOST` resolves to the instance (the DuckDNS timer runs first), obtains one
-certificate for the three names, starts the stack and runs `deploy/aws/keycloak-setup.sh`.
+certificate for the two names, starts the stack and runs `deploy/aws/keycloak-setup.sh`.
 
 ### 8.4 Seed the experiment data
 
@@ -922,7 +921,7 @@ aws s3 sync data\EXP-20261005-04\artifacts s3://arai-819717422656-ap-south-1/see
 # then on the VM (SSM shell):
 sudo aws s3 sync s3://arai-819717422656-ap-south-1/seed/artifacts /data/artifacts
 sudo chown -R 1000:1000 /data/artifacts
-cd /opt/arai/app; sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml --profile sso restart api api_vercel worker
+cd /opt/arai/app; sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml --profile sso restart api worker
 ```
 
 Without the folder the instance runs in baseline fallback (section 2.2). Alternatively reproduce it on the VM with the
@@ -941,6 +940,9 @@ aws ssm put-parameter --name /arai/config/USERS --type String --overwrite --valu
 
 ### 8.6 Start, stop, backups, restore
 
+The VM stays on continuously for the first three months (to about 18 January 2027; about 42 USD a month against the
+Free plan credits, design document section 6). After that, between sessions:
+
 ```powershell
 aws ec2 stop-instances --instance-ids $id      # between sessions; the volumes and the parameters are all that costs
 aws ec2 start-instances --instance-ids $id     # DuckDNS gets the new address within 30 s; the containers restart themselves
@@ -950,20 +952,21 @@ Backups: `/etc/cron.d/arai-backup` runs `deploy/aws/backup.sh` at 02:30 UTC: a d
 `s3://.../backup/db/` and a sync of `/data/artifacts` to `s3://.../backup/artifacts/`. Restore a database on a fresh
 VM after bring-up: `zcat arai-<stamp>.sql.gz | docker compose ... exec -T db psql -U arai arai`.
 
-### 8.7 Vercel
+### 8.7 Public access
 
-Import the GitHub repository as a Vercel project with the repository root as the project root; `vercel.json` sets the
-install and build commands, the output folder `web/dist`, the rewrite of `/api/*` to `https://API_HOST/api/*` and the
-single-page fallback. Then set `/arai/config/VERCEL_HOST` to the Vercel address and re-run bring-up: `api_vercel` gets
-its callback and origin, and the Keycloak client its second redirect URI. Vercel ends proxied requests after 30
-seconds, so dataset uploads are done at `APP_HOST`, not at the Vercel address; everything else behaves the same.
+The UI is reachable by anyone at `APP_HOST`; there is no Vercel address and no IP allowlist (both dropped on 18 Oct
+2026, AM-73). Visitors need the shared login (`/arai/secret/BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD`) and then their
+own Keycloak account (section 8.5). Give the shared login only to people who should see the demonstration; rotate it
+by changing the two parameters and re-running bring-up. Keycloak's admin console is not served; the realm's
+brute-force protection is on.
 
 ### 8.8 OPS-AC-05
 
-From an allowlisted machine, `.\scripts\ops_ac_05.ps1` with the three hostnames and the shared login writes
-`reports\ops-ac-05\<date>\result.json`. Three checks are manual and listed in the result: the 403 from a
-non-allowlisted address, a sign-in followed by a role refusal, the idle session expiry. Record the outcome and the
-evidence path in `final-spec/acceptance-register.csv`.
+From any machine, `.\scripts\ops_ac_05.ps1` with the two hostnames and the shared login writes
+`reports\ops-ac-05\<date>\result.json`. It checks the HTTPS redirect, the shared login, the sign-in redirect and
+issuer, the closed database port, the hidden Keycloak admin console and the sign-in rate limit. Two checks are manual
+and listed in the result: a sign-in followed by a role refusal, and the idle session expiry. Record the outcome and
+the evidence path in `final-spec/acceptance-register.csv`.
 
 ### 8.9 Rebuild or tear down
 

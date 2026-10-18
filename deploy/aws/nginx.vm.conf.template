@@ -1,6 +1,14 @@
-# nginx for the AWS demonstration VM. deploy/aws/bringup.sh replaces __APP_HOST__, __API_HOST__ and __AUTH_HOST__ and
-# writes the result to /opt/arai/nginx.conf, which compose.vm.yml mounts into the web container.
-# One Let's Encrypt certificate covers the three names; certbot keeps it under live/__APP_HOST__/.
+# nginx for the AWS demonstration VM. deploy/aws/bringup.sh replaces __APP_HOST__ and __AUTH_HOST__ and writes the
+# result to /opt/arai/nginx.conf, which compose.vm.yml mounts into the web container.
+# One Let's Encrypt certificate covers both names; certbot keeps it under live/__APP_HOST__/.
+#
+# Access (D-044 as amended on 18 Oct 2026, final-spec/DECISIONS.md AM-73): the UI is public, no IP allowlist. What
+# protects it: TLS, the shared login checked inside the API (BASIC_AUTH_*), Keycloak sign-in for every action, the
+# request limits below, and no public Keycloak admin console.
+
+limit_req_zone $binary_remote_addr zone=arai_api:10m rate=20r/s;     # per address; a browser session needs far less
+limit_req_zone $binary_remote_addr zone=arai_auth:10m rate=10r/m;    # sign-in and callback: slows password guessing
+limit_conn_zone $binary_remote_addr zone=arai_conn:10m;
 
 # 80: the certificate challenge and the redirect, nothing else (the security group opens 80 to everyone for this).
 server {
@@ -19,7 +27,7 @@ server {
     return 444;
 }
 
-# UI and API for people on the allowlist (D-044). The allowlist file holds one "allow <ip>;" per line.
+# UI and API, public.
 server {
     listen 443 ssl;
     http2 on;
@@ -28,11 +36,24 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/__APP_HOST__/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     add_header Strict-Transport-Security "max-age=31536000" always;
-    include /etc/nginx/arai-allowlist.conf;
-    deny all;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy same-origin always;
     client_max_body_size 520m;            # the upload limit is 500,000,000 bytes; the API enforces it exactly
+    limit_conn arai_conn 20;
 
+    location /api/v1/auth/ {
+        limit_req zone=arai_auth burst=10 nodelay;
+        limit_req_status 429;
+        proxy_pass http://api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Authorization $http_authorization;
+    }
     location /api/ {
+        limit_req zone=arai_api burst=40 nodelay;
+        limit_req_status 429;
         proxy_pass http://api:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
@@ -47,31 +68,8 @@ server {
     }
 }
 
-# API only: the upstream of the Vercel rewrite. No allowlist (Vercel's addresses are not fixed); the shared login and
-# the sign-in protect it, as D-044 amended for the Vercel address records. Not a UI: / answers 404.
-server {
-    listen 443 ssl;
-    http2 on;
-    server_name __API_HOST__;
-    ssl_certificate /etc/letsencrypt/live/__APP_HOST__/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/__APP_HOST__/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    add_header Strict-Transport-Security "max-age=31536000" always;
-    client_max_body_size 520m;
-
-    location /api/ {
-        proxy_pass http://api_vercel:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header Authorization $http_authorization;
-        proxy_read_timeout 300s;
-        proxy_request_buffering off;
-    }
-    location / { return 404; }
-}
-
-# Keycloak. Open to everyone who reaches the sign-in redirect; Keycloak's own login protects it.
+# Keycloak: the sign-in pages and the OIDC endpoints are public (Keycloak's own login and brute-force protection apply);
+# the admin console is not. Administration happens with kcadm.sh inside the container over SSM (keycloak-setup.sh).
 server {
     listen 443 ssl;
     http2 on;
@@ -80,8 +78,12 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/__APP_HOST__/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     add_header Strict-Transport-Security "max-age=31536000" always;
+    limit_conn arai_conn 20;
 
+    location ~ ^/(admin|metrics|health) { return 404; }
     location / {
+        limit_req zone=arai_api burst=40 nodelay;
+        limit_req_status 429;
         proxy_pass http://keycloak:8081;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
