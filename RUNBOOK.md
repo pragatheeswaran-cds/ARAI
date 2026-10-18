@@ -744,6 +744,10 @@ uv run --no-sync python tests\e2e\walkthrough.py     # "71 of 71 checks passed"
 
 # 4. Baseline-fallback check (starts its own temporary instance on port 8011: stop the baseline rehearsal first)
 uv run --no-sync python tests\e2e\fallback_check.py  # "11 of 11 checks passed"
+
+# 5. The demonstration VM's sign-in path (AM-74): starts its own API on port 8010 against DATABASE_URL (or the .env line)
+#    on the vm profile with the development login, and walks through the shared login, the personas and the refusals
+uv run --no-sync python tests\e2e\vm_devlogin_check.py  # "14 of 14 checks passed"
 ```
 
 Use `uv run --no-sync` while the server is running: plain `uv run` may try to refresh the environment and fail
@@ -754,7 +758,7 @@ second-reviewer refusal on the first case still marked New, which it opens as Ra
 review. Notes are append only, so they accumulate; that is expected. The fallback check
 scores W2001 where that world exists and W5401 otherwise (or the world named on its command line).
 
-Screenshots and results from steps 3 and 4 are written to `reports\ui\<today's date>\`.
+Screenshots and results from steps 3 to 5 are written to `reports\ui\<today's date>\`.
 
 ### Validate data
 
@@ -860,12 +864,12 @@ Claude Code runs the same steps through the AWS MCP tools; the commands are here
 | Instance role `arai-demo-instance` (SSM, that bucket, `/arai/*` parameters); security group `arai-demo-web` (80, 443) | same stack | same |
 | Budget `arai-monthly`, 45 USD (20 until 18 Oct 2026), e-mail at 50 and 80 percent actual and 100 percent forecast | AWS Budgets | created directly with the Budgets API on 17 Oct 2026 |
 | Configuration and secrets | Parameter Store `/arai/config/*` and `/arai/secret/*` | section 8.2 |
-| On the VM: Compose stack (nginx with TLS, api, worker, db, keycloak), DuckDNS timer, certificate renewal, nightly backup | `/opt/arai` | `deploy/aws/bringup.sh` |
+| On the VM: Compose stack (nginx with TLS, api, worker, db), DuckDNS timer, certificate renewal, nightly backup | `/opt/arai` | `deploy/aws/bringup.sh` |
 
-Hostnames (DuckDNS, free): `APP_HOST` is the UI and API, `AUTH_HOST` is Keycloak. Both are public: no IP allowlist
-(D-044 as amended on 18 Oct 2026, AM-73). What protects the instance: TLS, the shared login checked inside the API,
-Keycloak sign-in for every action, nginx request limits (sign-in 10 a minute per address, API 20 a second), and the
-Keycloak admin console is not served (`/admin` answers 404; administration is `kcadm.sh` over SSM, section 8.5).
+One hostname (DuckDNS, free): `APP_HOST` is the UI and the API, public, no IP allowlist (D-044 as amended on 18 Oct
+2026, AM-73). No Keycloak on the VM (AM-74): people sign in with the development login's personas (section 8.5).
+What protects the instance: TLS, the shared login checked inside the API, the personas' roles for every action, and
+nginx request limits (sign-in 10 a minute per address, API 20 a second).
 
 ### 8.2 Parameter Store
 
@@ -874,12 +878,11 @@ A value that must be empty is written as `-`.
 
 | Name | Kind | Meaning |
 |---|---|---|
-| APP_HOST, AUTH_HOST | config | the two DuckDNS names, e.g. `arai-demo.duckdns.org` and `arai-auth.duckdns.org` |
-| DUCKDNS_DOMAINS | config | the two subdomains without `.duckdns.org`, comma separated |
+| APP_HOST | config | the DuckDNS name, e.g. `arai-demo.duckdns.org` |
+| DUCKDNS_DOMAINS | config | the subdomain without `.duckdns.org`, e.g. `arai-demo` |
 | LE_EMAIL | config | Let's Encrypt expiry notices |
-| BOOTSTRAP_ADMINS | config | e-mail(s) that are admin without a Keycloak group (`ARAI_BOOTSTRAP_ADMINS`) |
-| USERS | config | the people, `username,email,First,Last,group[;group]` records separated by a vertical bar (section 8.5) |
-| POSTGRES_PASSWORD, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD, OIDC_CLIENT_SECRET, KEYCLOAK_ADMIN_PASSWORD | secret | generated once at setup |
+| AUTH_DEV_USERS | config | optional: the personas and roles of the development login, `Asha=reviewer,approver;Admin=admin` (section 8.5); the six defaults when absent |
+| POSTGRES_PASSWORD, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD | secret | generated once at setup |
 | DUCKDNS_TOKEN | secret | from duckdns.org after signing in |
 | ANTHROPIC_API_KEY | secret | optional; without it every memo is unavailable by design |
 
@@ -909,8 +912,8 @@ aws ssm start-session --target $id
 sudo tail -f /var/log/arai-bringup.log
 ```
 
-The first bring-up waits until `APP_HOST` resolves to the instance (the DuckDNS timer runs first), obtains one
-certificate for the two names, starts the stack and runs `deploy/aws/keycloak-setup.sh`.
+The first bring-up waits until `APP_HOST` resolves to the instance (the DuckDNS timer runs first), obtains the
+certificate and starts the stack.
 
 ### 8.4 Seed the experiment data
 
@@ -921,7 +924,7 @@ aws s3 sync data\EXP-20261005-04\artifacts s3://arai-819717422656-ap-south-1/see
 # then on the VM (SSM shell):
 sudo aws s3 sync s3://arai-819717422656-ap-south-1/seed/artifacts /data/artifacts
 sudo chown -R 1000:1000 /data/artifacts
-cd /opt/arai/app; sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml --profile sso restart api worker
+cd /opt/arai/app; sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml restart api worker
 ```
 
 Without the folder the instance runs in baseline fallback (section 2.2). Alternatively reproduce it on the VM with the
@@ -929,13 +932,13 @@ offline pipeline of `README.md` (about 40 minutes on a laptop, longer on a t3.me
 
 ### 8.5 People
 
-`USERS` is read by `keycloak-setup.sh` at every bring-up. New people get a temporary password written to
-`/opt/arai/users-initial-passwords.txt` on the VM (root only; read it over SSM and pass each password on privately);
-Keycloak forces a change at first sign-in. Groups: `arai-viewers`, `arai-reviewers`, `arai-approvers`, `arai-admins`.
-The six development users of `deploy/keycloak/arai-realm.json` are removed unless they appear in `USERS`.
+The VM runs the development login (AM-74): after the shared login, the sign-in page lists personas and anyone picks
+one; there are no per-person passwords. The defaults are the six of section 2.5 (Asha, Ravi and Meera review and
+approve, Arjun reviews, Priya views, Admin administers). Other names or roles: set `AUTH_DEV_USERS` and re-run
+bring-up. Whoever holds the shared login can act as any persona, including Admin, so hand it out accordingly.
 
 ```powershell
-aws ssm put-parameter --name /arai/config/USERS --type String --overwrite --value "asha,asha@example.org,Asha,Rao,arai-reviewers;arai-approvers|you,you@example.org,Your,Name,arai-admins"
+aws ssm put-parameter --name /arai/config/AUTH_DEV_USERS --type String --overwrite --value "Asha=reviewer,approver;Kabir=reviewer;Priya=viewer;Admin=admin"
 ```
 
 ### 8.6 Start, stop, backups, restore
@@ -950,24 +953,25 @@ aws ec2 stop-instances --instance-ids $id      # between sessions; the volumes a
 aws ec2 start-instances --instance-ids $id     # DuckDNS gets the new address within 30 s; the containers restart themselves
 ```
 
-Backups: `/etc/cron.d/arai-backup` runs `deploy/aws/backup.sh` at 02:30 UTC: a dump of `arai` and `keycloak` to
+Backups: `/etc/cron.d/arai-backup` runs `deploy/aws/backup.sh` at 02:30 UTC: a dump of `arai` to
 `s3://.../backup/db/` and a sync of `/data/artifacts` to `s3://.../backup/artifacts/`. Restore a database on a fresh
 VM after bring-up: `zcat arai-<stamp>.sql.gz | docker compose ... exec -T db psql -U arai arai`.
 
 ### 8.7 Public access
 
 The UI is reachable by anyone at `APP_HOST`; there is no Vercel address and no IP allowlist (both dropped on 18 Oct
-2026, AM-73). Visitors need the shared login (`/arai/secret/BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD`) and then their
-own Keycloak account (section 8.5). Give the shared login only to people who should see the demonstration; rotate it
-by changing the two parameters and re-running bring-up. Keycloak's admin console is not served; the realm's
-brute-force protection is on.
+2026, AM-73). Visitors need the shared login (`/arai/secret/BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD`) and then pick
+a persona (section 8.5). Give the shared login only to people who should see the demonstration; rotate it by
+changing the two parameters and re-running bring-up. Keycloak single sign-on remains available for a later real
+deployment (section 2.6 and `.env.example`); it is not on this VM.
 
 ### 8.8 OPS-AC-05
 
-From any machine, `.\scripts\ops_ac_05.ps1` with the two hostnames and the shared login writes
-`reports\ops-ac-05\<date>\result.json`. It checks the HTTPS redirect, the shared login, the sign-in redirect and
-issuer, the closed database port, the hidden Keycloak admin console and the sign-in rate limit. Two checks are manual
-and listed in the result: a sign-in followed by a role refusal, and the idle session expiry. Record the outcome and
+From any machine, `.\scripts\ops_ac_05.ps1` with the hostname and the shared login writes
+`reports\ops-ac-05\<date>\result.json`. It checks the HTTPS redirect, the shared login, the development login's
+personas, the closed database port and the sign-in rate limit. Two checks are manual and listed in the result: a
+sign-in as the viewer persona followed by a role refusal, and the idle session expiry. The same sign-in path is
+checked end to end on a laptop by `tests\e2e\vm_devlogin_check.py` (section 5, step 5). Record the outcome and
 the evidence path in `final-spec/acceptance-register.csv`.
 
 ### 8.9 Rebuild or tear down

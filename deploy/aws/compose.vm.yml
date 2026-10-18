@@ -1,31 +1,29 @@
 # Override for the AWS demonstration VM (docs/design/aws-deployment.md, sections 2.9 and 6). Always together with the base file:
-#   docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml --profile sso up -d --build
-# deploy/aws/bringup.sh writes /opt/arai/.env (APP_PROFILE=vm, the hostnames, the secrets from Parameter Store) and
+#   docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml up -d --build
+# deploy/aws/bringup.sh writes /opt/arai/.env (APP_PROFILE=vm, the hostname, the secrets from Parameter Store) and
 # /opt/arai/nginx.conf, then runs exactly that command.
 #
-# Two hostnames on this VM, both public (D-044 as amended, AM-73):
-#   APP_HOST    UI and API from nginx   -> api       (sign-in callback on APP_HOST)
-#   AUTH_HOST   Keycloak                -> keycloak
+# One public hostname, APP_HOST: the UI and the API from nginx (D-044 as amended, AM-73). No Keycloak on the VM
+# (AM-74): the development login's personas behind the shared login, AUTH_DEV_ON_VM=1. Four containers: db, api,
+# worker, web. Memory limits for the 2 GB t3.small: a runaway container is restarted, not the whole VM.
 services:
   db:
+    command: ["postgres", "-c", "shared_buffers=64MB"]                            # a few megabytes of data; leave RAM to the app
     volumes:
       - /data/postgres:/var/lib/postgresql/data                                    # the data volume, not the root disk
-      - ./deploy/aws/postgres-init.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro   # creates the keycloak database once
+    mem_limit: 300m
 
   api:
     environment:
-      OIDC_REDIRECT_URI: https://${APP_HOST}/api/v1/auth/callback
       UI_ORIGINS: https://${APP_HOST}
     volumes:
       - /data/artifacts:/data/artifacts
-    extra_hosts:
-      - "${AUTH_HOST}:host-gateway"          # the back channel to Keycloak goes through this VM's own nginx
+    mem_limit: 600m
 
   worker:
     volumes:
       - /data/artifacts:/data/artifacts
-    extra_hosts:
-      - "${AUTH_HOST}:host-gateway"
+    mem_limit: 900m
 
   web:
     ports:
@@ -37,19 +35,4 @@ services:
       - /var/www/certbot:/var/www/certbot:ro
     depends_on:
       - api
-      - keycloak
-
-  keycloak:
-    command: ["start", "--import-realm", "--http-port=8081"]
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://db:5432/keycloak
-      KC_DB_USERNAME: arai
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KC_HOSTNAME: https://${AUTH_HOST}
-      KC_HTTP_ENABLED: "true"
-      KC_PROXY_HEADERS: xforwarded
-      JAVA_OPTS_KC_HEAP: "-Xms256m -Xmx512m"
-    depends_on:
-      db:
-        condition: service_healthy
+    mem_limit: 100m

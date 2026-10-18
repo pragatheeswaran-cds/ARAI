@@ -281,5 +281,63 @@ an hour, 46 GB gp3, one public IPv4 address at 0.005 USD an hour), then stopped 
 month); about 100 USD over the six months against 160 USD of credits. The budget alert is raised from 20 to 45 USD a month so it fires only on a real overrun. The two remaining
 Free Tier activities (Bedrock playground, Lambda web app) are worth 40 USD more and are done from the console.
 
-**Still open at the time of writing.** The DuckDNS names and token, and the Keycloak user list with at least one
-admin e-mail. Memos stay unavailable on the VM (no key on the server). Section 5 is otherwise closed.
+**No Keycloak on the VM (AM-74).** On a 2 GB instance Keycloak is the largest process (600 to 750 MB) and, with one
+shared login for the whole audience, verifies nothing the demonstration needs. The VM runs the development login
+instead: after the shared login the sign-in page lists personas with their roles and the visitor picks one. Sessions,
+CSRF, role checks and the sign-in log are unchanged; the identity is a persona, not a verified person, so whoever
+holds the shared login can act as Admin. The code refused this combination on purpose (AM-70); it now allows it only
+with the explicit `AUTH_DEV_ON_VM=1`, so the guard stays for anyone who does not opt in. Keycloak, the realm and the
+`oidc` path stay in the repository for the local profile and for a later real deployment. The VM has one hostname,
+four containers (db, api, worker, web) with memory limits, and about 0.9 GB in use at idle.
+
+**Still open at the time of writing.** The DuckDNS name and token. Memos stay unavailable on the VM (no key on the
+server). Section 5 is otherwise closed.
+
+## 7. Deployment plan (18 October 2026)
+
+What exists, what remains, in order, with who does each step and how long it takes. RUNBOOK section 8 has the commands.
+
+### 7.1 Done
+
+| Item | Evidence |
+|---|---|
+| AWS account activated; Free plan ACTIVE; credits 120 USD plus 20 for the RDS activity (the instance was created and deleted the same hour) | `aws freetier get-account-plan-state` |
+| Budget `arai-monthly` at 45 USD with alerts at 50 and 80 percent actual and 100 percent forecast | `aws budgets describe-budget` |
+| Default VPC `vpc-0874079aa7935a35e`, public subnet `subnet-02b0ffa3cdefd06bc` (ap-south-1a) | `describe-vpcs`, `describe-subnets` |
+| Template validated locally; instance type t3.small (the only Free Tier eligible size that fits the credits) | `deploy/aws/stack.yaml` |
+| Repository changes for a public VM without Vercel and without Keycloak (AM-73, AM-74) | commits on `deploy-and-snapshots` |
+| Tests: Python suite, front-end 30 of 30, type check, ruff; the vm sign-in path end to end, 14 of 14 | RUNBOOK section 5 |
+
+### 7.2 Remaining steps
+
+| Step | What | Who | Takes |
+|---|---|---|---|
+| 1 | **Create the stack** `arai-demo` (the command of RUNBOOK 8.3, step 1; the owner runs it because Claude Code's permission mode blocks infrastructure applies). Creates the instance, the data volume, the bucket, the role and the security group. Starts the always-on clock, about 1.20 USD a day. | owner | 4 min |
+| 2 | **DuckDNS**: one subdomain (for example `arai-demo`) at duckdns.org; the token from the same page. | owner | 5 min |
+| 3 | **Parameters** in Parameter Store: `APP_HOST`, `DUCKDNS_DOMAINS`, `LE_EMAIL`, `DUCKDNS_TOKEN`, `POSTGRES_PASSWORD` and the shared login `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` (generated unless the owner names them), `ANTHROPIC_API_KEY` as `-` (memos off), optionally `AUTH_DEV_USERS`. RUNBOOK 8.2. | Claude | 5 min |
+| 4 | **Release**: `git archive` of the committed tree to `s3://arai-819717422656-ap-south-1/release/arai.tar.gz`. RUNBOOK 8.3, step 2. | Claude | 2 min |
+| 5 | **Bring-up** over SSM Run Command (RUNBOOK 8.3, step 3): the script waits for DNS, obtains the certificate, writes `.env`, builds the images and starts db, api, worker and web. First run builds the API image on the t3.small. | Claude | 15 to 25 min |
+| 6 | **Seed the data**: `aws s3 sync` of `data/EXP-20261005-04/artifacts` (worlds, bundles, the published experiment; never `private/`, never `datasets/`) from this laptop to `seed/artifacts`, then down to `/data/artifacts` on the VM and a restart of api and worker. RUNBOOK 8.4. | Claude | 10 to 20 min, depends on upload bandwidth |
+| 7 | **Register and score** W5401 and its twelve monthly snapshots against the VM (RUNBOOK section 4, with the shared login and a persona session), so the customer-history screens have a year. | Claude | about 15 min on a t3.small |
+| 8 | **OPS-AC-05**: `scripts\ops_ac_05.ps1` from the laptop, the two manual checks with screenshots, the result under `reports\ops-ac-05\<date>\`, the row in `final-spec/acceptance-register.csv`. | Claude, owner does the two manual checks | 20 min |
+| 9 | **Hand-over**: the URL and the shared login to the owner; RUNBOOK 8.6 for stop, start, backups and restore. Optional AMI snapshot of the finished VM. | Claude | 5 min |
+
+Steps 2 and 3 can happen while step 1 runs; step 5 needs 1 to 4; 6 to 9 follow in order. From the stack command to a
+working public URL is about one hour of wall-clock time, most of it waiting on builds and uploads.
+
+### 7.3 Operating plan
+
+- **Always on** from bring-up to about 18 January 2027: about 25 USD a month. Nightly backup at 02:30 UTC to the bucket.
+  Certificate renewal by cron. DuckDNS refresh every five minutes, so a reboot or a resize keeps the name.
+- **After that**: stop between sessions (about 8 USD a month); start takes two minutes and needs nothing else.
+- **A heavy scoring session**: stop, change the type to c7i-flex.large, start, score, and resize back (RUNBOOK 8.6).
+- **Budget alerts** go to the account e-mail at 22.50 and 36 USD actual spend and at a 45 USD forecast.
+- **Rotate the shared login** by changing the two parameters and re-running bring-up (RUNBOOK 8.7).
+- **Rebuild from nothing**: delete the stack (the bucket is kept, the data volume is snapshotted), create it again, run
+  bring-up, restore the last dump and sync the artifacts back (RUNBOOK 8.9). About one hour.
+
+### 7.4 Inputs still needed from the owner
+
+1. The DuckDNS subdomain and token (step 2).
+2. The Let's Encrypt contact e-mail (`LE_EMAIL`).
+3. Whether to choose the shared login or let it be generated.

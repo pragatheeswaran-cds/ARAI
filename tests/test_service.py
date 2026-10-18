@@ -2028,6 +2028,9 @@ def test_the_development_login_is_for_laptops_and_off_under_single_sign_on(clien
     assert unknown.status_code == 422
     with pytest.raises(ValueError, match="refused with APP_PROFILE=vm"):
         ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", auth_mode="dev")
+    demo = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", auth_mode="dev",
+                         dev_on_vm=True)                                                  # AM-74: the public demonstration VM
+    assert demo.mode == "dev" and demo.profile == "vm"
     defaults = ServiceConfig(database_url="x", artifact_root=env["root"]).dev_users
     assert ("Admin", ("admin",)) in defaults and ("Arjun", ("reviewer",)) in defaults and ("Priya", ("viewer",)) in defaults   # admin does not review
     import httpx

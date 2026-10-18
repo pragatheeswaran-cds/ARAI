@@ -29,6 +29,8 @@ class ServiceConfig:
     memo_model: str | None = None                   # the model memos are drafted with (default in memo.py)
     # who is signed in (AM-69): dev = the development login (laptops, demos), oidc = Keycloak single sign-on (step 2)
     auth_mode: str | None = None                    # default: dev for the local profile, oidc for the vm profile
+    dev_on_vm: bool = False                         # AM-74: the development login on the vm profile, for a public demonstration
+                                                    # behind the shared login; personas, not verified people
     dev_users: tuple = DEFAULT_DEV_USERS
     session_idle_minutes: int = 60                  # signed out after this long without a request
     session_max_hours: int = 10                     # signed in again after this long, active or not
@@ -49,8 +51,9 @@ class ServiceConfig:
             raise ValueError("APP_PROFILE must be local or vm")
         if self.mode not in ("dev", "oidc"):
             raise ValueError("AUTH_MODE must be dev or oidc")
-        if self.mode == "dev" and self.profile == "vm":
-            raise ValueError("AUTH_MODE=dev is the development login and is refused with APP_PROFILE=vm; use oidc")
+        if self.mode == "dev" and self.profile == "vm" and not self.dev_on_vm:
+            raise ValueError("AUTH_MODE=dev is the development login and is refused with APP_PROFILE=vm; use oidc, "
+                             "or AUTH_DEV_ON_VM=1 for a public demonstration behind the shared login (AM-74)")
         for name, roles in self.dev_users:
             if not name or not roles or set(roles) - set(ROLES):
                 raise ValueError(f"development user {name!r}: roles must be among {ROLES}")
@@ -87,6 +90,7 @@ def from_env() -> ServiceConfig:
                          worker_id=os.environ.get("WORKER_ID", "worker-1"),
                          anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None, memo_model=os.environ.get("ARAI_MEMO_MODEL") or None,
                          auth_mode=os.environ.get("AUTH_MODE") or None, dev_users=dev_users,
+                         dev_on_vm=os.environ.get("AUTH_DEV_ON_VM", "") in ("1", "true", "yes"),
                          session_idle_minutes=int(os.environ.get("SESSION_IDLE_MINUTES", "60")),
                          session_max_hours=int(os.environ.get("SESSION_MAX_HOURS", "10")),
                          oidc_issuer=os.environ.get("OIDC_ISSUER") or None, oidc_client_id=os.environ.get("OIDC_CLIENT_ID") or None,

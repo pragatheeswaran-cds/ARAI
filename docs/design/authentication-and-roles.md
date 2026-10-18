@@ -92,7 +92,8 @@ browser            ARAI server                          identity provider
 | Admin | admin |
 
 Choosing one creates a session exactly as single sign-on would, so everything downstream is the same code. The
-server **refuses to start** with `AUTH_MODE=dev` when `APP_PROFILE=vm`. The demo keeps working without an identity
+server **refuses to start** with `AUTH_MODE=dev` when `APP_PROFILE=vm`, unless `AUTH_DEV_ON_VM=1` opts in for the
+public demonstration VM behind its shared login (AM-74, docs/design/aws-deployment.md section 6). The demo keeps working without an identity
 provider, and the second-reviewer rule can be demonstrated truthfully by signing in as two different people.
 
 ### 3.3 Roles and permissions

@@ -1,13 +1,13 @@
-# nginx for the AWS demonstration VM. deploy/aws/bringup.sh replaces __APP_HOST__ and __AUTH_HOST__ and writes the
-# result to /opt/arai/nginx.conf, which compose.vm.yml mounts into the web container.
-# One Let's Encrypt certificate covers both names; certbot keeps it under live/__APP_HOST__/.
+# nginx for the AWS demonstration VM. deploy/aws/bringup.sh replaces __APP_HOST__ and writes the result to
+# /opt/arai/nginx.conf, which compose.vm.yml mounts into the web container. certbot keeps the certificate under
+# live/__APP_HOST__/.
 #
-# Access (D-044 as amended on 18 Oct 2026, final-spec/DECISIONS.md AM-73): the UI is public, no IP allowlist. What
-# protects it: TLS, the shared login checked inside the API (BASIC_AUTH_*), Keycloak sign-in for every action, the
-# request limits below, and no public Keycloak admin console.
+# Access (D-044 as amended on 18 Oct 2026, final-spec/DECISIONS.md AM-73 and AM-74): the UI is public, no IP allowlist
+# and no Keycloak. What protects it: TLS, the shared login checked inside the API (BASIC_AUTH_*), the development
+# login's personas and roles for every action, and the request limits below.
 
 limit_req_zone $binary_remote_addr zone=arai_api:10m rate=20r/s;     # per address; a browser session needs far less
-limit_req_zone $binary_remote_addr zone=arai_auth:10m rate=10r/m;    # sign-in and callback: slows password guessing
+limit_req_zone $binary_remote_addr zone=arai_auth:10m rate=10r/m;    # sign-in: slows guessing of the shared login
 limit_conn_zone $binary_remote_addr zone=arai_conn:10m;
 
 # 80: the certificate challenge and the redirect, nothing else (the security group opens 80 to everyone for this).
@@ -65,33 +65,5 @@ server {
     location / {
         root /usr/share/nginx/html;
         try_files $uri /index.html;        # client-side routes
-    }
-}
-
-# Keycloak: the sign-in pages and the OIDC endpoints are public (Keycloak's own login and brute-force protection apply);
-# the admin console is not. Administration happens with kcadm.sh inside the container over SSM (keycloak-setup.sh).
-server {
-    listen 443 ssl;
-    http2 on;
-    server_name __AUTH_HOST__;
-    ssl_certificate /etc/letsencrypt/live/__APP_HOST__/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/__APP_HOST__/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    add_header Strict-Transport-Security "max-age=31536000" always;
-    limit_conn arai_conn 20;
-
-    location ~ ^/(admin|metrics|health) { return 404; }
-    location / {
-        limit_req zone=arai_api burst=40 nodelay;
-        limit_req_status 429;
-        proxy_pass http://keycloak:8081;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port 443;
-        proxy_buffer_size 128k;
-        proxy_buffers 4 256k;
-        proxy_busy_buffers_size 256k;
     }
 }
