@@ -268,9 +268,17 @@ ap-south-1, about 18 USD a month) and dropped for cost: three always-on months w
 six months, against 160 USD of credits; with PostgreSQL on the VM they cost about 150 USD. The nightly `pg_dump` to S3
 remains the recovery path.
 
-**Schedule and budget.** Always on from bring-up to about 18 January 2027 (about 42 USD a month: t3.medium 0.0448 USD
+**Instance size.** The first stack creation failed: the Free account plan accepts only Free Tier eligible instance
+types, and t3.medium is not one (`describe-instance-types --filters free-tier-eligible=true` lists t3.micro, t3.small,
+t4g.micro, t4g.small, t8i.micro, t8i.small, c7i-flex.large and m7i-flex.large in ap-south-1). The always-on size is
+therefore **t3.small** (2 GB, 0.0224 USD an hour) with the 2 GB swap of the first-boot script; c7i-flex.large (4 GB,
+0.0848 USD an hour, about 71 USD a month) and m7i-flex.large (8 GB, 0.1008) stay allowed in the template for a heavy
+scoring session, by stopping the VM, changing the type and starting it again. The demonstration world is small
+enough for 2 GB.
+
+**Schedule and budget.** Always on from bring-up to about 18 January 2027 (about 25 USD a month: t3.small 0.0224 USD
 an hour, 46 GB gp3, one public IPv4 address at 0.005 USD an hour), then stopped between sessions (about 8 USD a
-month). The budget alert is raised from 20 to 45 USD a month so it fires only on a real overrun. The two remaining
+month); about 100 USD over the six months against 160 USD of credits. The budget alert is raised from 20 to 45 USD a month so it fires only on a real overrun. The two remaining
 Free Tier activities (Bedrock playground, Lambda web app) are worth 40 USD more and are done from the console.
 
 **Still open at the time of writing.** The DuckDNS names and token, and the Keycloak user list with at least one

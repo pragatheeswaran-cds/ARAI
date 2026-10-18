@@ -12,9 +12,12 @@ Parameters:
     Description: A public subnet of that VPC (auto-assigns a public IPv4 address).
   InstanceType:
     Type: String
-    Default: t3.medium
-    AllowedValues: [t3.small, t3.medium, t3.large]
-    Description: t3.medium for bring-up; t3.small once real memory use is known; t3.large if scoring pages.
+    Default: t3.small
+    AllowedValues: [t3.micro, t3.small, c7i-flex.large, m7i-flex.large]
+    Description: >-
+      The Free account plan accepts only Free Tier eligible types (t3.medium was refused on 18 Oct 2026). t3.small
+      (2 GB, 0.0224 USD an hour in ap-south-1) is the always-on size; c7i-flex.large (4 GB, 0.0848) or m7i-flex.large
+      (8 GB, 0.1008) for a heavy scoring session: stop, change the type, start (DuckDNS follows the new address).
   ImageId:
     Type: AWS::EC2::Image::Id
     Default: ami-094adff9b24048c5c

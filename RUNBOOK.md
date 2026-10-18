@@ -855,7 +855,7 @@ Claude Code runs the same steps through the AWS MCP tools; the commands are here
 
 | Piece | Where | Made by |
 |---|---|---|
-| EC2 instance `arai-demo` (t3.medium, Ubuntu 24.04, 16 GB root, 30 GB `/data` volume, no SSH, SSM only; always on until mid January 2027, then stopped between sessions) | CloudFormation stack `arai-demo` | `deploy/aws/stack.yaml` |
+| EC2 instance `arai-demo` (t3.small: the Free plan allows only Free Tier eligible types; Ubuntu 24.04, 16 GB root, 30 GB `/data` volume, no SSH, SSM only; always on until mid January 2027, then stopped between sessions) | CloudFormation stack `arai-demo` | `deploy/aws/stack.yaml` |
 | S3 bucket `arai-819717422656-ap-south-1` (release, seed data, backups, evidence) | same stack | same |
 | Instance role `arai-demo-instance` (SSM, that bucket, `/arai/*` parameters); security group `arai-demo-web` (80, 443) | same stack | same |
 | Budget `arai-monthly`, 45 USD (20 until 18 Oct 2026), e-mail at 50 and 80 percent actual and 100 percent forecast | AWS Budgets | created directly with the Budgets API on 17 Oct 2026 |
@@ -940,8 +940,10 @@ aws ssm put-parameter --name /arai/config/USERS --type String --overwrite --valu
 
 ### 8.6 Start, stop, backups, restore
 
-The VM stays on continuously for the first three months (to about 18 January 2027; about 42 USD a month against the
-Free plan credits, design document section 6). After that, between sessions:
+The VM stays on continuously for the first three months (to about 18 January 2027; about 25 USD a month against the
+Free plan credits, design document section 6). For a heavy scoring session, resize: stop, `aws ec2 modify-instance-attribute
+--instance-id $id --instance-type c7i-flex.large`, start; and back to `t3.small` afterwards. After the three months,
+between sessions:
 
 ```powershell
 aws ec2 stop-instances --instance-ids $id      # between sessions; the volumes and the parameters are all that costs
