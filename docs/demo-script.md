@@ -5,7 +5,7 @@ built from it is in `docs/demo-deck/`. Every number
 below is what the screens show for the demonstration world W5401 scored on experiment 4, on its latest run
 (`run-020e5490d88f48c28e8c`, re-scored 16 Oct 2026 under API contract 1.14.0 with the revised ring rule). The first
 run of 15 Oct (`run-ed95a0e2fd3e49a69d4d`) has the same scores, ranks and selection. Since API contract 1.15.0 the
-same world also holds its snapshots of 9 July and 9 August, the same customers a month and two months earlier, so a
+same world also holds its monthly snapshots from 9 October 2025 to 9 August 2026, the same customers month by month for a year, so a
 customer's history shows on the queue, the case and the Overview (RUNBOOK.md section 4.1). Screenshots are in
 `reports/ui/2026-10-16/`.
 
@@ -138,8 +138,8 @@ defaults.
    `scoring_ready` and `promoted_model_ready` must both be `true` and `model_kind` must be `supervised`.
 2. Open http://127.0.0.1:8000. The Overview must show 5,676 eligible customers and 284 selected for W5401. If it
    says no scored run is available, register and score W5401 (RUNBOOK.md section 4), about 15 seconds.
-2b. Load the July and August snapshots of W5401 and the three August review outcomes (RUNBOOK.md section 4.1:
-   `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` once, then with the instance up
+2b. Load the monthly snapshots of W5401 and the three August review outcomes (RUNBOOK.md section 4.1:
+   `uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09` once, then with the instance up
    `uv run --no-sync python scripts\history_demo.py --load`). The Overview must then show
    **Since the previous snapshot of W5401 (09 Aug 2026)**: 249, 35, 22 and 2.
 3. Sign in as **Arjun** on the sign-in page. Signing out and in as another character takes two clicks (**Sign out**

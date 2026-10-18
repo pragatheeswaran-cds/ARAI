@@ -50,3 +50,47 @@ def test_an_earlier_snapshot_must_be_earlier_and_of_a_default_generated_world(wo
         snapshots.build_earlier(world.world_id, world.snapshot_date)
     with pytest.raises(ValueError, match="default generated world"):
         snapshots.build_earlier("ACME", world.snapshot_date - timedelta(days=30))
+
+
+def test_a_return_order_takes_its_channel_when_a_later_request_needs_the_item_back(world, earlier):
+    """A header whose requests so far need no item back reads not_applicable; it takes a channel when a later request that
+    does joins it. That one change is how time moves a channel; any other change of channel breaks the prefix."""
+    before = {name: table.copy() for name, table in earlier["world"].tables.items()}
+    orders = before["return_order"]
+    shipped = orders.index[orders["return_channel"] != "not_applicable"][0]
+    channel = orders.at[shipped, "return_channel"]
+    orders.at[shipped, "return_channel"] = "not_applicable"
+    assert snapshots.prefix_differences(before, world.tables)["return_order"] == []
+    other = next(c for c in orders["return_channel"].unique() if c not in ("not_applicable", channel))
+    orders.at[shipped, "return_channel"] = other
+    assert snapshots.prefix_differences(before, world.tables)["return_order"] == ["return_channel: 1 rows differ"]
+
+
+def test_a_snapshot_that_is_not_a_prefix_is_not_left_on_disk(world, written, monkeypatch, capsys):
+    """`arai snapshot` stops at a snapshot that fails its check and removes it, so a later --load cannot register it."""
+    from arai import cli
+    artifacts, private = written["operational"].parents[2], written["private"].parent
+    as_of = world.snapshot_date - timedelta(days=20)
+    monkeypatch.setattr(snapshots, "prefix_differences", lambda earlier, later: {"return_order": ["return_channel: 1 rows differ"]})
+    code = cli.main(["snapshot", world.world_id, "--as-of", as_of.isoformat(), "--artifact-root", str(artifacts), "--private-root", str(private)])
+    name = snapshots.snapshot_name(world.world_id, as_of)
+    assert code == 1 and "NOT a prefix" in capsys.readouterr().out
+    assert not (artifacts / "worlds" / name).exists() and not (private / name).exists()
+    assert (artifacts / "worlds" / world.world_id / "operational" / "manifest.json").is_file()      # the world itself stays
+
+
+def test_writing_the_same_snapshot_again_keeps_its_manifest(world, tmp_path):
+    """A rerun of `arai snapshot` after the code or lock changed writes the same data; the manifest (whose hash is the
+    registered snapshot's identity) stays as it was, so an instance that registered it accepts it again."""
+    import json
+    as_of = world.snapshot_date - timedelta(days=25)
+    built = snapshots.build_earlier(world.world_id, as_of)
+    first = snapshots.write_earlier(built, as_of, tmp_path / "artifacts", tmp_path / "private")
+    path = first["operational"] / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["generator"]["code_sha256"] = "0" * 64        # as if an earlier commit had written it
+    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    kept = path.read_bytes()
+    again = snapshots.write_earlier(built, as_of, tmp_path / "artifacts", tmp_path / "private")
+    assert again["unchanged"] and path.read_bytes() == kept and again["manifest"]["generator"]["code_sha256"] == "0" * 64
+    assert validate_world(again["operational"]).accepted

@@ -132,6 +132,9 @@ def prefix_differences(earlier: dict, later: dict) -> dict:
     moving = {"sales_order_line": {"line_status", "shipped_date", "delivered_date"},
               "return_order_line": {"line_status", "refund_amount", "return_received_flag"},
               "return_order": {"refund_total", "return_created_at", "available_at"}}
+    # fields that may change only away from one earlier value: a return order's channel reads not_applicable while all of
+    # its lines need no item back (a "not received" claim) and takes its channel when a later request that does joins it
+    one_way = {"return_order": {"return_channel": "not_applicable"}}
     found = {}
     for name, keys in assemble.PRIMARY_KEYS.items():
         a, b = earlier[name], later[name]
@@ -142,6 +145,8 @@ def prefix_differences(earlier: dict, later: dict) -> dict:
                 continue
             left, right = merged[column], merged[column + "_later"]
             differs = ~((left == right) | (left.isna() & right.isna())) & (merged["_merge"] == "both")
+            if column in one_way.get(name, {}):
+                differs &= left != one_way[name][column]
             if differs.any():
                 problems.append(f"{column}: {int(differs.sum())} rows differ")
         found[name] = problems
@@ -153,6 +158,7 @@ def write_earlier(world: World, as_of: date, artifact_root: Path | None = None, 
     private truth under the same name in the private root."""
     name = snapshot_name(world.world_id, as_of)
     renamed = dataclasses.replace(world, world_id=name)          # write_world names folders after the world id
+    before = _manifests(renamed, artifact_root, private_root)
     written = write_world(renamed, artifact_root, private_root)
     manifest_path = written["operational"] / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -168,7 +174,22 @@ def write_earlier(world: World, as_of: date, artifact_root: Path | None = None, 
             frame.assign(world_id=world.world_id).to_parquet(table, index=False)
             private_manifest["files"][table.stem]["sha256"] = _sha(table)
     private_manifest_path.write_text(json.dumps(private_manifest, indent=2) + "\n", encoding="utf-8")
-    return {**written, "manifest": manifest, "name": name}
+    unchanged = before is not None and json.loads(before[0])["files"] == manifest["files"]
+    if unchanged:
+        # the same data written again: keep the manifests it already had, whose provenance names the code that first
+        # wrote it, so a snapshot an instance has registered stays the same snapshot (its manifest hash is its identity)
+        manifest_path.write_bytes(before[0])
+        private_manifest_path.write_bytes(before[1])
+        manifest = json.loads(before[0])
+    return {**written, "manifest": manifest, "name": name, "unchanged": unchanged}
+
+
+def _manifests(world: World, artifact_root: Path | None, private_root: Path | None) -> tuple | None:
+    """The bytes of an earlier write's operational and private manifests, or None when there is none."""
+    from arai import paths
+    operational = Path(artifact_root or paths.ARTIFACT_ROOT) / "worlds" / world.world_id / "operational" / "manifest.json"
+    private = Path(private_root or paths.PRIVATE_TRUTH_ROOT) / world.world_id / "private-manifest.json"
+    return (operational.read_bytes(), private.read_bytes()) if operational.is_file() and private.is_file() else None
 
 
 def _sha(path: Path) -> str:

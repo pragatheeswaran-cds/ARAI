@@ -1,8 +1,8 @@
 # ARAI runbook: start, stop, validate
 
 Commands are for PowerShell, run from the repository root
-(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `lint-cleanup`, which contains every earlier
-branch (`git fetch origin; git checkout lint-cleanup`).
+(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `year-of-snapshots`, which contains every earlier
+branch (`git fetch origin; git checkout year-of-snapshots`).
 
 The application serves experiment 4 (EXP-20261005-04). Its data, bundles and local database are in
 `data\EXP-20261005-04\` (`artifacts`, `private`, `postgres`). The folders `data\artifacts`, `data\private` and
@@ -13,7 +13,8 @@ If `uv` is "not recognized", open a new terminal (it was installed with winget a
 it on PATH yet), or call it by its full path:
 `C:\Users\<you>\AppData\Local\Microsoft\WinGet\Packages\astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe\uv.exe`.
 
-The demonstration narrative and click-by-click flow are in `docs\demo-script.md`.
+The demonstration narrative and click-by-click flow are in `docs\demo-script.md`. A guided end-to-end lab, from
+generating the data to every screen as each role, is in `HANDS-ON.md`.
 
 ## Start here: a fresh clone on a new machine
 
@@ -26,7 +27,7 @@ which reproduces the same worlds and the same selected model (step 3).
 ```powershell
 # 1. the branch with all the work (main does not have it yet)
 git fetch origin
-git checkout lint-cleanup
+git checkout year-of-snapshots
 
 # 2. the environment and the UI (section 1)
 uv sync
@@ -37,13 +38,15 @@ cd web; npm install; npm run build; cd ..
 #    also rebuild the rehearsal fixture once, because publishing gives the bundles new ids (section 1.4):
 uv run arai baseline-rehearsal --fresh            # Ctrl+C once it says the run succeeded; only for the rehearsal
 
-# 4. W5401 as it stood on 9 July and 9 August, for the customer-history screens (section 4.1)
-uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09
+# 4. W5401 month by month for a year (9 Oct 2025 to 9 Aug 2026; the world itself is 9 Sep 2026), for the
+#    customer-history screens (section 4.1); about 3 minutes
+uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09
 
 # 5. start the instance (terminal 1; leave it running)
 uv run arai local                                  # http://127.0.0.1:8000
 
-# 6. in terminal 2: register and score the three snapshots, then record the August review outcomes (safe to rerun)
+# 6. in terminal 2: register and score the twelve monthly snapshots (about 10 minutes), then record the August
+#    review outcomes (safe to rerun)
 uv run --no-sync python scripts\history_demo.py --load
 ```
 
@@ -114,8 +117,9 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | **Load data** | | |
 | Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
-| W5401 as of 9 July and 9 August (the same customers, earlier cutoffs) | `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` | 4.1 |
-| Register and score the three snapshots, then record the August review outcomes (instance up) | `uv run --no-sync python scripts\history_demo.py --load` | 4.1 |
+| W5401 month by month for a year (the same customers on eleven earlier cutoffs) | `uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09` | 4.1 |
+| Only some months (any dates after 10 Sep 2025 and before 9 Sep 2026) | `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` | 4.1 |
+| Register and score every snapshot on disk, then record the August review outcomes (instance up) | `uv run --no-sync python scripts\history_demo.py --load` | 4.1 |
 | Only the August review outcomes | `uv run --no-sync python scripts\history_demo.py` | 4.1 |
 | Validate a snapshot without registering it | `uv run arai validate <folder>` | 5 |
 | Export the queue as CSV (any filters of the list; reviewers and above) | queue page **Export this view as CSV**, or `curl.exe -s -b arai-cookies.txt -o queue.csv "http://127.0.0.1:8000/api/v1/runs/<run_id>/customers/export?review_only=true"` after signing in (2.5) | 5 |
@@ -159,9 +163,23 @@ local instance, because the two would share the `data\EXP-20261005-04\artifacts`
 
 ### 1.1 Tools and the Python environment
 
+| Tool | Version this was built and checked with | Pinned in |
+|---|---|---|
+| uv | 0.11 | (install it once: https://docs.astral.sh/uv/) |
+| Python | 3.12, installed by uv | `.python-version`, `pyproject.toml`; every library in `uv.lock` |
+| Node.js and npm | Node 22, npm 10 | `web/.nvmrc`; every package in `web/package-lock.json` |
+| PostgreSQL | 16 (embedded by `arai local` through pgserver; the `postgres:16` image under Docker) | `uv.lock`, `docker-compose.yml` |
+| Keycloak (optional) | 26.0 | `docker-compose.yml`, realm in `deploy/keycloak/arai-realm.json` |
+
 ```powershell
 uv sync                      # creates .venv from uv.lock (Python 3.12 and every dependency, pinned)
 ```
+
+What is not in git, and how each is rebuilt: `.venv` (`uv sync`), `web/node_modules` and `web/dist` (`npm install`,
+`npm run build`), `data/` (the generator, section 1.3, from seeds and the tracked configuration in `final-spec/`), the
+rehearsal's database and registered datasets (rebuilt on its first start), and `.env` (copy `.env.example`; every
+setting the code reads is listed there with its default). `code/synthetic-data/` is a teammate's separate repository;
+nothing here reads it.
 
 ### 1.2 Build the UI
 
@@ -594,27 +612,28 @@ history across the snapshots. Different worlds are never linked.
 on an empty database: same numbers, about two minutes):
 
 ```powershell
-# 0. the branch, its environment and its UI (the UI changed on this branch, so rebuild it)
-git fetch origin; git checkout gap3-customer-history; git pull
+# 0. the branch, its environment and its UI (see "Start here" at the top)
+git fetch origin; git checkout year-of-snapshots; git pull
 uv sync
 cd web; npm install; npm run build; cd ..
 
-# 1. write W5401 as it stood on 9 July and 9 August (about 15 seconds each). Needs W5401 itself on disk
-#    (data\EXP-20261005-04\artifacts\worlds\W5401, as section 1.3 generates it). The command replays the generator
-#    for seed 5401, so nothing is copied; it checks each snapshot is a prefix of your W5401 and stops if it is not.
-uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09
+# 1. write W5401 as it stood on the 9th of each month from October 2025 to August 2026 (10 to 18 seconds each). Needs
+#    W5401 itself on disk (data\EXP-20261005-04\artifacts\worlds\W5401, as section 1.3 generates it). The command
+#    replays the generator for seed 5401, so nothing is copied; it checks each snapshot is a prefix of your W5401,
+#    and stops (removing that snapshot) if it is not. Rerunning it changes nothing that is already right.
+uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09
 
 # 2. start the instance (terminal 1); the database moves to schema version 11 by itself on the first start
 uv run arai local
 
-# 3. in terminal 2: register and score the three snapshots of W5401 (the ones already registered or scored are
-#    skipped), then record the three August review outcomes. Safe to run again.
+# 3. in terminal 2: register and score every snapshot of W5401 on disk (the ones already registered or scored are
+#    skipped; about a minute each), then record the three August review outcomes. Safe to run again.
 uv run --no-sync python scripts\history_demo.py --load
 ```
 
 The last line it prints must read `Since the previous snapshot (2026-08-09): 249 in both queues, 35 new, 22 left,
 2 decided before`. To confirm that your snapshot files are byte for byte the ones this branch was built with, compare
-two hashes (all fourteen are in `records/2026-10-16-monthly-snapshots.md`):
+two hashes (every file of every month is in `records/2026-10-16-monthly-snapshots.md`):
 
 ```powershell
 Get-FileHash data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-07-09\operational\customer_master.csv   # BD1D31D933D73B34...
@@ -626,7 +645,14 @@ Step 3 by hand instead: register and score each folder as in section 4 (browser 
 `uv run --no-sync python scripts\history_demo.py` without `--load`.
 
 The order does not matter: the workspace always opens on the newest run of the latest snapshot (9 September).
-Expected: July 256 selected of 5,119 eligible; August 271 of 5,408; and on the September Overview a panel **Since the
+Expected, month by month (customers in the snapshot / eligible, that is ranked / selected for review):
+
+| 9 Oct 25 | 9 Nov | 9 Dec | 9 Jan 26 | 9 Feb | 9 Mar | 9 Apr | 9 May | 9 Jun | 9 Jul | 9 Aug | 9 Sep |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 6,210 / 0 / 0 | 6,585 / 621 / 32 | 6,953 / 2,467 / 124 | 7,319 / 3,210 / 161 | 7,709 / 3,670 / 184 | 8,067 / 3,955 / 198 | 8,447 / 4,272 / 214 | 8,802 / 4,555 / 228 | 9,152 / 4,840 / 242 | 9,502 / 5,119 / 256 | 9,791 / 5,408 / 271 | 10,000 / 5,676 / 284 |
+
+In October nobody is ranked yet: after one month of history no customer has the three mature sale lines the model
+needs, and the queue says so. The case's History tab lists every month. On the September Overview a panel **Since the
 previous snapshot of W5401 (09 Aug 2026)** reading 249 also in the previous queue, 35 new, 22 left, 2 decided on an
 earlier snapshot. The review workflow runs per snapshot: a case decided in August is a new case in September, with
 the August decision shown on it. `db-clean --all --world W5401` removes every snapshot's runs and notes together.
@@ -667,7 +693,7 @@ Run these in order. Each line says what a good result looks like.
 
 ```powershell
 # 1. Python tests. They start their own temporary PostgreSQL; the running server is not touched.
-uv run --no-sync pytest -q                          # "234 passed" in about 10 minutes
+uv run --no-sync pytest -q                          # "237 passed" in about 10 minutes
 
 # 2. Front-end tests and type check
 cd web; npm test; npx tsc --noEmit; cd ..            # "30 passed"; tsc prints nothing
