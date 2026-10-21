@@ -624,18 +624,17 @@ def test_cors_allows_only_listed_origins(client):
     assert "access-control-allow-origin" not in plain.headers
 
 
-def test_vm_profile_requires_the_shared_login(env, monkeypatch):
-    monkeypatch.setenv("BASIC_AUTH_USER", "judge")
-    monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
+def test_vm_profile_has_no_shared_login(env, monkeypatch):
+    """AM-75: no HTTP Basic layer. Health is open; a protected route is 401 from ARAI's own session check."""
+    monkeypatch.delenv("BASIC_AUTH_USER", raising=False)
+    monkeypatch.delenv("BASIC_AUTH_PASSWORD", raising=False)
     config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=(), **SSO_SETTINGS)
     with TestClient(create_app(config)) as vm:
-        denied = vm.get(f"{API}/health")
-        assert denied.status_code == 401 and denied.headers["www-authenticate"].startswith("Basic")
-        assert vm.get(f"{API}/datasets", auth=("judge", "wrong")).status_code == 401
-        assert vm.get(f"{API}/health", auth=("judge", "s3cret")).status_code == 200
-    monkeypatch.delenv("BASIC_AUTH_PASSWORD")
-    with pytest.raises(RuntimeError):
-        create_app(config)
+        assert vm.get(f"{API}/health").status_code == 200
+        denied = vm.get(f"{API}/datasets")
+        assert denied.status_code == 401 and denied.json()["error_code"] == "authentication_required"
+        assert "www-authenticate" not in {k.lower() for k in denied.headers}
+        assert vm.get(f"{API}/datasets", auth=("judge", "s3cret")).status_code == 401      # a Basic header buys nothing
 
 
 def test_the_served_contract_is_the_bundled_one_and_every_route_is_in_it(client):
@@ -741,9 +740,7 @@ def test_runs_and_reviews_page_without_gaps_or_duplicates(client, env, written):
     assert notes == ["note 0", "note 1", "note 2"]                                             # oldest first, each once
 
 
-def test_the_login_refusal_is_a_contract_error_body(env, monkeypatch):
-    monkeypatch.setenv("BASIC_AUTH_USER", "judge")
-    monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
+def test_the_login_refusal_is_a_contract_error_body(env):
     config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=(), **SSO_SETTINGS)
     with TestClient(create_app(config)) as vm:
         denied = vm.post(f"{API}/runs", json={"dataset_id": "x", "idempotency_key": "k"})
@@ -881,14 +878,13 @@ def test_health_reports_the_queue_and_when_a_worker_was_last_seen(client, env, w
     assert store.migrate() == []                                                                 # migrating again is a no-op
 
 
-def test_a_login_header_that_is_not_ascii_is_refused_not_crashed(env, monkeypatch):
-    monkeypatch.setenv("BASIC_AUTH_USER", "judge")
-    monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
+def test_a_login_header_that_is_not_ascii_is_refused_not_crashed(env):
     config = ServiceConfig(database_url=env["config"].database_url, artifact_root=env["root"], profile="vm", ui_origins=(), **SSO_SETTINGS)
     with TestClient(create_app(config)) as vm:
-        denied = vm.get(f"{API}/health", headers={"Authorization": "Basic caf\u00e9".encode("latin-1")})
-        assert denied.status_code == 401
-        conforms("Error", denied.json())
+        for header in ("Basic caf\u00e9", "Bearer caf\u00e9"):
+            denied = vm.get(f"{API}/runs", headers={"Authorization": header.encode("latin-1")})
+            assert denied.status_code == 401
+            conforms("Error", denied.json())
 
 
 def test_a_run_says_when_its_scores_or_inputs_sit_outside_training(env):
@@ -2282,17 +2278,14 @@ def test_single_sign_on_needs_its_settings_and_passes_bearer_tokens_through_the_
         ServiceConfig(**base, oidc_role_map=(("arai-root", "superuser"),))
     from arai.service.config import parse_role_map
     assert parse_role_map("/arai-viewers=viewer, arai-admins=admin") == (("arai-viewers", "viewer"), ("arai-admins", "admin"))
-    # behind the vm profile's shared login: a bearer token passes it and is checked by ARAI; the login alone signs nobody in
-    monkeypatch.setenv("BASIC_AUTH_USER", "judge")
-    monkeypatch.setenv("BASIC_AUTH_PASSWORD", "s3cret")
+    # on the vm profile a bearer token is checked by ARAI itself; without one a protected route is 401 (no shared login, AM-75)
     fake = FakeKeycloak()
     app = create_app(ServiceConfig(**base, profile="vm", ui_origins=(), **SSO_SETTINGS))
     app.state.service.auth.oidc.http = httpx.Client(transport=httpx.MockTransport(fake.handler))
     with TestClient(app) as vm:
         bearer = {"Authorization": "Bearer " + fake.sign(fake.claims(groups=("arai-viewers",), aud="arai-api"))}
         assert vm.get(f"{API}/runs", headers=bearer).status_code == 200
-        assert vm.get(f"{API}/runs", auth=("judge", "s3cret")).json()["error_code"] == "authentication_required"
-        assert vm.get(f"{API}/runs").headers["www-authenticate"].startswith("Basic")
+        assert vm.get(f"{API}/runs").json()["error_code"] == "authentication_required"
         assert vm.get(f"{API}/runs", headers={"Authorization": "Bearer forged"}).status_code == 401
 
 

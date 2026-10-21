@@ -105,7 +105,7 @@ Resources:
     Properties:
       GroupName: arai-demo-web
       # 80 and 443 from anywhere: 80 serves only the certificate challenge and the redirect; 443 is the public UI, API
-      # behind TLS, the shared login, the development login and nginx request limits (D-044 as amended, AM-73, AM-74).
+      # behind TLS, the development login and nginx request limits (D-044 as amended, AM-73, AM-74, AM-75).
       # No SSH: SSM only.
       GroupDescription: ARAI demo VM - 80 and 443 from anywhere, no SSH (SSM only)
       VpcId: !Ref VpcId

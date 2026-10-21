@@ -2,17 +2,17 @@
 
 Starts `arai serve` on port 8010 twice against DATABASE_URL (the environment, else the DATABASE_URL line of .env): once
 without AUTH_DEV_ON_VM, which must be refused (the AM-70 guard stands), and once with it. Then, like a visitor behind the
-VM's nginx: the shared login, the personas, a sign-in as Priya (viewer), her refusals (CSRF, reviewer, admin), the admin
-view as Admin, and the single sign-on route being off. Writes reports/ui/<date>/vm-devlogin-result.json.
+VM's nginx: health open without any login (no shared login, AM-75), the personas, a sign-in as Priya (viewer), her refusals
+(CSRF, reviewer, admin), the admin view as Admin, and the single sign-on route being off. Writes
+reports/ui/<date>/vm-devlogin-result.json.
 
-    uv run --no-sync python tests\\e2e\\vm_devlogin_check.py        # "14 of 14 checks passed"
+    uv run --no-sync python tests\\e2e\\vm_devlogin_check.py        # "13 of 13 checks passed"
 """
 import json
 import os
 import subprocess
 import sys
 import time
-from base64 import b64encode
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -35,9 +35,8 @@ def database_url() -> str:
     sys.exit("DATABASE_URL is not set and .env has no DATABASE_URL line")
 
 
-BASE_ENV = {**os.environ, "DATABASE_URL": database_url(), "APP_PROFILE": "vm", "AUTH_MODE": "dev", "BASIC_AUTH_USER": "demo",
-            "BASIC_AUTH_PASSWORD": "demo-pass", "UI_ORIGINS": f"http://127.0.0.1:{PORT}"}
-BASIC = {"Authorization": "Basic " + b64encode(b"demo:demo-pass").decode()}
+BASE_ENV = {**os.environ, "DATABASE_URL": database_url(), "APP_PROFILE": "vm", "AUTH_MODE": "dev", "UI_ORIGINS": f"http://127.0.0.1:{PORT}"}
+BASIC: dict = {}                      # no shared login in front of the API since AM-75; kept as the (empty) common header set
 results = []
 
 
@@ -69,9 +68,7 @@ def guard_stands():
 
 def visitor_walk(c: httpx.Client):
     r = c.get(f"{API}/health")
-    check("shared login: health without it is 401", r.status_code == 401, str(r.status_code))
-    r = c.get(f"{API}/health", headers=BASIC)
-    check("shared login: health with it is 200", r.status_code == 200, f"{r.status_code} alive={r.json().get('alive')}")
+    check("no shared login: health is open, 200", r.status_code == 200, f"{r.status_code} alive={r.json().get('alive')}")
     r = c.get(f"{API}/auth/dev-users", headers=BASIC)
     names = {u["display_name"]: u["roles"] for u in r.json().get("users", [])} if r.status_code == 200 else {}
     check("dev-users lists the personas", r.status_code == 200 and names.get("Admin") == ["admin"] and names.get("Priya") == ["viewer"],

@@ -93,7 +93,7 @@ browser            ARAI server                          identity provider
 
 Choosing one creates a session exactly as single sign-on would, so everything downstream is the same code. The
 server **refuses to start** with `AUTH_MODE=dev` when `APP_PROFILE=vm`, unless `AUTH_DEV_ON_VM=1` opts in for the
-public demonstration VM behind its shared login (AM-74, docs/design/aws-deployment.md section 6). The demo keeps working without an identity
+public demonstration VM (AM-74, docs/design/aws-deployment.md section 6; no shared login since AM-75). The demo keeps working without an identity
 provider, and the second-reviewer rule can be demonstrated truthfully by signing in as two different people.
 
 ### 3.3 Roles and permissions
@@ -155,7 +155,7 @@ credentials only for the configured development origin.
 | Server | `src/arai/service/auth.py`: discovery and JWKS cache (with key rotation), code exchange, JWT checks, sessions, CSRF, the role table and a `require(permission)` dependency on every route. New routes `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/dev-login` (dev only), `GET /api/v1/me` |
 | API contract 1.16.0 | Security schemes (cookie session, bearer token); 401 `authentication_required` and 403 `forbidden` on every protected route; `Review.author` (user id, display name, verified flag); `reviewer_name` optional and ignored in requests; `exclude_mine` on the queue; `GET /me` |
 | UI | The header shows the signed-in user, their roles and Sign out, instead of the name box; actions a role cannot take are hidden, with a short reason; a 401 sends the browser to sign-in and returns to the same page; a 403 says which role is needed; notes show "verified" or "unverified name" |
-| Basic auth | Kept as an optional outer layer at the proxy for a while (IP allow-list plus shared login), then retired once single sign-on is in place |
+| Basic auth | Kept as an optional outer layer for a while (IP allow-list plus shared login); the allow-list went on 18 Oct 2026 (AM-73) and the shared login on 21 Oct 2026 (AM-75) |
 | Tests | Token checks (expired, not yet valid, wrong issuer or audience, bad signature, the `none` and symmetric algorithms, key rotation) against a local test key and a fake JWKS; the route-permission walk; CSRF; session idle and maximum age; a disabled user losing access at once; the second-reviewer rule by user id with equal display names; older unverified rows; the browser walkthrough signing in as Asha and then Ravi |
 | Specification | Decision row AM-69; components 12, 13, 14 and 15; acceptance criterion OPS-AC-05 rewritten from "shared login 401" to "single sign-on, role refusals and session expiry smoke checks" |
 | Demo and scripts | The demo signs in through the development login; `scripts/history_demo.py` signs in as the seeded users so its August outcomes carry real user ids |
@@ -214,14 +214,13 @@ back after sign-in.
 | B, proposed | 60 minutes | 10 hours | One working day; a long investigation is not interrupted |
 | C, follow Keycloak | B, plus a check with Keycloak every 5 minutes (refresh token) | Keycloak's own | Sign-out in Keycloak, or removal from a group, takes effect within 5 minutes; one more moving part |
 
-### 6.3 Basic auth kept at the proxy
+### 6.3 Basic auth at the proxy (retired)
 
-The proxy keeps the shared login and the IP allow-list in front of everything; ARAI's single sign-on runs behind it.
-One consequence: HTTP Basic occupies the `Authorization` header at the proxy, so a script cannot send its Keycloak
-bearer token in that header through the proxy. Scripts therefore call the API from inside the private network
-(directly on the API port, behind the proxy), where the bearer token works; browsers are unaffected. The smoke checks
-of OPS-AC-05 cover both layers: no shared login gives 401 at the proxy, no ARAI session gives 401 from ARAI, a missing
-role gives 403.
+Until 21 October 2026 a shared login (HTTP Basic) sat in front of everything and ARAI's sign-in ran behind it. One
+consequence was that HTTP Basic occupied the `Authorization` header, so a script could not send a bearer token through
+the proxy. AM-75 removed the layer at the owner's request: the demonstration VM is public and its personas are not
+secrets, so a second password protected nothing. Access is TLS, the sign-in and the roles; the smoke checks of
+OPS-AC-05 cover that layer: health answers without credentials, no ARAI session gives 401, a missing role gives 403.
 
 ## 7. Risks
 

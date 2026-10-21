@@ -4,7 +4,7 @@
 # /opt/arai/nginx.conf, then runs exactly that command.
 #
 # One public hostname, APP_HOST: the UI and the API from nginx (D-044 as amended, AM-73). No Keycloak on the VM
-# (AM-74): the development login's personas behind the shared login, AUTH_DEV_ON_VM=1. Four containers: db, api,
+# (AM-74): the development login's personas, AUTH_DEV_ON_VM=1; no shared login (AM-75). Four containers: db, api,
 # worker, web. Memory limits for the 2 GB t3.small: a runaway container is restarted, not the whole VM.
 services:
   db:

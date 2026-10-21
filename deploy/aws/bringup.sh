@@ -21,7 +21,7 @@ while IFS=$'\t' read -r name value; do
   declare -g "${name##*/}=$value"
 done < <(aws ssm get-parameters-by-path --path /arai --recursive --with-decryption \
           --query "Parameters[].[Name,Value]" --output text)
-for required in APP_HOST LE_EMAIL DUCKDNS_DOMAINS POSTGRES_PASSWORD BASIC_AUTH_USER BASIC_AUTH_PASSWORD DUCKDNS_TOKEN; do
+for required in APP_HOST LE_EMAIL DUCKDNS_DOMAINS POSTGRES_PASSWORD DUCKDNS_TOKEN; do
   [ -n "${!required:-}" ] || { echo "missing parameter /arai/.../$required"; exit 2; }
 done
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"; AUTH_DEV_USERS="${AUTH_DEV_USERS:-}"
@@ -85,8 +85,6 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 APP_PROFILE=vm
 ARAI_ARTIFACTS=/data/artifacts
 UI_ORIGINS=https://${APP_HOST}
-BASIC_AUTH_USER=${BASIC_AUTH_USER}
-BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
 AUTH_MODE=dev
 AUTH_DEV_ON_VM=1
 AUTH_DEV_USERS=${AUTH_DEV_USERS}
@@ -100,11 +98,10 @@ cp /opt/arai/.env "$APP_DIR/.env"
 cd "$APP_DIR"
 $COMPOSE up -d --build --remove-orphans
 for i in $(seq 1 60); do
-  curl -fsS -o /dev/null --resolve "${APP_HOST}:443:127.0.0.1" -u "${BASIC_AUTH_USER}:${BASIC_AUTH_PASSWORD}" \
-       "https://${APP_HOST}/api/v1/health" && break
+  curl -fsS -o /dev/null --resolve "${APP_HOST}:443:127.0.0.1" "https://${APP_HOST}/api/v1/health" && break
   sleep 5
 done
-curl -sS --resolve "${APP_HOST}:443:127.0.0.1" -u "${BASIC_AUTH_USER}:${BASIC_AUTH_PASSWORD}" "https://${APP_HOST}/api/v1/health"; echo
+curl -sS --resolve "${APP_HOST}:443:127.0.0.1" "https://${APP_HOST}/api/v1/health"; echo
 
 # 9. Nightly backup of the database and the artifact root to the bucket.
 echo "30 2 * * * root BUCKET=$BUCKET APP_DIR=$APP_DIR /opt/arai/backup.sh >> /var/log/arai-backup.log 2>&1" > /etc/cron.d/arai-backup

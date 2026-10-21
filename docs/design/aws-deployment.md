@@ -17,7 +17,7 @@ Read from `docker-compose.yml`, `Dockerfile`, `deploy/Dockerfile.web`, `deploy/n
 |---|---|---|
 | UI and API share one origin. The UI calls relative `/api/...` with `credentials: "same-origin"`; nginx proxies `/api/` to the API container | `web/src/api.ts:73`, `deploy/nginx.conf` | A frontend on another origin (Vercel) must proxy `/api` to the backend, or the session cookie, CSRF header and sign-in redirects stop working |
 | The session cookie is `SameSite=Lax`, `HttpOnly`, and `Secure` on the vm profile; state changes need the CSRF header; CORS allows credentials only for `UI_ORIGINS` | `api.py:393`, `api.py:253` | Works unchanged behind a same-origin proxy. Cross-site cookies would need `SameSite=None` and a code change; not planned |
-| The vm profile refuses to start without `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` and checks the shared login inside the app, not only at nginx | `api.py:234` | The shared login survives any proxy in front, including Vercel |
+| The vm profile checked a shared login (HTTP Basic) inside the app until 21 Oct 2026; AM-75 removed it, so the vm profile needs no `BASIC_AUTH_*` | `create_app` | Access is TLS and the sign-in alone (section 6) |
 | OIDC: issuer must be https, the callback is `OIDC_REDIRECT_URI` on the UI's origin, Keycloak is reached over the back channel | `config.py`, `.env.example` | Keycloak needs its own https hostname; the redirect URI is whatever host the browser uses for the UI |
 | API and worker share one local filesystem, `ARTIFACT_ROOT`: datasets uploaded through the API, model and baseline bundles, run outputs | `api.py:174-199,527-544`, `bundles.py` | API and worker must run on the same machine (or a shared volume). The runtime reads nothing from S3 |
 | Models are **skops** files, not pickles, in a bundle folder with `bundle.json`, `files.json` and SHA-256 of every file; `load_bundle` verifies them by path | `bundles.py:125-151,214-234` | S3 cannot be the runtime model store without an adapter. S3 is right for transfer and backup |
@@ -290,6 +290,13 @@ with the explicit `AUTH_DEV_ON_VM=1`, so the guard stays for anyone who does not
 `oidc` path stay in the repository for the local profile and for a later real deployment. The VM has one hostname,
 four containers (db, api, worker, web) with memory limits, and about 0.9 GB in use at idle.
 
+**No shared login (21 October 2026, AM-75).** The owner asked for the HTTP Basic layer to go. `create_app` no longer
+reads `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD`, the vm profile starts without them, and bring-up, Compose,
+`.env.example`, `scripts/history_demo.py` (no `--basic-auth`) and `scripts/ops_ac_05.ps1` follow. What remains in
+front of the VM: TLS, the development login's personas and their roles on every action, and the nginx request
+limits. The two parameters were deleted from Parameter Store. OPS-AC-05 replaces the shared-login 401/200 pair with
+one check, health answering 200 without credentials.
+
 **Still open at the time of writing.** The DuckDNS name and token. Memos stay unavailable on the VM (no key on the
 server). Section 5 is otherwise closed.
 
@@ -315,13 +322,13 @@ What exists, what remains, in order, with who does each step and how long it tak
 |---|---|---|---|
 | 1 | **Create the stack** `arai-demo` (the command of RUNBOOK 8.3, step 1; the owner runs it because Claude Code's permission mode blocks infrastructure applies). Creates the instance, the data volume, the bucket, the role and the security group. Starts the always-on clock, about 1.20 USD a day. | owner | 4 min |
 | 2 | **DuckDNS**: one subdomain (for example `arai-demo`) at duckdns.org; the token from the same page. | owner | 5 min |
-| 3 | **Parameters** in Parameter Store: `APP_HOST`, `DUCKDNS_DOMAINS`, `LE_EMAIL`, `DUCKDNS_TOKEN`, `POSTGRES_PASSWORD` and the shared login `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` (generated unless the owner names them), `ANTHROPIC_API_KEY` as `-` (memos off), optionally `AUTH_DEV_USERS`. RUNBOOK 8.2. | Claude | 5 min |
+| 3 | **Parameters** in Parameter Store: `APP_HOST`, `DUCKDNS_DOMAINS`, `LE_EMAIL`, `DUCKDNS_TOKEN`, `POSTGRES_PASSWORD` (generated), `ANTHROPIC_API_KEY` as `-` (memos off), optionally `AUTH_DEV_USERS`. RUNBOOK 8.2. | Claude | 5 min |
 | 4 | **Release**: `git archive` of the committed tree to `s3://arai-819717422656-ap-south-1/release/arai.tar.gz`. RUNBOOK 8.3, step 2. | Claude | 2 min |
 | 5 | **Bring-up** over SSM Run Command (RUNBOOK 8.3, step 3): the script waits for DNS, obtains the certificate, writes `.env`, builds the images and starts db, api, worker and web. First run builds the API image on the t3.small. | Claude | 15 to 25 min |
 | 6 | **Seed the data**: `aws s3 sync` of `data/EXP-20261005-04/artifacts` (worlds, bundles, the published experiment; never `private/`, never `datasets/`) from this laptop to `seed/artifacts`, then down to `/data/artifacts` on the VM and a restart of api and worker. RUNBOOK 8.4. | Claude | 10 to 20 min, depends on upload bandwidth |
-| 7 | **Register and score** W5401 and its twelve monthly snapshots against the VM (RUNBOOK section 4, with the shared login and a persona session), so the customer-history screens have a year. | Claude | about 15 min on a t3.small |
+| 7 | **Register and score** W5401 and its twelve monthly snapshots against the VM (RUNBOOK section 4, with a persona session), so the customer-history screens have a year. | Claude | about 15 min on a t3.small |
 | 8 | **OPS-AC-05**: `scripts\ops_ac_05.ps1` from the laptop, the two manual checks with screenshots, the result under `reports\ops-ac-05\<date>\`, the row in `final-spec/acceptance-register.csv`. | Claude, owner does the two manual checks | 20 min |
-| 9 | **Hand-over**: the URL and the shared login to the owner; RUNBOOK 8.6 for stop, start, backups and restore. Optional AMI snapshot of the finished VM. | Claude | 5 min |
+| 9 | **Hand-over**: the URL to the owner; RUNBOOK 8.6 for stop, start, backups and restore. Optional AMI snapshot of the finished VM. | Claude | 5 min |
 
 Steps 2 and 3 can happen while step 1 runs; step 5 needs 1 to 4; 6 to 9 follow in order. From the stack command to a
 working public URL is about one hour of wall-clock time, most of it waiting on builds and uploads.
@@ -333,7 +340,6 @@ working public URL is about one hour of wall-clock time, most of it waiting on b
 - **After that**: stop between sessions (about 8 USD a month); start takes two minutes and needs nothing else.
 - **A heavy scoring session**: stop, change the type to c7i-flex.large, start, score, and resize back (RUNBOOK 8.6).
 - **Budget alerts** go to the account e-mail at 22.50 and 36 USD actual spend and at a 45 USD forecast.
-- **Rotate the shared login** by changing the two parameters and re-running bring-up (RUNBOOK 8.7).
 - **Rebuild from nothing**: delete the stack (the bucket is kept, the data volume is snapshotted), create it again, run
   bring-up, restore the last dump and sync the artifacts back (RUNBOOK 8.9). About one hour.
 
@@ -341,4 +347,3 @@ working public URL is about one hour of wall-clock time, most of it waiting on b
 
 1. The DuckDNS subdomain and token (step 2).
 2. The Let's Encrypt contact e-mail (`LE_EMAIL`).
-3. Whether to choose the shared login or let it be generated.

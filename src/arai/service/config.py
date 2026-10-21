@@ -29,8 +29,8 @@ class ServiceConfig:
     memo_model: str | None = None                   # the model memos are drafted with (default in memo.py)
     # who is signed in (AM-69): dev = the development login (laptops, demos), oidc = Keycloak single sign-on (step 2)
     auth_mode: str | None = None                    # default: dev for the local profile, oidc for the vm profile
-    dev_on_vm: bool = False                         # AM-74: the development login on the vm profile, for a public demonstration
-                                                    # behind the shared login; personas, not verified people
+    dev_on_vm: bool = False                         # AM-74: the development login on the vm profile, for a public demonstration;
+                                                    # personas, not verified people (no shared login since AM-75)
     dev_users: tuple = DEFAULT_DEV_USERS
     session_idle_minutes: int = 60                  # signed out after this long without a request
     session_max_hours: int = 10                     # signed in again after this long, active or not
@@ -53,7 +53,7 @@ class ServiceConfig:
             raise ValueError("AUTH_MODE must be dev or oidc")
         if self.mode == "dev" and self.profile == "vm" and not self.dev_on_vm:
             raise ValueError("AUTH_MODE=dev is the development login and is refused with APP_PROFILE=vm; use oidc, "
-                             "or AUTH_DEV_ON_VM=1 for a public demonstration behind the shared login (AM-74)")
+                             "or AUTH_DEV_ON_VM=1 for a public demonstration (AM-74)")
         for name, roles in self.dev_users:
             if not name or not roles or set(roles) - set(ROLES):
                 raise ValueError(f"development user {name!r}: roles must be among {ROLES}")

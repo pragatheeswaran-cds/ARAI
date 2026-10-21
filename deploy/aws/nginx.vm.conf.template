@@ -2,12 +2,12 @@
 # /opt/arai/nginx.conf, which compose.vm.yml mounts into the web container. certbot keeps the certificate under
 # live/__APP_HOST__/.
 #
-# Access (D-044 as amended on 18 Oct 2026, final-spec/DECISIONS.md AM-73 and AM-74): the UI is public, no IP allowlist
-# and no Keycloak. What protects it: TLS, the shared login checked inside the API (BASIC_AUTH_*), the development
-# login's personas and roles for every action, and the request limits below.
+# Access (D-044 as amended on 18 and 21 Oct 2026, final-spec/DECISIONS.md AM-73, AM-74 and AM-75): the UI is public, no
+# IP allowlist, no Keycloak and no shared login. What protects it: TLS, the development login's personas and roles for
+# every action, and the request limits below.
 
 limit_req_zone $binary_remote_addr zone=arai_api:10m rate=20r/s;     # per address; a browser session needs far less
-limit_req_zone $binary_remote_addr zone=arai_auth:10m rate=10r/m;    # sign-in: slows guessing of the shared login
+limit_req_zone $binary_remote_addr zone=arai_auth:10m rate=10r/m;    # sign-in: no scripted churn of sessions and personas
 limit_conn_zone $binary_remote_addr zone=arai_conn:10m;
 
 # 80: the certificate challenge and the redirect, nothing else (the security group opens 80 to everyone for this).

@@ -1,14 +1,13 @@
 <#
 OPS-AC-05 smoke checks against the AWS demonstration VM (final-spec component 15; docs/design/aws-deployment.md 3.6).
-Run from any machine (the UI is public since D-044 was amended, AM-73; the development login replaces Keycloak, AM-74):
-  .\scripts\ops_ac_05.ps1 -AppHost arai-demo.duckdns.org -BasicUser <shared login user> -BasicPassword <shared login password>
+Run from any machine (the UI is public since D-044 was amended, AM-73; the development login replaces Keycloak, AM-74;
+no shared login since AM-75):
+  .\scripts\ops_ac_05.ps1 -AppHost arai-demo.duckdns.org
 Writes reports\ops-ac-05\<date>\result.json. Two checks need a person and are listed as MANUAL in the result:
 a sign-in as the viewer persona followed by a role refusal (403 on a review) and the idle session expiry.
 #>
 param(
-  [Parameter(Mandatory)] [string] $AppHost,
-  [Parameter(Mandatory)] [string] $BasicUser,
-  [Parameter(Mandatory)] [string] $BasicPassword
+  [Parameter(Mandatory)] [string] $AppHost
 )
 $ErrorActionPreference = "Stop"
 $day = Get-Date -Format "yyyy-MM-dd"
@@ -31,16 +30,11 @@ function Head($url, $headers = @{}) {
 $r = Head "http://$AppHost/"
 $checks += @{ id = "https-redirect"; pass = ($r.status -eq 301 -and "$($r.headers.Location)".StartsWith("https://$AppHost")); observed = "$($r.status) $($r.headers.Location)" }
 
-# 2. No shared login: 401
+# 2 and 3. No shared login (AM-75): health answers without any credentials; a protected route is 401 from ARAI itself
+$auth = @{}
 $r = Head "https://$AppHost/api/v1/health"
-$checks += @{ id = "shared-login-401"; pass = ($r.status -eq 401); observed = "$($r.status)" }
-
-# 3. With the shared login but no ARAI session: health answers, a protected route is 401 from ARAI itself
-$basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${BasicUser}:${BasicPassword}"))
-$auth = @{ Authorization = "Basic $basic" }
-$r = Head "https://$AppHost/api/v1/health" $auth
-$checks += @{ id = "health-behind-shared-login"; pass = ($r.status -eq 200); observed = "$($r.status)" }
-$r = Head "https://$AppHost/api/v1/me" $auth
+$checks += @{ id = "health-open-no-shared-login"; pass = ($r.status -eq 200); observed = "$($r.status)" }
+$r = Head "https://$AppHost/api/v1/me"
 $checks += @{ id = "no-session-401"; pass = ($r.status -eq 401); observed = "$($r.status)" }
 
 # 4. The development login is on, with the personas and their roles (AM-74)

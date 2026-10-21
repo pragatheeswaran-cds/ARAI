@@ -508,7 +508,7 @@ $t = (curl.exe -s -X POST http://127.0.0.1:8081/realms/arai/protocol/openid-conn
 curl.exe -s -H "Authorization: Bearer $t" http://127.0.0.1:8000/api/v1/me
 ```
 
-Behind the vm profile's shared login a bearer request passes the shared login and is checked by ARAI itself.
+On the vm profile a bearer request is checked by ARAI itself; there is no shared login in front of it (AM-75).
 
 ### 2.7 People & access (admins)
 
@@ -569,8 +569,8 @@ uv run arai worker                      # the single scoring worker (terminal 2)
 ```
 
 `arai serve` serves the API, not the UI: put `web\dist` behind a web server that forwards `/api` (as
-`deploy\nginx.conf` does), or use `npm run dev` (section 1.2). On a shared server set `APP_PROFILE=vm`, the
-`BASIC_AUTH_*` settings and single sign-on (section 2.6).
+`deploy\nginx.conf` does), or use `npm run dev` (section 1.2). On a shared server set `APP_PROFILE=vm` and
+single sign-on (section 2.6).
 
 ### 3.2 API and worker against Supabase Postgres (no Docker)
 
@@ -746,8 +746,8 @@ uv run --no-sync python tests\e2e\walkthrough.py     # "71 of 71 checks passed"
 uv run --no-sync python tests\e2e\fallback_check.py  # "11 of 11 checks passed"
 
 # 5. The demonstration VM's sign-in path (AM-74): starts its own API on port 8010 against DATABASE_URL (or the .env line)
-#    on the vm profile with the development login, and walks through the shared login, the personas and the refusals
-uv run --no-sync python tests\e2e\vm_devlogin_check.py  # "14 of 14 checks passed"
+#    on the vm profile with the development login, and walks through the open health route, the personas and the refusals
+uv run --no-sync python tests\e2e\vm_devlogin_check.py  # "13 of 13 checks passed"
 ```
 
 Use `uv run --no-sync` while the server is running: plain `uv run` may try to refresh the environment and fail
@@ -868,8 +868,8 @@ Claude Code runs the same steps through the AWS MCP tools; the commands are here
 
 One hostname (DuckDNS, free): `APP_HOST` is the UI and the API, public, no IP allowlist (D-044 as amended on 18 Oct
 2026, AM-73). No Keycloak on the VM (AM-74): people sign in with the development login's personas (section 8.5).
-What protects the instance: TLS, the shared login checked inside the API, the personas' roles for every action, and
-nginx request limits (sign-in 10 a minute per address, API 20 a second).
+What protects the instance: TLS, the personas' roles for every action and nginx request limits (sign-in 10 a minute
+per address, API 20 a second). There is no shared login (removed on 21 Oct 2026, AM-75).
 
 ### 8.2 Parameter Store
 
@@ -882,7 +882,7 @@ A value that must be empty is written as `-`.
 | DUCKDNS_DOMAINS | config | the subdomain without `.duckdns.org`, e.g. `arai-demo` |
 | LE_EMAIL | config | Let's Encrypt expiry notices |
 | AUTH_DEV_USERS | config | optional: the personas and roles of the development login, `Asha=reviewer,approver;Admin=admin` (section 8.5); the six defaults when absent |
-| POSTGRES_PASSWORD, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD | secret | generated once at setup |
+| POSTGRES_PASSWORD | secret | generated once at setup |
 | DUCKDNS_TOKEN | secret | from duckdns.org after signing in |
 | ANTHROPIC_API_KEY | secret | optional; without it every memo is unavailable by design |
 
@@ -931,18 +931,18 @@ Without the folder the instance runs in baseline fallback (section 2.2). Alterna
 offline pipeline of `README.md` (about 40 minutes on a laptop, longer on a t3.small).
 
 Then register and score W5401 and its monthly snapshots from the laptop, through the VM's API, as section 4.1 does
-locally; `--basic-auth` carries the shared login (section 8.7) and `--base-url` the public hostname:
+locally; `--base-url` names the public hostname (no shared login, AM-75):
 
 ```powershell
-uv run --no-sync python scripts\history_demo.py --load --base-url https://arai-demo.duckdns.org --basic-auth "<user>:<password>"
+uv run --no-sync python scripts\history_demo.py --load --base-url https://arai-demo.duckdns.org
 ```
 
 ### 8.5 People
 
-The VM runs the development login (AM-74): after the shared login, the sign-in page lists personas and anyone picks
-one; there are no per-person passwords. The defaults are the six of section 2.5 (Asha, Ravi and Meera review and
+The VM runs the development login (AM-74): the sign-in page lists personas and anyone picks one; there are no
+passwords at all (the shared login was removed on 21 Oct 2026, AM-75). The defaults are the six of section 2.5 (Asha, Ravi and Meera review and
 approve, Arjun reviews, Priya views, Admin administers). Other names or roles: set `AUTH_DEV_USERS` and re-run
-bring-up. Whoever holds the shared login can act as any persona, including Admin, so hand it out accordingly.
+bring-up. Anyone who reaches the URL can act as any persona, including Admin; the data on the VM is synthetic (section 8.4).
 
 ```powershell
 aws ssm put-parameter --name /arai/config/AUTH_DEV_USERS --type String --overwrite --value "Asha=reviewer,approver;Kabir=reviewer;Priya=viewer;Admin=admin"
@@ -966,17 +966,16 @@ VM after bring-up: `zcat arai-<stamp>.sql.gz | docker compose ... exec -T db psq
 
 ### 8.7 Public access
 
-The UI is reachable by anyone at `APP_HOST`; there is no Vercel address and no IP allowlist (both dropped on 18 Oct
-2026, AM-73). Visitors need the shared login (`/arai/secret/BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD`) and then pick
-a persona (section 8.5). Give the shared login only to people who should see the demonstration; rotate it by
-changing the two parameters and re-running bring-up. Keycloak single sign-on remains available for a later real
-deployment (section 2.6 and `.env.example`); it is not on this VM.
+The UI is reachable by anyone at `APP_HOST`; there is no Vercel address, no IP allowlist (both dropped on 18 Oct
+2026, AM-73) and no shared login (dropped on 21 Oct 2026, AM-75). Visitors open the URL and pick a persona
+(section 8.5). Keycloak single sign-on remains available for a later real deployment (section 2.6 and
+`.env.example`); it is not on this VM.
 
 ### 8.8 OPS-AC-05
 
-From any machine, `.\scripts\ops_ac_05.ps1` with the hostname and the shared login writes
-`reports\ops-ac-05\<date>\result.json`. It checks the HTTPS redirect, the shared login, the development login's
-personas, the closed database port and the sign-in rate limit. Two checks are manual and listed in the result: a
+From any machine, `.\scripts\ops_ac_05.ps1` with the hostname writes `reports\ops-ac-05\<date>\result.json`. It
+checks the HTTPS redirect, the health route open without credentials, a protected route refused without a session,
+the development login's personas, the closed database port and the sign-in rate limit. Two checks are manual and listed in the result: a
 sign-in as the viewer persona followed by a role refusal, and the idle session expiry. The same sign-in path is
 checked end to end on a laptop by `tests\e2e\vm_devlogin_check.py` (section 5, step 5). Record the outcome and
 the evidence path in `final-spec/acceptance-register.csv`.

@@ -6,12 +6,9 @@ The files it still opens are not data: the active pointer and bundle it verifies
 """
 from __future__ import annotations
 
-import base64
 import csv
 import io
 import logging
-import os
-import secrets
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -229,12 +226,6 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     if config.oidc_problems():
         raise RuntimeError("AUTH_MODE=oidc needs " + ", ".join(config.oidc_problems()))
     service = Service(config)
-    credentials = None
-    if config.profile == "vm":
-        user, password = os.environ.get("BASIC_AUTH_USER"), os.environ.get("BASIC_AUTH_PASSWORD")
-        if not user or not password:
-            raise RuntimeError("APP_PROFILE=vm requires BASIC_AUTH_USER and BASIC_AUTH_PASSWORD")
-        credentials = (user, password)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -262,14 +253,6 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         request.state.request_id = uuid.uuid4().hex
         if "\x00" in unquote(request.url.path) or "\x00" in unquote(request.url.query):
             return error_response(422, "invalid_request", "The request carries a NUL byte.", request.state.request_id)
-        bearer = config.mode == "oidc" and request.headers.get("authorization", "").startswith("Bearer ")
-        # a Keycloak bearer token passes the shared login; authorize() checks the token itself (AM-70)
-        if credentials and request.method != "OPTIONS" and not bearer:
-            supplied = request.headers.get("authorization", "").encode("latin-1", errors="replace")
-            expected = b"Basic " + base64.b64encode(f"{credentials[0]}:{credentials[1]}".encode())
-            if not secrets.compare_digest(supplied, expected):
-                return error_response(401, "authentication_required", "Shared login required.", request.state.request_id,
-                                      headers={"WWW-Authenticate": 'Basic realm="ARAI"'})
         try:
             response = await call_next(request)
         except Exception:                                           # never leak a stack, path or secret
