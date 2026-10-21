@@ -153,6 +153,31 @@ defaults.
 6. Close other tabs on port 8000 so the "Load more" paging and filters behave as rehearsed. Window width of
    1440 px matches the screenshots.
 
+## 2a. Demonstrating from the public VM instead of a laptop
+
+Since 19 October 2026 the same workbench runs at **https://arai-demo.duckdns.org** (docs/design/aws-deployment.md
+section 6, RUNBOOK section 8). It holds W5401 scored on its latest snapshot and the eleven earlier monthly snapshots
+back to 9 October 2025, so every scene of this script works there unchanged, with these differences:
+
+- **No login prompt.** The address opens straight on the sign-in page (the shared login was removed on 21 October
+  2026, AM-75). Pick the character you are playing; there are no passwords. Anyone with the address can do the
+  same, Admin included, so expect notes other people wrote and say that the data is synthetic.
+- **One instance for everyone.** Notes and decisions written during a demonstration stay. To start from the
+  rehearsed state, remove a world's runs and notes with `scripts/db_clear.py` (RUNBOOK 8.6) and score it again, or
+  demonstrate on a sample world (`samples/`) and clear only that world afterwards (`--world W7001N300`).
+- **Slower scoring.** The VM is a t3.small: scoring 10,000 customers takes a minute or more, not 13 seconds. For a
+  live upload use `samples\01-ordinary-300` (300 customers, a few seconds) rather than W5401 again.
+- **No memos.** `ANTHROPIC_API_KEY` is not set on the VM, so every memo reads **Memo unavailable: no API key** (section
+  4.3's "without a key" version).
+- **No cold open.** The baseline rehearsal instance of section 1d is not on the VM; tell week one from the premise
+  slide.
+- **Rate limits.** nginx allows ten sign-in requests a minute per address; switching characters a dozen times in a
+  minute answers 429 for the rest of that minute.
+
+The checks of section 2 become: open the address, `curl.exe -s https://arai-demo.duckdns.org/api/v1/health` shows
+`scoring_ready` and `promoted_model_ready` true with `model_kind` supervised, and the Overview after signing in as
+Priya shows 5,676 eligible and 284 selected for W5401 with the **Since the previous snapshot** panel.
+
 ---
 
 ## 3. Running order
@@ -418,7 +443,10 @@ Click **Datasets & runs**. Show, without necessarily doing it:
 - **Scoring readiness** names the active bundle, the baseline it falls back to, and the worker's last heartbeat.
 
 If you do register W5401 again, the server answers with the existing dataset (same manifest hash) and a new run
-can be started with a fresh idempotency key; previous runs and notes stay.
+can be started with a fresh idempotency key; previous runs and notes stay. To do the upload live without waiting,
+use a sample snapshot from `samples\` (`samples\README.md`): `01-ordinary-300` registers and scores in seconds, and
+`05-rejected-orphan-line` shows a rejection, one orphan sales order line refused with rule F001 and nothing stored.
+Afterwards `scripts/db_clear.py --world W7001N300 --yes` (or `arai db-clean` on a laptop) removes that world again.
 
 **A new month.** The dataset list shows W5401 three times: **09 Sept 2026**, **09 Aug 2026** and **09 Jul 2026**, the
 same 10,000-customer world exported on three dates (9,502, 9,791 and 10,000 accounts as new customers sign up). Say:
@@ -448,8 +476,8 @@ step is the same pipeline on a real month of returns, with the same evaluation p
 | Is the score a probability that this customer is abusing returns? | No. It is a percentile against the training worlds. The page says so wherever the score appears, and no screen uses the words fraud or confidence. |
 | Why is every customer in the queue "High"? | Tiers are anchored to the review budget: High is the queue, Medium is a score of 90 or above outside it, Low is the rest. Switch **Show** to All customers to see Medium and Low. |
 | What decides Escalate against Hold? | A stated rule over the results, printed on hover: selected and in a ring, or with the wardrobing indicator elevated, is Escalate. It is not a model output and changes no rank. |
-| Who can approve a case? | A signed-in approver who did not open it; the server compares user ids, so one person cannot approve their own case under another name. On a laptop the people come from the development login; a shared deployment signs in through Keycloak single sign-on, with roles from Keycloak groups (contract 1.17.0; RUNBOOK 2.6 rehearses it with a development Keycloak). |
-| Who controls access? | Keycloak groups decide each person's role; ARAI reads them at every sign-in and never edits them. An admin's People & access page shows everyone who has signed in and where each role comes from, can disable a person or end their sessions at once, and shows the append-only sign-in log (contract 2.0.0). |
+| Who can approve a case? | A signed-in approver who did not open it; the server compares user ids, so one person cannot approve their own case under another name. On a laptop and on the demonstration VM the people are the personas of the development login (AM-74); a real deployment signs in through Keycloak single sign-on, with roles from Keycloak groups (contract 1.17.0; RUNBOOK 2.6 rehearses it with a development Keycloak). |
+| Who controls access? | On the demonstration VM nobody: anyone with the address picks a persona, and the personas' roles are fixed in `AUTH_DEV_USERS` (AM-74, AM-75); the data is synthetic. In a real deployment Keycloak groups decide each person's role; ARAI reads them at every sign-in and never edits them. An admin's People & access page shows everyone who has signed in and where each role comes from, can disable a person or end their sessions at once, and shows the append-only sign-in log (contract 2.0.0). |
 | Where do the memos come from? | A drafting model called after the run, only when an API key is configured, with each draft checked against the case's own numbers before it is stored. Without a key the panel says so and shows nothing else. |
 | Why are the bundle ids different from the experiment record? | The manifest hashes the dependency lock and library versions as well as the code and seeds. Scores, ranks and selections reproduce exactly; the ids differ when the environment does. |
 | Can this run on our data? | The data contract (manifest plus seven tables) is the interface; the pipeline, the evaluation page and the final-test discipline are the same. The results on this page are from a simulator and say nothing yet about real returns. |
