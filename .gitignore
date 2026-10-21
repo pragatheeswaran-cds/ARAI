@@ -18,3 +18,6 @@ data/
 # Baseline rehearsal: the fixture is tracked, its runtime state is not
 rehearsal/baseline/postgres/
 rehearsal/baseline/artifacts/datasets/
+
+# Local MCP server config (holds connection details and may hold tokens)
+.mcp.json
