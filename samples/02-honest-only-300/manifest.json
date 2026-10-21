@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "world_id": "W7002N300",
+  "cutoff": "2026-09-09T23:59:59+05:30",
+  "history_start": "2025-09-10",
+  "timezone": "Asia/Kolkata",
+  "currency": "INR",
+  "purpose": "fixture",
+  "files": {
+    "customer_master": {
+      "filename": "customer_master.csv",
+      "sha256": "d7ebc2d7b03772c0cda70612b844c741ad7581cd044529f0d13b2e283c48ae75",
+      "row_count": 300
+    },
+    "sku_master": {
+      "filename": "sku_master.csv",
+      "sha256": "27048143e1f617dc145623d86ce5bda712a9212fffc06cfbb4bd113ab89dc484",
+      "row_count": 300
+    },
+    "reason_code": {
+      "filename": "reason_code.csv",
+      "sha256": "c3e219f89cd51f5a927653163409a153022c0dac38ef410070a5ef481bc3a6ec",
+      "row_count": 16
+    },
+    "sales_order": {
+      "filename": "sales_order.csv",
+      "sha256": "f03171e509a22848ce04666789a9bb47f86bf12bb14db73433b7202e22e17764",
+      "row_count": 2490
+    },
+    "sales_order_line": {
+      "filename": "sales_order_line.csv",
+      "sha256": "0e7590870a3a117f4c3f6fd6eb72bbee883dbf6a19b8c6dd9f6084d45fa701d9",
+      "row_count": 4046
+    },
+    "return_order": {
+      "filename": "return_order.csv",
+      "sha256": "18021cac01dcc16aeef53419af95d63a440e2a6189b2eb302b978ecf6c81c0a2",
+      "row_count": 713
+    },
+    "return_order_line": {
+      "filename": "return_order_line.csv",
+      "sha256": "e46f57a0310a8f61b450eee39291cc93f5277662879184028c47f58fc17eae5a",
+      "row_count": 778
+    }
+  },
+  "generator": {
+    "name": "arai.generator",
+    "version": "0.1.0",
+    "seed": 7002,
+    "config_sha256": "924f012565fdb2b78e0a60db29276f96a38479a4ec8169de4e13d81860ac4077",
+    "catalog_sha256": "0a558c72b1c4e108d4d114ec72f3480bc72597d05282979ded4087cbcdb53a3e",
+    "dependency_lock_sha256": "3e64c614f7db899c74079285d0b60f6affd914ef0d78c6a0c70a67e63a4575b8",
+    "code_sha256": "000f978d1680c86401e2e6b84563733f8b7dd29e7474ec7eaaec4a1c04397091"
+  }
+}

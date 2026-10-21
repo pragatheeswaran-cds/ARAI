@@ -617,7 +617,8 @@ Only needed on an empty database of the product instance; the baseline rehearsal
 **In the browser:** open **Datasets & runs**, choose the eight files in
 `data\EXP-20261005-04\artifacts\worlds\W5401\operational` (`manifest.json` and the seven `.csv` files), press
 **Validate and register**, then **Score with the active bundle**. Scoring 10,000 customers takes about 12
-seconds; the page updates by itself.
+seconds; the page updates by itself. Smaller snapshots for trying the flow by hand, including a snapshot pair and a
+rejected one, are under `samples\` (`samples\README.md`).
 
 **From the terminal** (same thing through the API, signed in as Admin as in section 2.5; change the port to 8080 for
 Docker):
@@ -963,6 +964,14 @@ aws ec2 start-instances --instance-ids $id     # DuckDNS gets the new address wi
 Backups: `/etc/cron.d/arai-backup` runs `deploy/aws/backup.sh` at 02:30 UTC: a dump of `arai` to
 `s3://.../backup/db/` and a sync of `/data/artifacts` to `s3://.../backup/artifacts/`. Restore a database on a fresh
 VM after bring-up: `zcat arai-<stamp>.sql.gz | docker compose ... exec -T db psql -U arai arai`.
+
+Clear the demo state (notes, runs, datasets with their files; models, people and sessions stay) with
+`scripts/db_clear.py`, fed to the api container on stdin because the image carries only `src/`; `--dry-run` first:
+
+```bash
+cd /opt/arai/app
+sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml exec -T api uv run --no-sync python - --all --yes < scripts/db_clear.py
+```
 
 ### 8.7 Public access
 

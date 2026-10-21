@@ -170,6 +170,10 @@ experiments 1 to 3 is kept untouched, with a copy of experiments 1 and 2 under `
   (or `EXP-20261005-02` with its guide) writes the data, its truth, its configuration and the guide as zip
   archives under `data/exports/<experiment>/` (not in git), after checking every file against the hashes recorded
   when the world was written. Both packages have been built.
+- `samples/` holds five small snapshots (about 8 MB in all) for trying the upload, score and review flow by hand;
+  `samples/README.md` walks through them. `scripts/make_samples.py` regenerates them from their seeds and
+  `scripts/db_clear.py` clears a database's demo state afterwards (`arai db-clean` does the same for the embedded
+  instances).
 - `records/2026-10-05-status-and-open-decisions.md` is the current state of the four experiments and the decisions
   still to be taken.
 - `docs/experiment-4-verification-guide.md` says what was done in experiment 4 and how to check it;
