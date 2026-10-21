@@ -3,13 +3,14 @@
 `final-spec/acceptance-register.csv` lists the 113 acceptance criteria of the specification, one per row, each with its
 status and the evidence for it. This page explains every criterion in plain words, groups them by the component of
 the specification they belong to, and for each one that is not fully met says what is missing, how to close it and
-who it waits on. It is generated from the register as of 17 Oct 2026; the register stays the source of record.
+who it waits on. It is generated from the register as of 17 Oct 2026, with OPS-AC-05 brought up to date by hand on
+21 Oct 2026; the register stays the source of record.
 
 **Statuses.** PASS: the evidence shows the criterion met. PARTIAL: met in part; the missing part is named. NOT_RUN:
 not exercised yet, with the reason. Every row also waits for the owner's sign-off (the reviewer column reads
 "owner sign-off pending").
 
-**Where it stands:** 105 PASS, 7 PARTIAL, 1 NOT_RUN.
+**Where it stands:** 106 PASS, 7 PARTIAL, 0 NOT_RUN.
 
 ## The open items at a glance
 
@@ -19,13 +20,13 @@ not exercised yet, with the reason. Every row also waits for the owner's sign-of
 | [VAL-AC-01](#val-ac-01) | PARTIAL | Every implemented validation rule class has a failing example and a nonzero exit, but file encoding (a non-UTF-8 file) and the size limit have no fixture of their own. | Claude Code, on request. Small; tests only. |
 | [FEAT-AC-04](#feat-ac-04) | PARTIAL | The graph rules are tested (one shared type makes no link, two make a link, a value shared by more than 25 accounts is dropped), but graph construction has no failure path that is told apart from a genuinely empty graph. | Owner decision: next experiment. |
 | [API-AC-02](#api-ac-02) | PARTIAL | Upload parts, hashes, counts, ownership and path traversal are tested; the size limit is tested only with the limit lowered, not at the real limits of 500,000,000 bytes or 2,000,000 rows. | Claude Code, on request. Small to medium; tests only. |
-| [OPS-AC-05](#ops-ac-05) | NOT_RUN | No VM has been deployed, so the smoke checks have never run. | Owner: needs a VM. |
 | [OPS-AC-06](#ops-ac-06) | PARTIAL | The local rehearsal runs without cloud credentials and moving the artifacts is tested, but it has not been rehearsed on the presentation machine. | Owner: needs the presentation machine. |
 | [TEST-AC-03](#test-ac-03) | PARTIAL | The integration cases are covered except one: a model-mismatch upload at the size limit. | Claude Code, on request, together with API-AC-02. |
 | [TEST-AC-04](#test-ac-04) | PARTIAL | Scoring time is measured on the development machine (about 12 seconds for 10,000 customers) and the fallback is tested, but not on the presentation machine. | Owner: needs the presentation machine. |
 
 Three of them (VAL-AC-01, API-AC-02, TEST-AC-03) can be closed with tests alone, and GEN-AC-08 with a rerun of the
-small-world reports. Three need a machine (OPS-AC-05 a VM; OPS-AC-06 and TEST-AC-04 the presentation machine). FEAT-AC-04
+small-world reports. Two need the presentation machine (OPS-AC-06 and TEST-AC-04); OPS-AC-05 passed on the public
+VM on 21 Oct 2026, with two manual checks still waiting for the owner. FEAT-AC-04
 changes hash-locked scoring code, so it belongs to the next experiment. `pendings.md` tracks them with the other open items.
 
 ## Contents
@@ -1062,14 +1063,14 @@ Running it on another machine or a VM: portable folders, no access to truth from
 
 ### OPS-AC-05
 
-**Status: NOT_RUN**
+**Status: PASS** (checked 2026-10-21; owner sign-off pending on two manual checks)
 
-- **What it checks:** On the VM: HTTPS works, the shared login answers 401 without credentials, the IP block holds, and the database is not reachable from the internet.
+- **What it checks:** On the public VM: HTTP redirects to HTTPS, the health route answers without credentials, a protected route is refused without a session, the development login lists its personas, the database port is closed from the internet, and sign-in requests are rate limited. Two checks are done by hand: a viewer persona refused a review (403) and the idle session expiry.
 - **Criterion as written:** VM HTTPS/shared-login401/IP block/closed public DB smoke checks pass.
-- **Evidence:** Not run: no VM has been deployed. When run it also covers a Keycloak sign-in, a role refusal and session expiry (component 15, AM-70).
-- **Gap:** No VM has been deployed, so the smoke checks have never run.
-- **How to close it:** Deploy to a VM (RUNBOOK 3.1 and 2.6, docker-compose.yml with APP_PROFILE=vm behind a TLS proxy) and run: HTTPS, the shared login's 401, the IP block, the closed database port, a Keycloak sign-in, a role refusal and session expiry.
-- **Waits on:** Owner: needs a VM.
+- **Evidence:** scripts/ops_ac_05.ps1 against https://arai-demo.duckdns.org (AWS ap-south-1, t3.small, stack arai-demo): 6 of 6 automated checks pass; reports/ops-ac-05/2026-10-21/result.json. The earlier run with the shared login still in place is reports/ops-ac-05/2026-10-19/result.json.
+- **Gap:** The IP block and the shared-login 401 of the original wording no longer apply: the VM is public by D-044 as amended (AM-73) and the shared login was removed (AM-75); Keycloak is not on the VM (AM-74), so the sign-in checked is the development login's. The two manual checks await the owner's screenshots.
+- **How to close it:** The owner signs in as Priya, attempts a review and records the 403, then leaves the UI idle past 60 minutes and records the sign-out (RUNBOOK 8.8).
+- **Waits on:** Owner: the two manual checks.
 
 ### OPS-AC-06
 
