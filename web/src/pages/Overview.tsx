@@ -107,11 +107,11 @@ export function Overview() {
             />
             <Stat name="Left the queue" value={number(run.previous_snapshot.left)} note="selected then, not now" />
             <Stat
-              name="Decided on an earlier snapshot"
-              value={number(run.previous_snapshot.approved_before + run.previous_snapshot.rejected_before)}
+              name="Closed on an earlier snapshot"
+              value={number(run.previous_snapshot.confirmed_before + run.previous_snapshot.cleared_before)}
               note={
                 <Link to={`/runs/${run.run_id}/customers?history=decided_before`}>
-                  {number(run.previous_snapshot.rejected_before)} rejected, {number(run.previous_snapshot.approved_before)} approved
+                  {number(run.previous_snapshot.confirmed_before)} confirmed, {number(run.previous_snapshot.cleared_before)} cleared
                 </Link>
               }
             />

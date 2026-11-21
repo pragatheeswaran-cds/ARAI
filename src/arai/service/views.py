@@ -12,7 +12,7 @@ from datetime import datetime
 
 from arai import features as F
 from arai.service import attribution, scoring
-from arai.service.store import NotFound, Store
+from arai.service.store import CLOSED_KINDS, ESCALATED_KINDS, NotFound, Store, outcome
 
 WARDROBING_LIMITATION = ("Occasion wear returned late in its return window, counted only when what the customer returned supports "
                          "it. It cannot establish that an item was worn, and it is independent of the model score.")
@@ -147,12 +147,13 @@ def community_detail(store: Store, run_id: str, row: dict) -> dict | None:
 
 
 def tier(row: dict) -> str | None:
-    """Decision D1, anchored to the queue: HIGH is selected for review, MEDIUM scores at or above 90 and is not selected, LOW
-    is every other eligible customer. None for a customer without a score. store.TIER_SQL is the same rule."""
+    """Decision D1, anchored to the queue: a customer selected for review is CRITICAL as a member of a detected ring and HIGH
+    otherwise (Penpot decision 5, 21 Nov 2026); MEDIUM scores at or above 90 and is not selected; LOW is every other eligible
+    customer. None for a customer without a score. store.TIER_SQL is the same rule."""
     if row["eligibility_status"] != "eligible" or row["risk_score"] is None:
         return None
     if row["selected_for_review"]:
-        return "HIGH"
+        return "CRITICAL" if row.get("community_kind") == "ring" else "HIGH"
     return "MEDIUM" if float(row["risk_score"]) >= TIER_MEDIUM_FROM else "LOW"
 
 
@@ -170,20 +171,26 @@ def gate_outcome(row: dict, summary: dict) -> str | None:
     return "WARNING" if band == "MEDIUM" or heavy else "LOW"
 
 
+WORKFLOW_STATE = {"open": "in_review", **{kind: "escalated" for kind in ESCALATED_KINDS}, **{kind: "closed" for kind in CLOSED_KINDS}}
+
+
 def workflow(row: dict, summary: dict) -> dict:
     """Where the case stands in the review workflow, derived from its reviews and never stored (store.STATE_SQL is the same rule).
 
-    The latest open, request_approval, approve or reject decides: in_review, awaiting_approval, approved, rejected. With no
-    such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed; it is still in the log),
-    and every other customer is new. A note or feedback never moves the state.
+    The latest open, clear, escalate or close decides: in_review, escalated, closed (the events of the earlier two-person
+    workflow read as an escalation and as closings). A closed case carries its outcome: cleared by the analyst, or confirmed
+    or not_confirmed by the lead who closed it after an escalation. With no such event a customer the gate leaves at LOW or
+    WARNING is auto_logged (no reviewer is needed; it is still in the log), and every other customer is new. A note or
+    feedback never moves the state.
     """
     kind = row.get("workflow_kind")
     if kind is None:
         state = "auto_logged" if gate_outcome(row, summary) in ("LOW", "WARNING") else "new"
     else:
-        state = {"open": "in_review", "request_approval": "awaiting_approval", "approve": "approved", "reject": "rejected"}[kind]
-    decided = kind in ("approve", "reject")
-    return {"state": state, "opened_by": row.get("opened_by"), "opened_by_user_id": row.get("opened_by_user_id"),
+        state = WORKFLOW_STATE[kind]
+    decided = kind in CLOSED_KINDS
+    return {"state": state, "outcome": outcome(kind, row.get("workflow_disposition")),
+            "opened_by": row.get("opened_by"), "opened_by_user_id": row.get("opened_by_user_id"),
             "opened_at": _iso(row.get("opened_at")),
             "decided_by": row.get("workflow_reviewer") if decided else None, "decided_at": _iso(row.get("workflow_at")) if decided else None}
 
@@ -230,9 +237,6 @@ def snapshot_comparison(store: Store, run: dict) -> dict | None:
     return {"dataset_id": previous["dataset_id"], "run_id": previous["run_id"], "cutoff": _iso(previous["cutoff"]), **counts}
 
 
-WORKFLOW_STATE = {"open": "in_review", "request_approval": "awaiting_approval", "approve": "approved", "reject": "rejected"}
-
-
 def _previous_field(row: dict, history: dict | None) -> dict | None:
     """The customer in the previous snapshot: absent from it (a later account), or its rank, score, place in that queue
     and where its review ended there. None when the run has no previous snapshot."""
@@ -250,7 +254,8 @@ def _earlier_decision(row: dict, history: dict | None) -> dict | None:
     decision = (history or {}).get("decisions", {}).get(row["customer_id"])
     if decision is None:
         return None
-    return {"state": WORKFLOW_STATE[decision["kind"]], "decided_by": decision["reviewer_name"],
+    return {"state": WORKFLOW_STATE[decision["kind"]], "outcome": outcome(decision["kind"], decision["disposition"]),
+            "decided_by": decision["reviewer_name"],
             "decided_at": _iso(decision["created_at"]), "cutoff": _iso(decision["cutoff"])}
 
 
@@ -311,10 +316,11 @@ def export_row(item: dict, run: dict) -> list:
         item["support_counts"]["mature_requested_units"], item["support_counts"]["mature_purchased_units"],
         item["refunded_inr"], item["claim_refunded_inr"],
         f"{community['kind']} of {community['size']}" if community else "", community.get("id"), item["wardrobing_status"],
-        item["cleared_reason"], "; ".join(item["absent_signals"] or []), workflow["state"], workflow["opened_by"],
+        item["cleared_reason"], "; ".join(item["absent_signals"] or []),
+        workflow["state"] + (f" ({workflow['outcome']})" if workflow["outcome"] else ""), workflow["opened_by"],
         workflow["decided_by"], item["latest_disposition"], (previous.get("cutoff") or "")[:10] or None, previous.get("rank"),
         None if not previous else "not in snapshot" if not previous["present"] else "yes" if in_previous else "no",
-        f"{decision['state']} on the {decision['cutoff'][:10]} snapshot by {decision['decided_by']}" if decision else None,
+        f"{decision['outcome']} on the {decision['cutoff'][:10]} snapshot by {decision['decided_by']}" if decision else None,
         run["id"], run["world_id"], _iso(run["cutoff"])[:10])]
 
 

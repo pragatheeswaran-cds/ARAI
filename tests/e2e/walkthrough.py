@@ -176,7 +176,7 @@ with sync_playwright() as pw:
     settle(page)
     check("note persists after reload", f"Walkthrough note {stamp}" in main_text(page))
     shot(page, "07-case-notes")
-    # the second-person rule, on stage: the reviewer who opens a case cannot approve it; the server's words are shown.
+    # the workflow, on stage: the reviewer who opens a case escalates it himself; a lead closes it later with the outcome.
     # The case is one nobody has opened yet in this snapshot, so the opener is the signed-in reviewer himself: the lowest-ranked
     # on the first page of the customers new to this month's queue, which keeps it clear of the demo's own cases (the ring
     # W5401-C08645, W5401-C05428 and W5401-C07084 are repeat customers). With a single snapshot every queued customer is new.
@@ -188,16 +188,16 @@ with sync_playwright() as pw:
     refusal_case = page.url.rsplit("/", 1)[-1]
     page.get_by_label("Note (required with every action)").fill(f"Walkthrough open {stamp}.")
     page.get_by_role("button", name="Open case").click()
-    page.wait_for_function("document.querySelector('main').innerText.includes('In review')", timeout=15000)
-    page.get_by_label("Note (required with every action)").fill(f"Walkthrough approve {stamp}.")
-    page.get_by_role("button", name="Approve", exact=True).click()
-    page.wait_for_function("document.querySelector('main').innerText.includes('second_reviewer_required')", timeout=15000)
-    check("approving one's own case is refused in the server's words",
-          "A different reviewer must approve or reject it" in main_text(page) and "second_reviewer_required" in main_text(page))
-    shot(page, "07b-case-refusal")
+    page.wait_for_function("document.querySelector('main').innerText.includes('In Review')", timeout=15000)
+    page.get_by_label("Note (required with every action)").fill(f"Walkthrough escalate {stamp}.")
+    page.get_by_role("button", name="Escalate Case", exact=True).click()
+    page.wait_for_function("document.querySelector('main').innerText.includes('Escalated to the fraud team')", timeout=15000)
+    check("the reviewer who opened a case escalates it, and a lead is offered the outcome",
+          "Escalated" in main_text(page) and page.get_by_role("button", name="Close: confirmed", exact=True).count() == 1)
+    shot(page, "07b-case-escalated")
 
     # ---- history across monthly snapshots of the same world (contract 1.15.0; RUNBOOK 4.3 loads the July and August snapshots)
-    page.get_by_role("link", name="Overview").click()
+    page.get_by_role("link", name="Dashboard").click()
     settle(page)
     text = main_text(page)
     check("the overview compares the queue with the previous snapshot of the same world",
@@ -208,8 +208,8 @@ with sync_playwright() as pw:
     settle(page)
     text = main_text(page)
     check("the history filter finds the customers decided on an earlier snapshot",
-          "W5401-C08645" in text and "W5401-C07084" in text and "rejected on the 09 Aug 2026 snapshot by Ravi" in text
-          and "approved on the 09 Aug 2026 snapshot by Asha" in text, text[:120])
+          "W5401-C08645" in text and "W5401-C07084" in text and "confirmed after escalation on the 09 Aug 2026 snapshot by Ravi" in text
+          and "cleared on the 09 Aug 2026 snapshot by Meera" in text, text[:120])
     shot(page, "16-queue-history")
     page.goto(BASE + queue_href + "/W5401-C08645?tab=history")
     settle(page)
@@ -257,7 +257,7 @@ with sync_playwright() as pw:
     check("browser back returns to the style", "/styles/" in page.url, page.url)
 
     # ---- evaluation, the only place truth appears
-    page.get_by_role("link", name="Evaluation").click()
+    page.get_by_role("link", name="Analytics").click()
     settle(page)
     text = main_text(page)
     check("evaluation shows selection separately from the final test", "Validation" in text and "Final test" in text and "passed" in text.lower())
@@ -296,8 +296,9 @@ with sync_playwright() as pw:
     sign_in_as(page, "Arjun")
     page.goto(run_path + "/customers/" + refusal_case)
     settle(page)
-    check("a reviewer without the approver role is not offered approve or reject",
-          "Approving or rejecting needs the approver role" in main_text(page) and page.get_by_role("button", name="Approve", exact=True).count() == 0)
+    check("a reviewer without the approver role is not offered the outcome of an escalated case",
+          "Closing an escalated case needs the approver (lead) role" in main_text(page)
+          and page.get_by_role("button", name="Close: confirmed", exact=True).count() == 0)
     check("only an admin is offered People & access", page.get_by_role("link", name="People & access").count() == 0)
     sign_in_as(page, "Admin")
     page.goto(run_path + "/customers/" + refusal_case)

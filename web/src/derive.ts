@@ -62,19 +62,25 @@ export const CLEARED_REASON: Record<NonNullable<Customer["cleared_reason"]>, str
   below_threshold: "below the review threshold",
 };
 
-export const TIER_LABEL: Record<Tier, string> = { HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
-export const TIER_HELP = "Anchored to the queue, not to fixed bands: High is selected for review, Medium scores 90 or above and is not selected, Low is every other ranked customer.";
+export const TIER_LABEL: Record<Tier, string> = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
+export const TIER_HELP =
+  "Anchored to the queue, not to fixed bands: a customer selected for review is Critical as a member of a detected ring and High otherwise; Medium scores 90 or above and is not selected; Low is every other ranked customer.";
 export const GATE_LABEL: Record<GateOutcome, string> = { ESCALATE: "Escalate", HOLD: "Hold", WARNING: "Warning", LOW: "Low" };
 export const GATE_HELP =
   "A stated presentation rule over the run's results, not a model output. Escalate: selected and in a ring or with the wardrobing indicator elevated. Hold: selected otherwise. Warning: not selected but Medium or at or above the heavy-returner cutoff. Low: the rest.";
 
 export const STATE_LABEL: Record<WorkflowState, string> = {
-  new: "New",
-  in_review: "In review",
-  awaiting_approval: "Awaiting approval",
-  approved: "Approved",
-  rejected: "Rejected",
+  new: "Open",
+  in_review: "In Review",
+  escalated: "Escalated",
+  closed: "Closed",
   auto_logged: "Auto-logged",
+};
+/** How a closed case ended, in the words the screens use. */
+export const OUTCOME_LABEL: Record<NonNullable<Customer["workflow"]["outcome"]>, string> = {
+  cleared: "cleared",
+  confirmed: "confirmed after escalation",
+  not_confirmed: "not confirmed after escalation",
 };
 
 /** The style verdict: five labels, mixed_or_uncertain kept apart (decision D8). */
@@ -167,7 +173,7 @@ export function caseSummary(data: CaseLike): string {
     c.rank
       ? `Score ${c.risk_score?.toFixed(2)} (a percentile against the training scores, not a probability) / rank ${c.rank} / tier ${words(c.tier)} / recommendation ${words(c.gate_outcome)}`
       : "Not ranked: fewer than three mature sale lines",
-    `Status ${words(w.state)}${w.opened_by ? `, opened by ${w.opened_by}` : ""}${w.decided_by ? `, decided by ${w.decided_by}` : ""}`,
+    `Status ${STATE_LABEL[w.state]}${w.outcome ? ` (${OUTCOME_LABEL[w.outcome]})` : ""}${w.opened_by ? `, opened by ${w.opened_by}` : ""}${w.decided_by ? `, decided by ${w.decided_by}` : ""}`,
     `Return-rate rule: ${c.baseline_rank ? `rank ${c.baseline_rank}, ${c.baseline_selected ? "selected" : "not selected"}` : "not ranked"}`,
     b ? `Requested ${b.actual_units} of ${b.purchased_units} mature units; expected ${b.expected_units.toFixed(1)}${b.band_low !== null && b.band_high !== null ? ` (normal band ${b.band_low.toFixed(1)} to ${b.band_high.toFixed(1)})` : ""}` : "No mature purchase yet",
     `Refunds paid ${money(c.refunded_inr)}, of which ${money(c.claim_refunded_inr)} on transaction claims (withdrawn and rejected requests carry none)`,
@@ -220,7 +226,7 @@ export function historyNote(customer: HistoryLike): string | null {
 export function earlierDecisionNote(customer: HistoryLike): string | null {
   const decision = customer.earlier_decision;
   if (!decision) return null;
-  return `${decision.state} on the ${snapshotDate(decision.cutoff)} snapshot by ${decision.decided_by}`;
+  return `${OUTCOME_LABEL[decision.outcome]} on the ${snapshotDate(decision.cutoff)} snapshot by ${decision.decided_by}`;
 }
 
 /** The newest succeeded run of the latest snapshot: the workspace opens there, whatever order snapshots were scored in. */

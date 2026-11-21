@@ -25,21 +25,44 @@ RESULT_TABLES = ("run_customers", "run_styles", "run_skus", "run_neighbors", "ru
 COMMUNITY_FIELDS = "k.kind AS community_kind, k.size AS community_size"   # of the community a customer row belongs to
 # the tier and gate-outcome rules as SQL over a customer row c joined to its community k; views.tier and views.gate_outcome
 # are the same rules in Python, and the service test checks that the two agree on every customer of a run
-TIER_SQL = {"HIGH": "c.selected_for_review",
+TIER_SQL = {"CRITICAL": "c.selected_for_review AND coalesce(k.kind, '') = 'ring'",
+            "HIGH": "c.selected_for_review AND coalesce(k.kind, '') <> 'ring'",
             "MEDIUM": "c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND c.risk_score >= %(medium_from)s",
             "LOW": "c.eligibility_status = 'eligible' AND NOT c.selected_for_review AND c.risk_score < %(medium_from)s"}
 _ESCALATE = "(coalesce(k.kind, '') = 'ring' OR c.wardrobing_status = 'elevated')"
 _WARNING = "(c.risk_score >= %(medium_from)s OR (%(heavy_cutoff)s IS NOT NULL AND (c.measures->>'raw_return_rate')::double precision >= %(heavy_cutoff)s))"
-# review kinds (frontend data plan WP6): a note or feedback never changes the workflow; the other four are its events
-REVIEW_KINDS = ("note", "open", "request_approval", "approve", "reject", "feedback")
-WORKFLOW_KINDS = ("open", "request_approval", "approve", "reject")
-SECOND_REVIEWER_MESSAGE = "You opened this case. A different reviewer must approve or reject it."
-CASE_NOT_OPEN_MESSAGE = "Open the case first: approval, rejection and a request for approval follow an open."
-CASE_ALREADY_OPEN_MESSAGE = "This case is already open. Approve or reject it, request approval, or add a note."
-APPROVAL_ALREADY_REQUESTED_MESSAGE = "Approval was already requested for this case; a different reviewer approves or rejects it."
-CASE_DECIDED_MESSAGE = "This case was already decided. Reopen it before deciding again."
-OUT_OF_SCOPE_MESSAGE = ("Open, request approval, approve and reject apply to a customer selected for review; feedback applies to the "
+# review kinds: a note or feedback never changes the workflow; open, clear, escalate and close are its events (Penpot
+# decisions 6 and 7, 21 Nov 2026). request_approval, approve and reject are the events of the earlier two-person workflow:
+# no longer written, still read, as an escalation and as two closings
+REVIEW_KINDS = ("note", "open", "clear", "escalate", "close", "feedback")
+LEGACY_KINDS = ("request_approval", "approve", "reject")
+WORKFLOW_KINDS = ("open", "clear", "escalate", "close", *LEGACY_KINDS)
+ESCALATED_KINDS = ("escalate", "request_approval")
+CLOSED_KINDS = ("clear", "close", "approve", "reject")
+
+
+def _sql_list(kinds: tuple) -> str:
+    return "(" + ", ".join(f"'{kind}'" for kind in kinds) + ")"
+
+
+_WORKFLOW_IN, _ESCALATED_IN, _CLOSED_IN = _sql_list(WORKFLOW_KINDS), _sql_list(ESCALATED_KINDS), _sql_list(CLOSED_KINDS)
+CASE_NOT_OPEN_MESSAGE = "Open the case first: clearing and escalating follow an open."
+CASE_ALREADY_OPEN_MESSAGE = "This case is already open. Clear it, escalate it, or add a note."
+CASE_ESCALATED_MESSAGE = "This case was escalated. A lead records the fraud team's outcome to close it."
+CASE_NOT_ESCALATED_MESSAGE = "Only an escalated case is closed with an outcome. Clear an open case instead, or escalate it first."
+CASE_DECIDED_MESSAGE = "This case is closed. Reopen it before deciding again."
+OUT_OF_SCOPE_MESSAGE = ("Open, clear, escalate and close apply to a customer selected for review; feedback applies to the "
                         "customers outside the queue.")
+
+
+def outcome(kind: str | None, disposition: str | None) -> str | None:
+    """How a closed case ended: cleared by the analyst, or closed by a lead after an escalation with the fraud team's
+    outcome (confirmed when the reading is needs_investigation, not_confirmed otherwise). None while it is not closed."""
+    if kind not in CLOSED_KINDS:
+        return None
+    if kind == "clear":
+        return "cleared"
+    return "confirmed" if disposition == "needs_investigation" else "not_confirmed"
 
 
 def snapshot_conflict_message(world_id: str, cutoff) -> str:
@@ -47,25 +70,22 @@ def snapshot_conflict_message(world_id: str, cutoff) -> str:
             "immutable. A later export of the same customers is a new snapshot with its own cutoff.")
 
 
-def same_reviewer(a: str, b: str) -> bool:
-    """Reviewer names are free text: the second-reviewer rule compares them without regard to case or spacing."""
-    return " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
 # the latest workflow event and the latest open of a customer in this snapshot of its world (decision AM-68: the workflow
 # runs per snapshot, notes span them), joined to a customer row c; placeholders in order: world, snapshot, world, snapshot
-WORKFLOW_JOINS = """LEFT JOIN LATERAL (SELECT w.kind, w.reviewer_name, w.created_at FROM reviews w
+WORKFLOW_JOINS = f"""LEFT JOIN LATERAL (SELECT w.kind, w.reviewer_name, w.created_at, w.disposition FROM reviews w
                                       WHERE w.world_id = %s AND w.dataset_id = %s AND w.customer_id = c.customer_id
-                                        AND w.kind IN ('open', 'request_approval', 'approve', 'reject')
+                                        AND w.kind IN {_WORKFLOW_IN}
                                       ORDER BY w.created_at DESC, w.id DESC LIMIT 1) wf ON true
                    LEFT JOIN LATERAL (SELECT o.reviewer_name, o.author_user_id, o.created_at FROM reviews o
                                       WHERE o.world_id = %s AND o.dataset_id = %s AND o.customer_id = c.customer_id AND o.kind = 'open'
                                       ORDER BY o.created_at DESC, o.id DESC LIMIT 1) opened ON true"""
 WORKFLOW_FIELDS = ("wf.kind AS workflow_kind, wf.reviewer_name AS workflow_reviewer, wf.created_at AS workflow_at, "
+                   "wf.disposition AS workflow_disposition, "
                    "opened.reviewer_name AS opened_by, opened.author_user_id AS opened_by_user_id, opened.created_at AS opened_at")
 # the state rule as SQL (views.workflow is the same rule in Python): with no event, a customer the gate leaves at LOW or
 # WARNING (eligible and not selected) is auto_logged and every other customer is new
 _NO_EVENT = "wf.kind IS NULL"
-STATE_SQL = {"in_review": "wf.kind = 'open'", "awaiting_approval": "wf.kind = 'request_approval'", "approved": "wf.kind = 'approve'",
-             "rejected": "wf.kind = 'reject'",
+STATE_SQL = {"in_review": "wf.kind = 'open'", "escalated": f"wf.kind IN {_ESCALATED_IN}", "closed": f"wf.kind IN {_CLOSED_IN}",
              "auto_logged": f"{_NO_EVENT} AND c.eligibility_status = 'eligible' AND NOT c.selected_for_review",
              "new": f"{_NO_EVENT} AND NOT (c.eligibility_status = 'eligible' AND NOT c.selected_for_review)"}
 # a customer's place against earlier snapshots of its world (decision AM-68); %(previous_run)s is the reference run of the
@@ -74,8 +94,8 @@ _IN_PREVIOUS_QUEUE = ("EXISTS (SELECT 1 FROM run_customers p WHERE p.run_id = %(
                       "AND p.selected_for_review)")
 _DECIDED_BEFORE = ("EXISTS (SELECT 1 FROM datasets d WHERE d.world_id = %(world_id)s AND d.cutoff < %(cutoff)s AND "
                    "(SELECT w.kind FROM reviews w WHERE w.world_id = d.world_id AND w.dataset_id = d.id AND w.customer_id = c.customer_id "
-                   "AND w.kind IN ('open', 'request_approval', 'approve', 'reject') ORDER BY w.created_at DESC, w.id DESC LIMIT 1) "
-                   "IN ('approve', 'reject'))")
+                   f"AND w.kind IN {_WORKFLOW_IN} ORDER BY w.created_at DESC, w.id DESC LIMIT 1) "
+                   f"IN {_CLOSED_IN})")
 HISTORY_SQL = {"new_in_queue": f"c.selected_for_review AND NOT {_IN_PREVIOUS_QUEUE}",
                "repeat_in_queue": f"c.selected_for_review AND {_IN_PREVIOUS_QUEUE}",
                "decided_before": _DECIDED_BEFORE}
@@ -278,7 +298,8 @@ class Store:
             return {}
         with self.transaction() as db:
             rows = db.execute(f"""SELECT c.customer_id, c.rank, c.risk_score, c.selected_for_review, c.eligibility_status,
-                                         wf.kind AS workflow_kind, wf.reviewer_name AS workflow_reviewer, wf.created_at AS workflow_at
+                                         wf.kind AS workflow_kind, wf.reviewer_name AS workflow_reviewer, wf.created_at AS workflow_at,
+                                         wf.disposition AS workflow_disposition
                                   FROM run_customers c {WORKFLOW_JOINS}
                                   WHERE c.run_id = %s AND c.customer_id = ANY(%s)""",
                               (world_id, dataset_id, world_id, dataset_id, run_id, list(customer_ids))).fetchall()
@@ -286,24 +307,25 @@ class Store:
 
     def earlier_decisions(self, world_id: str, cutoff, customer_ids: list) -> dict:
         """customer_id -> the latest snapshot before `cutoff` whose workflow ended in a decision: {kind, reviewer_name,
-        created_at, cutoff}. A snapshot whose last workflow event is an open or a request for approval ended undecided."""
+        created_at, cutoff, disposition}. A snapshot whose last workflow event is an open or an escalation ended undecided."""
         if not customer_ids:
             return {}
         with self.transaction() as db:
-            rows = db.execute("""SELECT DISTINCT ON (customer_id) customer_id, kind, reviewer_name, created_at, cutoff FROM (
+            rows = db.execute(f"""SELECT DISTINCT ON (customer_id) customer_id, kind, reviewer_name, created_at, cutoff, disposition FROM (
                                      SELECT DISTINCT ON (w.customer_id, w.dataset_id) w.customer_id, w.kind, w.reviewer_name,
-                                            w.created_at, d.cutoff
+                                            w.created_at, d.cutoff, w.disposition
                                      FROM reviews w JOIN datasets d ON d.id = w.dataset_id
                                      WHERE w.world_id = %s AND d.cutoff < %s AND w.customer_id = ANY(%s)
-                                       AND w.kind IN ('open', 'request_approval', 'approve', 'reject')
+                                       AND w.kind IN {_WORKFLOW_IN}
                                      ORDER BY w.customer_id, w.dataset_id, w.created_at DESC, w.id DESC) last
-                                 WHERE kind IN ('approve', 'reject') ORDER BY customer_id, cutoff DESC""",
+                                 WHERE kind IN {_CLOSED_IN} ORDER BY customer_id, cutoff DESC""",
                               (world_id, cutoff, list(customer_ids))).fetchall()
         return {row["customer_id"]: row for row in rows}
 
     def snapshot_comparison(self, run_id: str, previous_run_id: str, world_id: str, cutoff) -> dict:
         """The review set against the previous snapshot's: customers in both, new to it, gone from it; and how many customers
-        of the current review set were decided in an earlier snapshot, by decision."""
+        of the current review set were closed in an earlier snapshot: confirmed by the fraud team, or cleared (by the analyst,
+        or closed as not confirmed)."""
         with self.transaction() as db:
             row = db.execute("""SELECT count(*) FILTER (WHERE c.selected_for_review AND p.selected_for_review) AS repeat,
                                        count(*) FILTER (WHERE c.selected_for_review AND NOT coalesce(p.selected_for_review, false)) AS new,
@@ -315,8 +337,8 @@ class Store:
                                                            (run_id,)).fetchall()]
         decided = self.earlier_decisions(world_id, cutoff, queued)
         return {"repeat": row["repeat"], "new": row["new"], "left": row["left"],
-                "approved_before": sum(d["kind"] == "approve" for d in decided.values()),
-                "rejected_before": sum(d["kind"] == "reject" for d in decided.values())}
+                "confirmed_before": sum(outcome(d["kind"], d["disposition"]) == "confirmed" for d in decided.values()),
+                "cleared_before": sum(outcome(d["kind"], d["disposition"]) != "confirmed" for d in decided.values())}
 
     def get_dataset(self, dataset_id: str) -> dict:
         with self.transaction() as db:
@@ -536,13 +558,15 @@ class Store:
         """(review, created). Append-only. The workflow rules hold under one lock per customer of a world, so concurrent
         calls see each other's events in order:
 
-        - open needs a case that is not open (409 case_already_open while it is in review or awaiting approval);
-        - request_approval, approve and reject need an open case (409 case_not_open), one that is not yet decided
-          (409 case_decided; a reopen comes first), and approval cannot be requested twice (409 case_already_open);
-        - the reviewer who made the latest open can neither approve nor reject (409 second_reviewer_required, a fixed
-          message the UI shows as it is); names compare without regard to case or spacing;
-        - when `in_queue` is given, the four workflow kinds apply only to a customer selected for review and feedback only
-          to the others (409 out_of_scope). A note is always allowed."""
+        - open needs a case that is not open (409 case_already_open while it is in review or escalated); opening a closed
+          case reopens it;
+        - clear and escalate need a case in review: 409 case_not_open before any open, 409 case_escalated once it was
+          escalated, 409 case_decided once it is closed (a reopen comes first);
+        - close needs an escalated case (409 case_not_escalated otherwise; 409 case_decided once it is closed);
+        - when `in_queue` is given, the workflow kinds apply only to a customer selected for review and feedback only
+          to the others (409 out_of_scope). A note is always allowed.
+
+        Who may close (a lead) is the caller's rule; nothing here depends on who opened the case."""
         scope = f"reviews:{review['world_id']}:{review['customer_id']}"
         snapshot = review["dataset_id"]                                      # the workflow runs per snapshot (AM-68)
         with self.transaction() as db:
@@ -557,28 +581,22 @@ class Store:
             if in_queue is not None and ((kind in WORKFLOW_KINDS and not in_queue) or (kind == "feedback" and in_queue)):
                 raise Conflict("out_of_scope", OUT_OF_SCOPE_MESSAGE)
             if kind in WORKFLOW_KINDS:
-                latest = db.execute("""SELECT kind, reviewer_name FROM reviews WHERE world_id = %s AND customer_id = %s
+                latest = db.execute("""SELECT kind FROM reviews WHERE world_id = %s AND customer_id = %s
                                          AND dataset_id = %s AND kind = ANY(%s) ORDER BY created_at DESC, id DESC LIMIT 1""",
                                     (review["world_id"], review["customer_id"], snapshot, list(WORKFLOW_KINDS))).fetchone()
                 state = latest["kind"] if latest else None                       # the latest workflow event is the state
                 if kind == "open":
-                    if state in ("open", "request_approval"):
+                    if state == "open" or state in ESCALATED_KINDS:
                         raise Conflict("case_already_open", CASE_ALREADY_OPEN_MESSAGE)
-                else:
-                    if state is None:
-                        raise Conflict("case_not_open", CASE_NOT_OPEN_MESSAGE)
-                    if state in ("approve", "reject"):
-                        raise Conflict("case_decided", CASE_DECIDED_MESSAGE)
-                    if kind == "request_approval" and state == "request_approval":
-                        raise Conflict("case_already_open", APPROVAL_ALREADY_REQUESTED_MESSAGE)
-                    opened = db.execute("""SELECT reviewer_name, author_user_id FROM reviews WHERE world_id = %s AND customer_id = %s AND dataset_id = %s
-                                           AND kind = 'open' ORDER BY created_at DESC, id DESC LIMIT 1""",
-                                        (review["world_id"], review["customer_id"], snapshot)).fetchone()
-                    # the same person by user id (AM-69); an open written before sign-in existed has no user id, so its name decides
-                    same = (opened["author_user_id"] == review.get("author_user_id") if opened["author_user_id"]
-                            else same_reviewer(opened["reviewer_name"], review["reviewer_name"]))
-                    if kind != "request_approval" and same:
-                        raise Conflict("second_reviewer_required", SECOND_REVIEWER_MESSAGE)
+                elif state in CLOSED_KINDS:
+                    raise Conflict("case_decided", CASE_DECIDED_MESSAGE)
+                elif kind == "close":
+                    if state not in ESCALATED_KINDS:
+                        raise Conflict("case_not_escalated", CASE_NOT_ESCALATED_MESSAGE)
+                elif state is None:
+                    raise Conflict("case_not_open", CASE_NOT_OPEN_MESSAGE)
+                elif state in ESCALATED_KINDS:
+                    raise Conflict("case_escalated", CASE_ESCALATED_MESSAGE)
             row = db.execute("""WITH added AS (
                                     INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind,
                                                          dataset_id, author_user_id)

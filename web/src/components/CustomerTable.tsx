@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Customer, PrimarySignal, Run } from "../api";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, clearedHeavyReturner, earlierDecisionNote, groupByCommunity, historyNote, notObserved, rawRate } from "../derive";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, OUTCOME_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, clearedHeavyReturner, earlierDecisionNote, groupByCommunity, historyNote, notObserved, rawRate } from "../derive";
 import { Badge, CopyId, label, number, percent, rupees } from "./ui";
 
 export const SCORE_HELP =
@@ -48,7 +48,8 @@ export function GateBadge({ gate }: { gate: Customer["gate_outcome"] }) {
 }
 export function workflowNote(customer: Customer): string | null {
   const w = customer.workflow;
-  return w.state === "in_review" || w.state === "awaiting_approval" ? `opened by ${w.opened_by}` : w.decided_by ? `by ${w.decided_by}` : null;
+  if (w.state === "in_review" || w.state === "escalated") return `opened by ${w.opened_by}`;
+  return w.decided_by ? `${w.outcome ? OUTCOME_LABEL[w.outcome] + ", " : ""}by ${w.decided_by}` : null;
 }
 export function StateBadge({ customer, compact = false }: { customer: Customer; compact?: boolean }) {
   const note = workflowNote(customer);

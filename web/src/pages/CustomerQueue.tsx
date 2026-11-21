@@ -17,20 +17,20 @@ const EMPTY: CustomerFilters = {
   community_id: "", tier: "all", gate: "all", state: "all", history: "all",
 };
 
-/** Cases a second person must decide, without the ones this reviewer opened. */
-function ApprovalBand({ runId }: { runId: string }) {
+/** Escalated cases waiting for a lead to record the fraud team's outcome. */
+function EscalatedBand({ runId }: { runId: string }) {
   const { can } = useSession();
   const { fallback } = useWorkspace();
-  const band = useLoad(() => api.customers(runId, { ...EMPTY, review_only: false, state: "awaiting_approval", exclude_mine: true }, null, 20), [runId]);
+  const band = useLoad(() => api.customers(runId, { ...EMPTY, review_only: false, state: "escalated" }, null, 20), [runId]);
   const items = band.data?.items ?? [];
   if (!items.length || !can("decide")) return null;
   return (
-    <div className="band" role="region" aria-label="Awaiting a second reviewer">
+    <div className="band" role="region" aria-label="Escalated cases awaiting an outcome">
       <h3>
-        Awaiting your approval: {number(items.length)}
-        {band.data?.next_cursor ? "+" : ""} case(s) another reviewer opened
+        Escalated, awaiting an outcome: {number(items.length)}
+        {band.data?.next_cursor ? "+" : ""} case(s)
       </h3>
-      <p className="small">A case is decided by someone other than the person who opened it. Cases you opened are not listed.</p>
+      <p className="small">An escalated case stays open until a lead records the fraud team's outcome and closes it.</p>
       <CustomerTable runId={runId} customers={items} fallback={fallback} compact />
     </div>
   );
@@ -113,7 +113,7 @@ export function CustomerQueue() {
   return (
     <>
       <PageTitle title="Case queue">Filters change what is shown. They never change a score or the run's review selection.</PageTitle>
-      <ApprovalBand runId={runId} />
+      <EscalatedBand runId={runId} />
       <Panel>
         <form
           className="filters"

@@ -121,7 +121,7 @@ try:
               and "Wardrobing indicator" in text and "Why this score" in text)
         page.screenshot(path=str(OUT / "14-fallback-case.png"), full_page=True)
 
-        page.get_by_role("link", name="Evaluation").click()
+        page.get_by_role("link", name="Analytics").click()
         settle()
         text = page.locator("main").inner_text()
         check("evaluation says no winner and that nothing was promoted", "No winner" in text and "The return-rate baseline is active" in text)

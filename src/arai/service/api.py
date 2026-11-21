@@ -66,7 +66,8 @@ class RunRequest(BaseModel):
 class ReviewRequest(BaseModel):
     # contract 2.0.0 (AM-71): the author is the signed-in user; reviewer_name, ignored since 1.16.0, is gone and refused (422)
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["note", "open", "request_approval", "approve", "reject", "feedback"] = "note"
+    # contract 3.0.0 (AM-76): open, clear, escalate and close replace the two-person approval workflow
+    kind: Literal["note", "open", "clear", "escalate", "close", "feedback"] = "note"
     disposition: Literal["needs_investigation", "likely_legitimate", "unresolved"]
     note: str = Field(min_length=1, max_length=4000)
     idempotency_key: str = Field(min_length=1, max_length=128)
@@ -580,9 +581,9 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                       wardrobing: Literal["all", "elevated", "possible", "no_elevated_signal", "insufficient_evidence", "incomplete"] = "all",
                       community: Literal["all", "ring", "household", "none"] = "all",
                       community_id: str | None = Query(None, max_length=200),
-                      tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
+                      tier: Literal["all", "CRITICAL", "HIGH", "MEDIUM", "LOW"] = "all",
                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
-                      state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
+                      state: Literal["all", "new", "in_review", "escalated", "closed", "auto_logged"] = "all",
                       cleared_heavy: bool = False,
                       history: Literal["all", "new_in_queue", "repeat_in_queue", "decided_before"] = "all",
                       exclude_mine: bool = False) -> dict:
@@ -657,13 +658,13 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     @api.post("/runs/{run_id}/customers/{customer_id}/reviews", status_code=201)
     def append_review(request: Request, run_id: str, customer_id: str, body: ReviewRequest):
         user = request.state.user
-        if body.kind in ("approve", "reject") and not user.can("decide"):
+        if body.kind == "close" and not user.can("decide"):
             service.auth.log("refused", user.id, request.state.request_id, {"status": 403, "permission": "decide"})
-            raise ApiError(403, "forbidden", "Approving or rejecting needs the approver role.")
+            raise ApiError(403, "forbidden", "Closing an escalated case with its outcome needs the approver (lead) role.")
         run, customer = _case_customer(run_id, customer_id)
-        if body.kind in ("approve", "reject") and body.disposition == "unresolved":
-            raise ApiError(422, "invalid_request", "A decision carries a reading: approve or reject with needs_investigation or "
-                                                   "likely_legitimate, not unresolved.",
+        if body.kind in ("clear", "escalate", "close") and body.disposition == "unresolved":
+            raise ApiError(422, "invalid_request", "A decision carries a reading: clear, escalate or close with "
+                                                   "needs_investigation or likely_legitimate, not unresolved.",
                            [{"rule_id": "request.decision_disposition", "table": None, "row_key": "disposition", "count": 1}])
         # the author is the signed-in user (AM-69); the stored name is the user's display name at the time of writing
         review = {"world_id": run["world_id"], "dataset_id": run["dataset_id"], "customer_id": customer_id, "run_id": run_id,

@@ -130,8 +130,8 @@ describe("snapshots of one world (contract 1.15.0)", () => {
     );
   });
   it("says how an earlier snapshot's review ended", () => {
-    const decision = { state: "rejected" as const, decided_by: "Ravi", decided_at: "2026-08-12T10:00:00Z", cutoff: "2026-08-09T18:29:59Z" };
-    expect(earlierDecisionNote({ selected_for_review: true, previous: null, earlier_decision: decision })).toBe("rejected on the 09 Aug 2026 snapshot by Ravi");
+    const decision = { state: "closed" as const, outcome: "cleared" as const, decided_by: "Ravi", decided_at: "2026-08-12T10:00:00Z", cutoff: "2026-08-09T18:29:59Z" };
+    expect(earlierDecisionNote({ selected_for_review: true, previous: null, earlier_decision: decision })).toBe("cleared on the 09 Aug 2026 snapshot by Ravi");
   });
   it("opens the workspace on the newest run of the latest snapshot, whatever order snapshots were scored in", () => {
     const runs = [

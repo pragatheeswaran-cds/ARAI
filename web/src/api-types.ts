@@ -656,7 +656,7 @@ export interface components {
                 review_set: components["schemas"]["RefundTotals"];
                 rule_set: components["schemas"]["RefundTotals"];
             } | null;
-            /** @description Contract 1.15.0 (AM-68). This run's review set against the previous snapshot of the same world (the latest earlier cutoff with a succeeded run, read from its latest succeeded run) - customers in both review sets, new to this one, gone from it, and how many of this review set had their review end in approve or reject on an earlier snapshot. Null until the run succeeded and on a world's first scored snapshot. */
+            /** @description Contract 1.15.0 (AM-68). This run's review set against the previous snapshot of the same world (the latest earlier cutoff with a succeeded run, read from its latest succeeded run) - customers in both review sets, new to this one, gone from it, and how many of this review set had their review closed on an earlier snapshot, as confirmed by the fraud team (confirmed_before) or as cleared or not confirmed (cleared_before). Null until the run succeeded and on a world's first scored snapshot. */
             previous_snapshot: {
                 dataset_id: string;
                 run_id: string;
@@ -665,8 +665,8 @@ export interface components {
                 repeat: number;
                 new: number;
                 left: number;
-                approved_before: number;
-                rejected_before: number;
+                confirmed_before: number;
+                cleared_before: number;
             } | null;
         };
         RefundTotals: {
@@ -722,12 +722,14 @@ export interface components {
                 risk_score: number | null;
                 selected_for_review: boolean | null;
                 /** @enum {string|null} */
-                workflow_state: "in_review" | "awaiting_approval" | "approved" | "rejected" | null;
+                workflow_state: "in_review" | "escalated" | "closed" | null;
             } | null;
-            /** @description Contract 1.15.0 (AM-68). The latest earlier snapshot of the world on which this customer's review ended in a decision, with who decided and when. The workflow runs per snapshot, so a decision there does not decide this snapshot's case. Null without one. */
+            /** @description Contract 1.15.0 (AM-68). The latest earlier snapshot of the world on which this customer's review was closed, with how it ended, who decided and when. The workflow runs per snapshot, so a decision there does not decide this snapshot's case. Null without one. */
             earlier_decision: {
                 /** @enum {string} */
-                state: "approved" | "rejected";
+                state: "closed";
+                /** @enum {string} */
+                outcome: "cleared" | "confirmed" | "not_confirmed";
                 decided_by: string;
                 /** Format: date-time */
                 decided_at: string;
@@ -760,10 +762,10 @@ export interface components {
                 size: number;
             } | null;
             /**
-             * @description Anchored to the queue, not to fixed percentiles (the score is a training reference percentile, so fixed bands would put a quarter of customers in the top band). HIGH is selected for review; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer. Null for a customer without a score.
+             * @description Anchored to the queue, not to fixed percentiles (the score is a training reference percentile, so fixed bands would put a quarter of customers in the top band). A customer selected for review is CRITICAL as a member of a detected ring and HIGH otherwise (contract 3.0.0, AM-76); MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer. Null for a customer without a score.
              * @enum {string|null}
              */
-            tier: "HIGH" | "MEDIUM" | "LOW" | null;
+            tier: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
             /**
              * @description A presentation rule over stored results, not a model output, and the UI says so. ESCALATE is selected and either in a ring or with the wardrobing indicator elevated; HOLD is selected otherwise; WARNING is not selected and either MEDIUM or at or above the run's heavy_returner_cutoff; LOW is every other eligible customer. Null for a customer without a score.
              * @enum {string|null}
@@ -779,16 +781,21 @@ export interface components {
                 denominator: number | null;
                 unit: string;
             }[];
-            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. Contract 3.0.0 (AM-76) - the latest open, clear, escalate or close decides the state (in_review, escalated, closed); the events of the earlier two-person workflow read as an escalation (request_approval) and as closings (approve, reject). With no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; who opened a case does not limit who decides it. */
             workflow: {
                 /** @enum {string} */
-                state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                state: "new" | "in_review" | "escalated" | "closed" | "auto_logged";
+                /**
+                 * @description How a closed case ended - cleared by the analyst; or, after an escalation, confirmed (the lead closed it as needs_investigation) or not_confirmed (as likely_legitimate). Null while it is not closed.
+                 * @enum {string|null}
+                 */
+                outcome: "cleared" | "confirmed" | "not_confirmed" | null;
                 opened_by: string | null;
-                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case. */
+                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to list the cases a person has open. */
                 opened_by_user_id: string | null;
                 /** Format: date-time */
                 opened_at: string | null;
-                /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
+                /** @description The reviewer of the clear or close that is the latest workflow event; null otherwise. */
                 decided_by: string | null;
                 /** Format: date-time */
                 decided_at: string | null;
@@ -797,11 +804,11 @@ export interface components {
         /** @description Contract 2.0.0 (AM-71) removed reviewer_name (ignored since 1.16.0); a body that carries it is a 422. The author is the signed-in user. */
         ReviewRequest: {
             /**
-             * @description What the review does. note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; request_approval asks for a second person; approve and reject decide it. The rules, checked under one lock per customer - open needs a case that is not open (409 case_already_open while it is in review or awaiting approval); request_approval, approve and reject need an open case (409 case_not_open) that is not yet decided (409 case_decided; reopen first), and approval cannot be requested twice (409 case_already_open); approve and reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed message the UI shows as it is, names compared without regard to case or spacing; the four workflow kinds apply only to a customer selected for review and feedback only to the others (409 out_of_scope). approve and reject carry a reading, needs_investigation or likely_legitimate (422 request.decision_disposition). Every kind needs a note, and no text may hold a NUL byte.
+             * @description What the review does (contract 3.0.0, AM-76). note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; clear closes it as cleared; escalate hands it to the fraud team; close records the fraud team's outcome on an escalated case and needs the decide permission (403 otherwise). The rules, checked under one lock per customer - open needs a case that is not open (409 case_already_open while it is in review or escalated; opening a closed case reopens it); clear and escalate need a case in review (409 case_not_open before any open, 409 case_escalated once escalated); close needs an escalated case (409 case_not_escalated); nothing but an open follows a closed case (409 case_decided). The four workflow kinds apply only to a customer selected for review and feedback only to the others (409 out_of_scope). clear, escalate and close carry a reading, needs_investigation or likely_legitimate (422 request.decision_disposition); a close as needs_investigation is the outcome confirmed, as likely_legitimate not_confirmed. Every kind needs a note, and no text may hold a NUL byte. The kinds request_approval, approve and reject of the earlier two-person workflow are no longer accepted (422).
              * @default note
              * @enum {string}
              */
-            kind: "note" | "open" | "request_approval" | "approve" | "reject" | "feedback";
+            kind: "note" | "open" | "clear" | "escalate" | "close" | "feedback";
             /** @enum {string} */
             disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
             note: string;
@@ -815,10 +822,10 @@ export interface components {
             model_id: string;
             reviewer_name: string;
             /**
-             * @description Rows written before contract 1.8.0 are notes.
+             * @description Rows written before contract 1.8.0 are notes. request_approval, approve and reject are rows of the two-person workflow that contract 3.0.0 replaced; they are kept and read as an escalation and as closings.
              * @enum {string}
              */
-            kind: "note" | "open" | "request_approval" | "approve" | "reject" | "feedback";
+            kind: "note" | "open" | "clear" | "escalate" | "close" | "feedback" | "request_approval" | "approve" | "reject";
             /** @enum {string} */
             disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
             note: string;
@@ -1082,7 +1089,7 @@ export interface components {
             rank: number | null;
             risk_score: number | null;
             /** @enum {string|null} */
-            tier: "HIGH" | "MEDIUM" | "LOW" | null;
+            tier: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
             /** @enum {string|null} */
             gate_outcome: "ESCALATE" | "HOLD" | "WARNING" | "LOW" | null;
             selected_for_review: boolean | null;
@@ -1092,16 +1099,21 @@ export interface components {
             evidence_tags: string[];
             /** @enum {string|null} */
             community_kind: "ring" | "household" | null;
-            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. Contract 3.0.0 (AM-76) - the latest open, clear, escalate or close decides the state (in_review, escalated, closed); the events of the earlier two-person workflow read as an escalation (request_approval) and as closings (approve, reject). With no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; who opened a case does not limit who decides it. */
             workflow: {
                 /** @enum {string} */
-                state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                state: "new" | "in_review" | "escalated" | "closed" | "auto_logged";
+                /**
+                 * @description How a closed case ended - cleared by the analyst; or, after an escalation, confirmed (the lead closed it as needs_investigation) or not_confirmed (as likely_legitimate). Null while it is not closed.
+                 * @enum {string|null}
+                 */
+                outcome: "cleared" | "confirmed" | "not_confirmed" | null;
                 opened_by: string | null;
-                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case. */
+                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to list the cases a person has open. */
                 opened_by_user_id: string | null;
                 /** Format: date-time */
                 opened_at: string | null;
-                /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
+                /** @description The reviewer of the clear or close that is the latest workflow event; null otherwise. */
                 decided_by: string | null;
                 /** Format: date-time */
                 decided_at: string | null;
@@ -1122,7 +1134,7 @@ export interface components {
                 rank: number | null;
                 selected_for_review: boolean;
                 /** @enum {string|null} */
-                tier: "HIGH" | "MEDIUM" | "LOW" | null;
+                tier: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
                 community: {
                     id: string;
                     /**
@@ -2464,12 +2476,12 @@ export interface operations {
                 community?: "all" | "ring" | "household" | "none";
                 /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
                 community_id?: string;
-                /** @description Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
-                tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
+                /** @description Show only customers of this tier (CRITICAL and HIGH are the queue, CRITICAL its members of a detected ring; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
+                tier?: "all" | "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
                 /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
                 gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
                 /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
-                state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                state?: "all" | "new" | "in_review" | "escalated" | "closed" | "auto_logged";
                 /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
                 exclude_mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
@@ -2574,12 +2586,12 @@ export interface operations {
                 community?: "all" | "ring" | "household" | "none";
                 /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
                 community_id?: string;
-                /** @description Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
-                tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
+                /** @description Show only customers of this tier (CRITICAL and HIGH are the queue, CRITICAL its members of a detected ring; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
+                tier?: "all" | "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
                 /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
                 gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
                 /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
-                state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                state?: "all" | "new" | "in_review" | "escalated" | "closed" | "auto_logged";
                 /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
                 exclude_mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */

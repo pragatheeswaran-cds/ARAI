@@ -4,9 +4,9 @@ The demo's September snapshot of W5401 is preceded by monthly snapshots back to 
 script writes, through the API of a running instance and exactly as a reviewer would, three August outcomes on customers who are
 in the September queue too:
 
-- W5401-C08645, a ring member at rank 4: opened, then rejected by a second reviewer (coordinated claims confirmed);
-- W5401-C07084, a family at an address where parcels go missing: opened, then approved by a second reviewer as legitimate;
-- W5401-C05428, a ring member at rank 23 in August: opened and sent for approval, not yet decided.
+- W5401-C08645, a ring member at rank 4: opened, escalated, then closed by a lead as confirmed (coordinated claims hold up);
+- W5401-C07084, a family at an address where parcels go missing: opened, then cleared by the analyst as legitimate;
+- W5401-C05428, a ring member at rank 23 in August: opened and escalated, not yet closed.
 
 Each request carries a fixed idempotency key, so running the script again changes nothing. Nothing here touches a score.
 Since contract 1.16.0 every action goes through a signed-in session of the development login: the snapshots are
@@ -45,22 +45,24 @@ STORY = [
         ("Asha", "open", "needs_investigation",
          ("Ring of five accounts sharing a device and a payment instrument; four are in this queue and two claimed 'not received' on "
          "the same style within days.")),
-        ("Ravi", "reject", "needs_investigation",
-         ("Second review: the matched claims and the shared payment instrument hold up. Refer to the returns policy team; ask for proof "
+        ("Asha", "escalate", "needs_investigation",
+         "Matched claims across the linked accounts; handing the ring to the fraud team."),
+        ("Ravi", "close", "needs_investigation",
+         ("Outcome: the matched claims and the shared payment instrument hold up. Refer to the returns policy team; ask for proof "
          "of delivery before refunding the next non-receipt claim.")),
     ]),
     ("W5401-C07084", [
         ("Meera", "open", "unresolved",
          "Household at one address; one matching claim. Checking the carrier record for that address before deciding."),
-        ("Asha", "approve", "likely_legitimate",
-         ("Second review: parcels to this address go missing for other customers too, and the family's claims follow those weeks. "
+        ("Meera", "clear", "likely_legitimate",
+         ("Parcels to this address go missing for other customers too, and the family's claims follow those weeks. "
          "Treat as genuine carrier failures; no action on the account.")),
     ]),
     ("W5401-C05428", [
         ("Asha", "open", "needs_investigation",
          "Ring member with late occasion-wear returns. Opened for a closer look at the linked accounts."),
-        ("Asha", "request_approval", "needs_investigation",
-         "Evidence collected; asking a second reviewer to decide."),
+        ("Asha", "escalate", "needs_investigation",
+         "Evidence collected; escalated to the fraud team."),
     ]),
 ]
 
@@ -199,7 +201,7 @@ def main() -> int:
     previous = latest["previous_snapshot"]
     if previous:
         print(f"Since the previous snapshot ({previous['cutoff'][:10]}): {previous['repeat']} in both queues, {previous['new']} new, "
-              f"{previous['left']} left, {previous['approved_before'] + previous['rejected_before']} decided before")
+              f"{previous['left']} left, {previous['confirmed_before'] + previous['cleared_before']} closed before")
     return 0
 
 
