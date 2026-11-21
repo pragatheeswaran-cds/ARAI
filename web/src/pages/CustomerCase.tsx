@@ -4,7 +4,7 @@ import { ApiError, api, newKey, type Case, type Community, type Curves, type Dis
 import { useSession, useWorkspace } from "../App";
 import { Chips, GateBadge, SCORE_HELP, StateBadge, TierBadge, workflowNote } from "../components/CustomerTable";
 import { Badge, Callout, CopyId, ErrorBox, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, rupees, shortId, useLoad } from "../components/ui";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, OUTCOME_LABEL, STATE_LABEL, TIER_LABEL, caseSummary, clearedHeavyReturner, earlierDecisionNote, historyNote, notObserved, rawRate, snapshotDate } from "../derive";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, OUTCOME_LABEL, STATE_LABEL, TIER_LABEL, caseId, caseSummary, clearedHeavyReturner, earlierDecisionNote, historyNote, notObserved, rawRate, snapshotDate } from "../derive";
 
 const TABS = ["evidence", "returns", "linked accounts", "history", "notes"] as const;
 type Tab = (typeof TABS)[number];
@@ -823,10 +823,11 @@ export function CustomerCase() {
   return (
     <>
       <Link className="button back" to={`/runs/${runId}/customers`}>
-        Back to case queue
+        Back to Risk Queue
       </Link>
-      <PageTitle title={`Case ${customerId}`}>
-        Observed evidence for a human reviewer. It is not a finding of misconduct. <CopyId id={customerId} showId={false} />
+      <PageTitle title="Investigation Details">
+        {caseId(customerId)} / customer {customerId} <CopyId id={customerId} showId={false} />. Observed evidence for a human reviewer; it is not a
+        finding of misconduct.
       </PageTitle>
       <LoadState state={state} />
       {data && c && (
@@ -856,6 +857,29 @@ export function CustomerCase() {
               its own. See the History tab and the notes.
             </Callout>
           )}
+          <div className="grid even">
+            <Panel title="Case Summary" aside={<StateBadge customer={c} compact />}>
+              <Row name="Case ID">{caseId(c.customer_id)}</Row>
+              <Row name="Customer ID">{c.customer_id}</Row>
+              <Row name="Risk Score" note="a percentile against the training scores, not a probability">
+                {c.risk_score === null ? "n/a" : `${c.risk_score.toFixed(0)} / 100`} <TierBadge tier={c.tier} />
+              </Row>
+              <Row name="Snapshot" note={run ? `world ${run.world_id}` : undefined}>
+                {run ? snapshotDate(run.cutoff) : "n/a"}
+              </Row>
+            </Panel>
+            <Panel title="Financial Impact">
+              <Row name="Refund Amount" note="refunds paid on this customer's refunded return lines in the snapshot">
+                {c.refunded_inr === null || c.refunded_inr === undefined ? "n/a" : rupees(c.refunded_inr)}
+              </Row>
+              <Row name="On transaction claims" note="where no item comes back to inspect">
+                {c.claim_refunded_inr === null || c.claim_refunded_inr === undefined ? "n/a" : rupees(c.claim_refunded_inr)}
+              </Row>
+              <Row name="Units returned" note="requested for return on mature sale lines, of the units bought on them">
+                {c.support_counts.mature_requested_units} / {c.support_counts.mature_purchased_units}
+              </Row>
+            </Panel>
+          </div>
           <div className="stats">
             <Stat
               name={fallback ? "Return-rate percentile" : "Score and tier"}

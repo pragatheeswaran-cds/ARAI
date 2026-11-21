@@ -175,3 +175,21 @@ Kept up to date as each step is built (decision 14).
 - Kept from the existing app, not drawn in Penpot: the "synthetic data only" strip above the top bar, the run
   context header and run strip above each page, the fallback banner, and the footer disclaimer.
 - Page contents (cards, tables, badges) still use the earlier green styling until their screen is restyled.
+
+### Step 2: workflow, Risk Queue, Case Investigation
+
+- Workflow (AM-76, contract 3.0.0): Open, In Review, Escalated, Closed. A closed case shows how it ended: cleared,
+  confirmed after escalation, or not confirmed after escalation. Only a lead (the approver role) closes an escalated
+  case; an admin cannot, because admins do not review cases in this app (decision 7 said "lead or admin").
+- Outcome labels avoid the word "fraud" in the queue table, following the app's rule that signals are not proof of
+  misconduct. The case page does say "escalated to the fraud team".
+- Case ID is the customer's own number ("CASE-03245" for W5401-C03245), since a case is one customer in one run.
+  There is no Return ID, Region, Channel, Refund Status or Amount at Risk.
+- Risk Queue: no Date Range filter and no count tiles yet (both come with the step 3 aggregations); no row
+  checkboxes yet (step 4). "Observed Spend" and "Refund / Spend" are shown as "Refunded" in rupees; "Created" is
+  dropped. The app's own columns (Recommendation, Return-rate rule, Latest note) and filters ("More filters") are kept.
+- Risk Queue paging is "Load more", not numbered pages.
+- Case Investigation: Case Summary and Financial Impact cards lead the page; the app's evidence tabs, memo, decision
+  panel and threshold slider follow in the earlier layout. The Actions menu is not built; Clear Case and Escalate
+  Case are in the Decision panel, with a required note.
+- Customer Intelligence is not built yet: the customer link in the queue opens the case page.
