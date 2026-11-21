@@ -131,12 +131,31 @@ new aggregations, new workflow concepts, or data the input tables do not contain
 Datasets (upload and runs), Evaluation, and People and access have no board. They need a place in the new
 navigation or are dropped.
 
-## Open decisions
+## Decisions (2026-11-21, by the project owner)
 
-1. **Contact data.** Email, phone and region would have to be added to the generator and the input contract, or
-   removed from the design. Recommendation: remove them, since the spec treats IDs as opaque and carries no
-   personal data.
-2. **Case model.** Keep "one customer per run" and relabel the design, or introduce a real case entity with its own
-   ID and created date. Keeping the current model is far less work.
-3. **Time range.** The daily trends and "last 30 days" need a new time-series aggregation over the input tables.
-   Without it, the Overview and SKU trend charts cannot be built.
+| # | Topic | Decision |
+|---|---|---|
+| 1 | Case model | Customer-wise, as planned: a case is one customer in one run. Screens show a generated case ID and the customer's returns inside the case. Return ID, refund status and amount at risk are dropped. |
+| 2 | Contact data | Add region, email and phone to the data. Email and phone also become ring signals: two more shared identifiers in the link graph, beside address, device and payment. Needs generator changes, new features and a new experiment run. |
+| 3 | Time range | Trends inside the snapshot: a backend aggregation of orders, returns and refunds by day from the snapshot's own history. The date picker filters charts and totals; risk scores stay as of the snapshot cutoff. |
+| 4 | Risk levels | Four levels everywhere: Critical, High, Medium, Low. Places in the design that show three are design bugs. |
+| 5 | Critical rule | Critical = selected for review (High) and a member of a detected ring. |
+| 6 | Case status | Simplify to the design: Open, In Review, Escalated, Closed. The two-person approval step is removed; the analyst's Clear or Escalate is the decision. |
+| 7 | After escalate | Clear Case closes the case. Escalate Case sets Escalated; a lead or admin later records the fraud team's outcome and the case becomes Closed. |
+| 8 | Navigation | Map onto existing pages: Investigations = the cases I have open; Network Graph = a new ring graph page; Analytics = the existing Evaluation page; Configuration = existing Datasets and People; Audit Log = sign-in events plus case decisions. |
+| 9 | Product screen | Style level, with SKUs listed inside each style. Add category average and deviation, a four-level product risk rating, customer concentration, monthly return trend and export. The assessment text is rule-based from the quality and targeting signals. |
+| 10 | Fraud metrics | Both: "suspected" numbers from flagged customers and analyst decisions for live data, and true fraud rate and false positives where the snapshot has a published truth file. |
+| 11 | Profile | Read-only from sign-on: name, email, role, status, account created, last login. Edit, Change Photo and Security link out to Keycloak. Employee ID, Department, Phone and the Preferences tab are removed. |
+| 12 | Small items | Build the notification bell, bulk actions in the queue, and keep the queue export button. |
+| 13 | Currency | Indian rupees everywhere. Dollar amounts in the Penpot boards are a design bug. |
+| 14 | Penpot file | Code only. Differences between the app and the boards are logged in the repo for the designer; the Penpot file is not edited. |
+| 15 | Frontend | Restyle and extend the existing React app in place; keep routes, API client and tests. |
+
+## Build order
+
+1. New shell and navigation (dark top bar, left sidebar).
+2. Risk Queue, Case Investigation and Customer Intelligence, with the workflow change.
+3. Overview Dashboard and Product screen, with the new aggregations.
+4. Profile, notification bell, bulk actions.
+5. Email, phone and region in the data and the model, with a new experiment. The contact fields appear on the
+   screens at this step.
