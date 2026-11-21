@@ -1,0 +1,12 @@
+{
+  "commands": [
+    "set -e",
+    "REGION=$(curl -sS -H \"X-aws-ec2-metadata-token: $(curl -sS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')\" http://169.254.169.254/latest/meta-data/placement/region)",
+    "ACCOUNT=$(aws sts get-caller-identity --query Account --output text)",
+    "aws s3 cp s3://arai-${ACCOUNT}-${REGION}/release/arai.tar.gz /tmp/arai.tar.gz",
+    "mkdir -p /opt/arai",
+    "tar -xzf /tmp/arai.tar.gz -C /opt/arai --strip-components=2 deploy/aws/bringup.sh",
+    "bash /opt/arai/bringup.sh"
+  ],
+  "executionTimeout": ["3600"]
+}

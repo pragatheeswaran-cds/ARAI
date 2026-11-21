@@ -20,7 +20,7 @@ const ranking = (id: string, slice: string, precision: number, household: number
 ];
 const report: Experiment = {
   summary: { experiment_id: "EXP", config_hash: "h", selection_status: "selected", selected_model_id: "m-0123456789abcdef0123", selected_candidate_id: "hgb_leaf15",
-    final_test_status: "passed" },
+    final_test_status: "passed", git_sha: null, train_seeds: [], validation_seeds: [], test_seeds: [], demo_seeds: [5401], stress_seeds: [] },
   synthetic_only: true,
   baseline_metrics: ranking("raw_return_rate", "validation", 0.243, 0.031),
   candidates: [{ candidate_id: "hgb_leaf15", ordinal: 2, status: "passed", reasons: [], metrics: ranking("hgb_leaf15", "validation", 0.707, 0.019) }],

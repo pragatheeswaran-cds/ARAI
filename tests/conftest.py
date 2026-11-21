@@ -26,6 +26,18 @@ def written(world, tmp_path_factory):
     return write_world(world, artifact_root=root / "artifacts", private_root=root / "private")
 
 
+@pytest.fixture(scope="session")
+def earlier(world, tmp_path_factory):
+    """The fixture world as exported 30 days before its cutoff: the same customers, an earlier snapshot (decision AM-68)."""
+    from datetime import timedelta
+
+    from arai import snapshots
+    as_of = world.snapshot_date - timedelta(days=30)
+    built = snapshots.build_earlier(world.world_id, as_of)
+    root = tmp_path_factory.mktemp("earlier")
+    return {"world": built, "as_of": as_of, **snapshots.write_earlier(built, as_of, root / "artifacts", root / "private")}
+
+
 # ---------------------------------------------------------------------- a small trained experiment for serving tests
 @pytest.fixture(scope="session")
 def trained(world, tmp_path_factory):
@@ -78,4 +90,5 @@ def database_url(postgres):
     name = "t_" + uuid.uuid4().hex[:16]
     with psycopg.connect(postgres, autocommit=True) as connection:
         connection.execute(f'CREATE DATABASE "{name}"')
-    return postgres.rsplit("/", 1)[0] + "/" + name
+    base, _, query = postgres.partition("?")                      # the host may be a socket directory: keep the query untouched
+    return base.rsplit("/", 1)[0] + "/" + name + ("?" + query if query else "")

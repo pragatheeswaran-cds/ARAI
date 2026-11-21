@@ -12,7 +12,6 @@ from scipy import stats
 
 from arai import diagnostics
 from arai.diagnostics import CLAIM_CODES, FANOUT_CAP, QUALITY_CODES
-from arai.features import DISCRETIONARY_CODES
 
 FIT_CODES = ("wrong_size", "didnt_fit")
 ORDER_BUCKETS = [0, 1, 3, 6, 11, 21, np.inf]

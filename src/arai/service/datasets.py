@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from arai.operational import TABLES, read_csv_world
-from arai.service.store import Conflict, Store
+from arai.service.store import Conflict, Store, snapshot_conflict_message
 from arai.validation import MAX_UPLOAD_BYTES, Report, validate_world
 
 
@@ -66,10 +66,9 @@ def register(store: Store, artifact_root: Path, manifest_text: str, files: dict)
         if not report.accepted:
             raise Rejected(report, "The snapshot failed structural validation; nothing was stored.")
         world_id = manifest["world_id"]
-        existing = store.dataset_by_world(world_id)
+        existing = store.dataset_by_snapshot(world_id, manifest["cutoff"])       # a dataset is a snapshot: world and cutoff (AM-68)
         if existing and existing["manifest_hash"] != manifest_hash:
-            raise Conflict("world_content_differs", f"World {world_id} is already registered with different content; "
-                                                    "a world's content is immutable.")
+            raise Conflict("world_content_differs", snapshot_conflict_message(world_id, manifest["cutoff"]))
         tables, _ = read_csv_world(operational)
         parquet = incoming / "parquet"
         parquet.mkdir()
@@ -82,7 +81,7 @@ def register(store: Store, artifact_root: Path, manifest_text: str, files: dict)
         row, created = store.register_dataset({
             "id": dataset_id, "world_id": world_id, "manifest_hash": manifest_hash, "schema_version": manifest["schema_version"],
             "cutoff": manifest["cutoff"], "history_start": manifest["history_start"], "purpose": manifest["purpose"],
-            "customer_count": int(len(tables["customer_master"])), "artifact_key": f"datasets/{dataset_id}"})
+            "customer_count": len(tables["customer_master"]), "artifact_key": f"datasets/{dataset_id}"})
         if not (final / "parquet").is_dir():              # new, or registered earlier and its files have since vanished
             if final.exists():
                 shutil.rmtree(final)

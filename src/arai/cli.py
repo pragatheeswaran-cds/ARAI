@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -51,6 +52,37 @@ def _existing_generator(world, artifact_root) -> dict | None:
         return None
     generator = json.loads(manifest.read_text(encoding="utf-8"))["generator"]
     return {key: generator[key] for key in ("config_sha256", "code_sha256")}
+
+
+def _snapshot(args) -> int:
+    """Earlier snapshots of a generated world: the same customers as exported on an earlier date (decision AM-68)."""
+    from datetime import date
+
+    from arai import snapshots
+    from arai.generator.world import load_world
+    later = load_world(args.world, args.artifact_root, args.private_root) if args.check else None
+    for text in args.as_of:
+        started = time.time()
+        as_of = date.fromisoformat(text)
+        world = snapshots.build_earlier(args.world, as_of)
+        out = snapshots.write_earlier(world, as_of, args.artifact_root, args.private_root)
+        report = validate_world(out["operational"])
+        print(f"{args.world} as of {as_of}: {len(world.tables['customer_master'])} customers, {world.summary['sales_order']} orders, "
+              f"{world.summary['return_order_line']} return lines in {time.time() - started:.1f}s -> {out['operational']}")
+        problems = {name: found for name, found in snapshots.prefix_differences(world.tables, later.tables).items() if found} \
+            if later is not None else {}
+        if not report.accepted or problems:
+            print(json.dumps(report.to_dict(), indent=2) if not report.accepted else f"  NOT a prefix: {problems}")
+            # a snapshot that fails is not left behind, where a later --load would register it
+            for folder in (out["operational"].parent, out["private"]):
+                shutil.rmtree(folder, ignore_errors=True)
+            print(f"  removed {out['name']}")
+            return 1
+        if later is not None:
+            print("  a prefix of the world's own snapshot")
+        if out["unchanged"]:
+            print("  the same data as already on disk: its manifest is kept, so an instance that registered it accepts it again")
+    return 0
 
 
 def _validate(args) -> int:
@@ -170,6 +202,188 @@ def _local(args) -> int:
     return 0
 
 
+def _baseline_rehearsal(args) -> int:
+    """A second local instance that serves the return-rate rule only: the demo's cold open (docs/demo-script.md, 1d).
+
+    Its fixture lives in git under rehearsal/baseline/artifacts: the baseline bundle, the published report rewritten as
+    if no candidate had passed the gate, and the active pointer. Its runtime state (the embedded database and the
+    registered snapshot) sits beside it and is ignored by git. It runs beside `arai local` without sharing anything.
+    The fixture is rebuilt from the current artifacts when it is missing, names a bundle that is not there, or --fresh
+    is given. On first start the demo world is registered and scored with the rule.
+    """
+    import logging
+    import shutil
+    import threading
+    import time
+
+    import httpx
+    import uvicorn
+
+    from arai import bundles, paths
+    from arai.operational import TABLES
+    from arai.service.api import create_app
+    from arai.service.config import ServiceConfig
+    try:
+        import pgserver
+    except ImportError:
+        print("The embedded PostgreSQL is a development dependency: run `uv sync`.")
+        return 1
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    work = paths.REPO_ROOT / "rehearsal" / "baseline"
+    root = work / "artifacts"
+    if args.fresh:
+        for state in (work / "postgres", root / "datasets", root / "bundles", root / "experiments", root / "active"):
+            shutil.rmtree(state, ignore_errors=True)
+    pointer = bundles.read_active(root)
+    if pointer is None or not (root / "bundles" / str(pointer.get("baseline_id"))).is_dir():
+        for stale in (root / "bundles", root / "experiments", root / "active"):
+            shutil.rmtree(stale, ignore_errors=True)
+        for bundle in sorted((paths.ARTIFACT_ROOT / "bundles").iterdir()):
+            if bundle.name.startswith("b-"):                               # the rule's bundle only; the model stays out
+                shutil.copytree(bundle, root / "bundles" / bundle.name)
+        source = next((paths.ARTIFACT_ROOT / "experiments").glob("*/published/experiment.json"))
+        report = json.loads(source.read_text(encoding="utf-8"))
+        report["summary"].update(selection_status="no_selected_model", selected_model_id=None, selected_candidate_id=None,
+                                 final_test_status="not_run")
+        published = root / "experiments" / report["summary"]["experiment_id"] / "published"
+        published.mkdir(parents=True, exist_ok=True)
+        (published / "experiment.json").write_text(json.dumps(report), encoding="utf-8")
+        baseline_id = next(p.name for p in sorted((root / "bundles").iterdir()) if p.name.startswith("b-"))
+        bundles.activate(None, baseline_id, "no_selected_model", report["summary"]["experiment_id"],
+                         "Baseline rehearsal: the return-rate rule is served as if no candidate had passed the gate.", root)
+    server = pgserver.get_server(work / "postgres")
+    static = paths.REPO_ROOT / "web" / "dist"
+    if not (static / "index.html").is_file():
+        print("web/dist is missing: run `npm install` and `npm run build` in web/ to serve the UI; starting the API only.")
+        static = None
+    config = ServiceConfig(database_url=server.get_uri(), artifact_root=root)
+    base = f"http://{args.host}:{args.port}"
+
+    def seed():
+        """Once the API answers: register and score the demo world with the rule, unless a run already succeeded here."""
+        with httpx.Client(timeout=300) as client:
+            for _ in range(240):
+                try:
+                    if client.get(base + "/api/v1/health").status_code == 200:
+                        break
+                except httpx.HTTPError:
+                    pass
+                time.sleep(0.5)
+            else:
+                return
+            # registering and scoring are the admin's (contract 1.16.0): sign in through the development login first
+            signed = client.post(base + "/api/v1/auth/dev-login", json={"user": "Admin"})
+            if signed.status_code != 200:
+                print(f"baseline rehearsal: could not sign in as Admin ({signed.status_code}); register {args.demo_world} by hand")
+                return
+            client.headers["X-CSRF-Token"] = signed.json()["csrf_token"]
+            if any(r["status"] == "succeeded" for r in client.get(base + "/api/v1/runs").json()["items"]):
+                print(f"baseline rehearsal: {args.demo_world} is already scored here; open {base}")
+                return
+            world = paths.ARTIFACT_ROOT / "worlds" / args.demo_world / "operational"
+            files = {name: (f"{name}.csv", (world / f"{name}.csv").read_bytes(), "text/csv") for name in TABLES}
+            dataset = client.post(base + "/api/v1/datasets", data={"manifest": (world / "manifest.json").read_text(encoding="utf-8")},
+                                  files=files).json()
+            run = client.post(base + "/api/v1/runs", json={"dataset_id": dataset["dataset_id"],
+                                                           "idempotency_key": f"baseline-rehearsal-{dataset['dataset_id']}"}).json()
+            print(f"baseline rehearsal: scoring {args.demo_world} with the return-rate rule, run {run.get('run_id')}; open {base}")
+
+    threading.Thread(target=seed, daemon=True).start()
+    print(f"ARAI baseline rehearsal (return-rate rule only) on {base}  (fixture in {root}, database in {server.pgdata}); "
+          "run `arai local` on another port")
+    uvicorn.run(create_app(config, with_worker=True, static_dir=static), host=args.host, port=args.port, log_level="info")
+    return 0
+
+
+def _db_clean(args) -> int:
+    """Housekeeping for a demo database: remove notes, runs or registered datasets, or reset the instance entirely.
+
+    Works on the embedded database of `arai local` (--instance local, under data/<contract>/postgres) or of
+    `arai baseline-rehearsal` (--instance rehearsal, under rehearsal/baseline/postgres). Models, the active pointer and
+    the experiment report always stay; --reset deletes the database folder and the registered snapshots instead, which
+    is the clean slate of the runbook. Nothing is touched without --yes, and --dry-run only reports.
+    """
+    import shutil
+
+    import httpx
+
+    from arai import paths
+    from arai.service.store import Store
+    if args.instance == "local":
+        pg_dir, artifact_root, port = paths.POSTGRES_DIR, paths.ARTIFACT_ROOT, 8000
+    else:
+        work = paths.REPO_ROOT / "rehearsal" / "baseline"
+        pg_dir, artifact_root, port = work / "postgres", work / "artifacts", 8011
+    port = args.port or port
+    try:
+        running = httpx.get(f"http://127.0.0.1:{port}/api/v1/health", timeout=2).status_code == 200
+    except httpx.HTTPError:
+        running = False
+    wants = {"notes": args.notes or args.all, "runs": args.runs or args.all, "datasets": args.datasets or args.all}
+    if not any(wants.values()) and not args.reset:
+        print("Nothing chosen: pass --notes, --runs, --datasets, --all or --reset (add --dry-run to look first).")
+        return 2
+    if args.reset:
+        if running:
+            print(f"The {args.instance} instance answers on port {port}: stop it before --reset (RUNBOOK section 2).")
+            return 1
+        targets = [pg_dir, Path(artifact_root) / "datasets"]
+        print("reset removes:", ", ".join(str(t) for t in targets if t.exists()) or "nothing (already clean)")
+        if args.dry_run or not args.yes:
+            print("Dry run; add --yes to do it." if not args.yes else "Dry run.")
+            return 0
+        for target in targets:
+            shutil.rmtree(target, ignore_errors=True)
+        print("Done. The next start rebuilds the database; register and score the demonstration world again (local), "
+              "or let the rehearsal score it on start.")
+        return 0
+    if not pg_dir.exists():
+        print(f"No database under {pg_dir}: nothing to clean.")
+        return 0
+    try:
+        import pgserver
+    except ImportError:
+        print("The embedded PostgreSQL is a development dependency: run `uv sync`.")
+        return 1
+    server = pgserver.get_server(pg_dir)
+    try:
+        store = Store(server.get_uri())
+        before = store.counts()
+        print(f"{args.instance} database in {pg_dir}" + (f" (instance running on port {port})" if running else ""))
+        print(f"  datasets {before['datasets']} {before['worlds']}, runs {before['runs']}, result rows {before['result_rows']}, "
+              f"notes {before['reviews']}, memos {before['run_memos']}; models {before['models']} and experiments {before['experiments']} stay")
+        chosen = [name for name, on in wants.items() if on]
+        print("  remove:", ", ".join(chosen) + (f" of world {args.world}" if args.world else ""))
+        if wants["runs"] and not wants["notes"]:
+            print("  (the notes written under the removed runs go with them; a note names its origin run)")
+        if wants["datasets"] and not wants["runs"]:
+            print("  (only datasets no run was scored on; add --runs to remove scored ones)")
+        if args.dry_run or not args.yes:
+            print("Dry run; add --yes to do it." if not args.yes else "Dry run.")
+            return 0
+        if running:
+            print("  the instance is running: its pages will show the change on their next load")
+        removed = store.wipe(notes=wants["notes"], runs=wants["runs"], datasets=wants["datasets"], world_id=args.world)
+        for dataset in removed["datasets"]:
+            shutil.rmtree(Path(artifact_root) / dataset["artifact_key"], ignore_errors=True)
+        after = store.counts()
+        print(f"removed: notes {removed['reviews']}, runs {removed['runs']} ({removed['result_rows']} result rows, {removed['memos']} memos), "
+              f"datasets {len(removed['datasets'])} {[d['world_id'] for d in removed['datasets']]}, stale idempotency records {removed['idempotency']}")
+        print(f"now: datasets {after['datasets']}, runs {after['runs']}, notes {after['reviews']}")
+        return 0
+    finally:
+        if not running:
+            # stop the database this command started; pgserver only stops it when no other handle is registered, and a
+            # process that died without unregistering leaves a stale handle, so ask pg_ctl directly when it is still up
+            try:
+                server.cleanup()
+                if (pg_dir / "postmaster.pid").exists():
+                    from pgserver._commands import pg_ctl
+                    pg_ctl(["-w", "-m", "fast", "stop"], pgdata=pg_dir, user=server.system_user)
+            except Exception as error:                                # noqa: BLE001
+                print(f"note: the database was left running ({error}); stop it with pg_ctl (RUNBOOK section 2)")
+
+
 def _worker(args) -> int:
     import logging
 
@@ -214,6 +428,14 @@ def main(argv=None) -> int:
     generate.add_argument("--private-root", type=Path, default=None)
     generate.add_argument("--overwrite", action="store_true", help="replace a world that another simulator or contract generated")
     generate.set_defaults(run=_generate)
+    snapshot = commands.add_parser("snapshot", help="write earlier snapshots of a generated world: the same customers on earlier "
+                                                  "cutoffs, replayed from the generator's own timelines")
+    snapshot.add_argument("world", help="a generated world, e.g. W5401")
+    snapshot.add_argument("--as-of", nargs="+", required=True, help="cutoff dates before the world's own, e.g. 2026-07-09 2026-08-09")
+    snapshot.add_argument("--no-check", dest="check", action="store_false", help="skip the prefix check against the world on disk")
+    snapshot.add_argument("--artifact-root", type=Path, default=None)
+    snapshot.add_argument("--private-root", type=Path, default=None)
+    snapshot.set_defaults(run=_snapshot)
     validate = commands.add_parser("validate", help="validate an operational world directory; nonzero exit on rejection")
     validate.add_argument("directory", type=Path)
     validate.set_defaults(run=_validate)
@@ -254,6 +476,27 @@ def main(argv=None) -> int:
     local.add_argument("--port", type=int, default=8000)
     local.add_argument("--pg-dir", type=Path, default=None, help="PostgreSQL data directory (default: postgres/ in the contract's data folder)")
     local.set_defaults(run=_local)
+    rehearsal = commands.add_parser("baseline-rehearsal", help="a second local instance serving the return-rate rule only (the demo's "
+                                                             "cold open): its fixture in rehearsal/baseline, its database beside it, "
+                                                             "the demo world scored on first start")
+    rehearsal.add_argument("--host", default="127.0.0.1")
+    rehearsal.add_argument("--port", type=int, default=8011)
+    rehearsal.add_argument("--demo-world", default="W5401")
+    rehearsal.add_argument("--fresh", action="store_true", help="rebuild the fixture from the current bundles and start with an empty database")
+    rehearsal.set_defaults(run=_baseline_rehearsal)
+    clean = commands.add_parser("db-clean", help="housekeeping for a demo database: remove notes, runs or datasets, or reset the "
+                                                 "instance; nothing happens without --yes")
+    clean.add_argument("--instance", choices=("local", "rehearsal"), default="local", help="which embedded database (default local)")
+    clean.add_argument("--notes", action="store_true", help="remove review notes")
+    clean.add_argument("--runs", action="store_true", help="remove runs with their results, memos and the notes written under them")
+    clean.add_argument("--datasets", action="store_true", help="remove registered datasets no run refers to, with their files")
+    clean.add_argument("--all", action="store_true", help="notes, runs and datasets; models and the experiment report stay")
+    clean.add_argument("--world", default=None, help="only this world's notes, runs and dataset")
+    clean.add_argument("--reset", action="store_true", help="delete the database folder and the registered snapshots (instance stopped)")
+    clean.add_argument("--port", type=int, default=None, help="port the instance would answer on (default 8000 local, 8011 rehearsal)")
+    clean.add_argument("--dry-run", action="store_true", help="report what would be removed")
+    clean.add_argument("--yes", action="store_true", help="actually do it")
+    clean.set_defaults(run=_db_clean)
     register = commands.add_parser("register", help="validate and register an operational world directory as a dataset")
     register.add_argument("directory", type=Path)
     register.set_defaults(run=_register)

@@ -116,6 +116,11 @@ def validate_world(directory: Path, spec_root: Path | None = None) -> Report:
         report.add("M001", None, f"manifest: {error.message}", ["/".join(map(str, error.path))], 1)
     if errors:
         return report
+    cutoff_stamp = pd.Timestamp(manifest["cutoff"])
+    cutoff_stamp = cutoff_stamp.tz_localize("UTC") if cutoff_stamp.tzinfo is None else cutoff_stamp.tz_convert("UTC")
+    if cutoff_stamp > pd.Timestamp.now(tz="UTC") + pd.Timedelta(days=1):           # a day of clock tolerance
+        report.add("M001", None, "manifest: cutoff is in the future", ["cutoff"], 1)
+        return report
     present = {p.name for p in directory.iterdir() if p.is_file()}
     expected = {f"{t}.csv" for t in TABLES} | {"manifest.json"}
     report.add("M003", None, "unexpected file in the upload (private or unknown)", sorted(present - expected))
@@ -134,7 +139,11 @@ def validate_world(directory: Path, spec_root: Path | None = None) -> Report:
         entry = manifest["files"][name]
         if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
             report.add("M002", name, "file hash differs from the manifest", [path.name], 1)
-        frame = pd.read_csv(path, dtype=str, keep_default_na=False, encoding="utf-8")
+        try:
+            frame = pd.read_csv(path, dtype=str, keep_default_na=False, encoding="utf-8")
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError) as error:
+            report.add("M002", name, f"file cannot be read as CSV ({type(error).__name__})", [path.name], 1)
+            continue
         report.counts[name] = len(frame)
         if len(frame) != entry["row_count"]:
             report.add("M002", name, "row count differs from the manifest", [f"{len(frame)} != {entry['row_count']}"], 1)
@@ -142,6 +151,12 @@ def validate_world(directory: Path, spec_root: Path | None = None) -> Report:
         report.add("S001", name, "unknown or private column", [c for c in frame.columns if c not in wanted])
         report.add("S002", name, "required column missing", [c for c in wanted if c not in frame.columns])
         raw[name] = frame
+    if "customer_master" in raw and "customer_id" in raw["customer_master"].columns:
+        # generated identifiers carry their world (W5401-C00001): a manifest naming another world is a different snapshot
+        carried = raw["customer_master"]["customer_id"].astype(str).str.extract(r"^(W[0-9A-Za-z]+)-", expand=False)
+        foreign = carried.dropna()[carried.dropna() != manifest["world_id"]]
+        report.add("M004", "customer_master", "row identifiers carry another world id than the manifest",
+                   sorted(foreign.unique()), len(foreign))
     if sum(report.counts.values()) > MAX_UPLOAD_ROWS:
         report.add("L001", None, "upload exceeds the row limit", [f"{sum(report.counts.values())} rows"], 1)
     if report.violations:

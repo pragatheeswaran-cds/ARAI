@@ -87,7 +87,6 @@ def _segment_world():
                                          "reservation_kind": ["honest_request", "honest_request"]}),
     }
     world = SimpleNamespace(tables=tables, truth=truth, snapshot_date=pd.Timestamp(CUTOFF).date())
-    counts = tables["sales_order_line"].merge(tables["sales_order"][["order_id", "customer_id"]], on="order_id")
     requested = tables["return_order_line"].merge(tables["sales_order"][["order_id", "customer_id"]], on="order_id") \
         .groupby("customer_id")["quantity_returned"].sum()
     features = pd.DataFrame({"customer_id": [f"c{i}" for i in range(10)], "eligible": True})

@@ -1,25 +1,163 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
-import { allPages, api, type ExperimentSummary, type Health, type Run } from "./api";
-import { ist, shortId, useLoad } from "./components/ui";
+import { API, ApiError, SIGNED_OUT_EVENT, allPages, api, setCsrfToken, type Dataset, type ExperimentSummary, type Health, type Me, type Run } from "./api";
+import { ErrorBox, PageTitle, ist, number, shortId, useLoad } from "./components/ui";
+import { datasetName, latestSnapshotRun } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
 import { CustomerQueue } from "./pages/CustomerQueue";
 import { Datasets } from "./pages/Datasets";
 import { Evaluation } from "./pages/Evaluation";
 import { Overview } from "./pages/Overview";
+import { PeopleAndAccess } from "./pages/People";
 import { StyleDetailPage, StyleQueue } from "./pages/Styles";
 
 type Workspace = {
   health: Health | null;
   runs: Run[];
   run: Run | null; // the run in the address bar, otherwise the latest succeeded run
+  dataset: Dataset | null; // the run's dataset, for its name
   experiment: ExperimentSummary | null;
   fallback: boolean;
   reload: () => void;
 };
 
-const WorkspaceContext = createContext<Workspace>({ health: null, runs: [], run: null, experiment: null, fallback: false, reload: () => {} });
+const WorkspaceContext = createContext<Workspace>({ health: null, runs: [], run: null, dataset: null, experiment: null, fallback: false, reload: () => {} });
 export const useWorkspace = () => useContext(WorkspaceContext);
+
+/** Who is signed in (contract 1.16.0, AM-69): from the session, never typed. `can` reads the user's permissions. */
+type Session = { me: Me; can: (permission: string) => boolean; signOut: () => void };
+const SessionContext = createContext<Session>({ me: null as unknown as Me, can: () => false, signOut: () => {} });
+export const useSession = () => useContext(SessionContext);
+
+/** What the sign-in page says when Keycloak's answer was refused (contract 1.17.0: /?signin_error=<code>). */
+export function signInMessage(code: string): string {
+  switch (code) {
+    case "no_role":
+      return "You signed in to Keycloak, but your account is in none of the ARAI groups. Ask an administrator to add you to arai-viewers, arai-reviewers or arai-approvers.";
+    case "sign_in_expired":
+      return "That sign-in took longer than ten minutes or was already used. Please sign in again.";
+    case "sign_in_failed":
+      return "Keycloak did not complete the sign-in. Please try again.";
+    case "invalid_token":
+      return "Keycloak's answer could not be verified, so nobody was signed in. If this happens again, tell the administrator.";
+    case "user_disabled":
+      return "Your ARAI account is disabled. Ask an administrator to enable it.";
+    case "single_sign_on_unavailable":
+      return "Keycloak cannot be reached right now. Try again in a minute; if it persists, tell the administrator.";
+    default:
+      return "The sign-in did not complete. Please try again.";
+  }
+}
+
+/** The sign-in page: the development login's people (laptops and demos), or Keycloak single sign-on (AM-70). */
+function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
+  const users = useLoad(() => api.devUsers(), []);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const sso = users.error instanceof ApiError && users.error.status === 404;
+  // a refused Keycloak answer comes back as ?signin_error=<code>: read it once, then take it off the address
+  const [refused] = useState(() => new URLSearchParams(window.location.search).get("signin_error"));
+  const here = new URL(window.location.href);
+  here.searchParams.delete("signin_error");
+  const returnTo = here.pathname + here.search;
+  useEffect(() => {
+    if (refused) window.history.replaceState(null, "", returnTo + window.location.hash);
+  }, [refused, returnTo]);
+  const signIn = async (name: string) => {
+    setBusy(name);
+    setError(null);
+    try {
+      onSignedIn(await api.devLogin(name));
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure : new ApiError(0, null));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <>
+      <div className="strip">SYNTHETIC DATA ONLY / Simulated customers and returns / No real person or production accuracy claim</div>
+      <main id="main" className="signin">
+        <div className="brand">ARAI.</div>
+        <PageTitle title="Sign in">Every note and decision is recorded under the person who signed in.</PageTitle>
+        {refused && (
+          <p className="error" role="alert">
+            {signInMessage(refused)}
+          </p>
+        )}
+        {sso ? (
+          <>
+            <p className="small">Sign in with your organisation account. Your roles come from your Keycloak groups.</p>
+            <p>
+              <a className="button primary" href={`${API}/auth/login?return_to=${encodeURIComponent(returnTo)}`}>
+                Sign in with Keycloak
+              </a>
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="small">Development login: choose who you are. Single sign-on through Keycloak replaces this list on a shared deployment.</p>
+            <div className="signin-users">
+              {(users.data?.users ?? []).map((user) => (
+                <button key={user.display_name} type="button" className="primary" disabled={busy !== null} onClick={() => signIn(user.display_name)}>
+                  {user.display_name}
+                  <small>{user.roles.join(", ")}</small>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {error && <ErrorBox error={error} />}
+      </main>
+    </>
+  );
+}
+
+/** The run strip: what the queue is cut from, the budget and its edge, when it was scored, and how far its memos are. */
+function RunStrip({ run, dataset }: { run: Run; dataset: Dataset | null }) {
+  const inProgress = run.status === "queued" || run.status === "running";
+  return (
+    <div className="runstrip" aria-label="Run strip">
+      <span>
+        Dataset <strong>{datasetName(run, dataset)}</strong>
+      </span>
+      <span>
+        Customers scored <strong>{number(run.eligible_count)}</strong> <span className="muted">(+{number(run.excluded_count)} unranked)</span>
+      </span>
+      <span>
+        Alerts in queue <strong>{number(run.selected_count)}</strong>
+        {run.review_budget !== null && <span className="muted"> of {number(run.review_budget)} budget</span>}
+      </span>
+      {run.threshold_score !== null && (
+        <span title="The reference percentile of the last customer inside the budget; the queue is everyone at or above it">
+          Queue threshold <strong>{run.threshold_score.toFixed(1)}</strong>
+        </span>
+      )}
+      <span>
+        Scored <strong>{ist(run.completed_at)}</strong>
+      </span>
+      {run.memos && !run.memos.complete && (
+        <span className="muted" role="status">
+          Memos drafting: {number(run.memos.ok + run.memos.unavailable)} of {number(run.memos.selected)}
+        </span>
+      )}
+      {inProgress && <span role="status">New run in progress: {run.stage}</span>}
+    </div>
+  );
+}
+
+/** Who is signed in, their roles and Sign out, above the run strip. */
+function SignedIn() {
+  const { me, signOut } = useSession();
+  return (
+    <div className="signedin small" aria-label="Signed in">
+      Signed in as <strong>{me.display_name}</strong> <span className="muted">({me.roles.join(", ")})</span>{" "}
+      <button type="button" className="quiet" onClick={signOut}>
+        Sign out
+      </button>
+    </div>
+  );
+}
 
 /** Why the return-rate ranking is active, in the words the situation calls for. */
 export function fallbackReason(health: Health | null, experiment: ExperimentSummary | null): string | null {
@@ -34,7 +172,8 @@ export function fallbackReason(health: Health | null, experiment: ExperimentSumm
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  const { run, health, experiment } = useWorkspace();
+  const { run, dataset, health, experiment } = useWorkspace();
+  const { can } = useSession();
   const location = useLocation();
   useEffect(() => {
     document.getElementById("main")?.focus();
@@ -59,6 +198,7 @@ function Shell({ children }: { children: ReactNode }) {
             <NavLink to={runLink("customers")}>Customer queue</NavLink>
             <NavLink to={runLink("styles")}>Style investigation</NavLink>
             <NavLink to={experiment ? `/experiments/${experiment.experiment_id}` : "/experiments/none"}>Evaluation</NavLink>
+            {can("administer") && <NavLink to="/admin/people">People &amp; access</NavLink>}
           </nav>
           <div className="footnote">
             Indian apparel / INR
@@ -88,6 +228,8 @@ function Shell({ children }: { children: ReactNode }) {
               )}
             </div>
           </header>
+          <SignedIn />
+          {run && <RunStrip run={run} dataset={dataset} />}
           {reason && (
             <div className="banner" role="status">
               {reason}
@@ -99,7 +241,7 @@ function Shell({ children }: { children: ReactNode }) {
           <footer className="bottom">
             Investigation signals are not proof of misconduct. Synthetic data only; no production accuracy claim.
             <br />
-            Local profile: reviewer names are free text, not an authenticated identity.
+            Every note and decision is recorded under the signed-in reviewer. This instance uses the development login.
           </footer>
         </div>
       </div>
@@ -108,24 +250,74 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
+  const [session, setSession] = useState<{ me: Me | null; checked: boolean }>({ me: null, checked: false });
+  useEffect(() => {
+    let live = true;
+    api.me().then(
+      (me) => {
+        setCsrfToken(me.csrf_token);
+        if (live) setSession({ me, checked: true });
+      },
+      () => live && setSession({ me: null, checked: true }),
+    );
+    const ended = () => {
+      setCsrfToken(null);
+      setSession({ me: null, checked: true });
+    };
+    window.addEventListener(SIGNED_OUT_EVENT, ended);
+    return () => {
+      live = false;
+      window.removeEventListener(SIGNED_OUT_EVENT, ended);
+    };
+  }, []);
+  if (!session.checked) return <p className="muted">Checking sign-in...</p>;
+  if (!session.me) {
+    return (
+      <SignIn
+        onSignedIn={(me) => {
+          setCsrfToken(me.csrf_token);
+          setSession({ me, checked: true });
+        }}
+      />
+    );
+  }
+  const me = session.me;
+  const signOut = () => {
+    api.logout().finally(() => {
+      setCsrfToken(null);
+      // under single sign-on, end the Keycloak session too; it sends the browser back to this site's sign-in page
+      if (me.sso_logout_url) window.location.assign(me.sso_logout_url);
+      else setSession({ me: null, checked: true });
+    });
+  };
+  return (
+    <SessionContext.Provider value={{ me, can: (permission) => me.permissions.includes(permission as Me["permissions"][number]), signOut }}>
+      <Workbench />
+    </SessionContext.Provider>
+  );
+}
+
+function Workbench() {
   const match = useMatch("/runs/:runId/*");
   const loaded = useLoad(async () => {
-    const [health, runs, experiments] = await Promise.all([
+    const [health, runs, experiments, datasets] = await Promise.all([
       api.health().catch(() => null),
       allPages((cursor) => api.runs(undefined, cursor), 5).catch(() => [] as Run[]),
       api.experiments().catch(() => ({ items: [] as ExperimentSummary[], next_cursor: null })),
+      allPages((cursor) => api.datasets(cursor), 5).catch(() => [] as Dataset[]),
     ]);
-    return { health, runs, experiment: experiments.items.at(-1) ?? null };
+    return { health, runs, datasets, experiment: experiments.items.at(-1) ?? null };
   }, []);
   const workspace = useMemo<Workspace>(() => {
     const runs = loaded.data?.runs ?? [];
     const fromUrl = match?.params.runId ? runs.find((r) => r.run_id === match.params.runId) : undefined;
-    const run = fromUrl ?? runs.find((r) => r.status === "succeeded") ?? null;
+    const run = fromUrl ?? latestSnapshotRun(runs);
     const health = loaded.data?.health ?? null;
     return {
       health,
       runs,
       run,
+      dataset: run ? (loaded.data?.datasets ?? []).find((d) => d.dataset_id === run.dataset_id) ?? null : null,
       experiment: loaded.data?.experiment ?? null,
       fallback: run ? run.model_kind === "baseline_fallback" : !!health && !health.promoted_model_ready,
       reload: loaded.reload,
@@ -144,7 +336,18 @@ export default function App() {
           <Route path="/runs/:runId/styles" element={<StyleQueue />} />
           <Route path="/runs/:runId/styles/:styleId" element={<StyleDetailPage />} />
           <Route path="/experiments/:experimentId" element={<Evaluation />} />
-          <Route path="*" element={<div className="empty">Unknown page. <NavLink to="/overview">Go to the overview</NavLink></div>} />
+          <Route path="/admin/people" element={<PeopleAndAccess />} />
+          <Route
+            path="*"
+            element={
+              <>
+                <PageTitle title="Unknown page">There is nothing at this address.</PageTitle>
+                <div className="empty">
+                  <NavLink to="/overview">Go to the overview</NavLink>
+                </div>
+              </>
+            }
+          />
         </Routes>
       </Shell>
     </WorkspaceContext.Provider>

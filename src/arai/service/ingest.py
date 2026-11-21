@@ -19,6 +19,7 @@ from arai.service.store import Store
 
 log = logging.getLogger("arai.ingest")
 LEGACY_TABLES = ("customers", "styles", "skus", "neighbors", "timeline", "customer_styles")
+LEGACY_OPTIONAL = ("communities", "attributions", "style_reasons")                 # result files a later version writes beside the six; absent from earlier runs
 LEGACY_MARKER = "COMPLETE"
 
 
@@ -37,6 +38,16 @@ def _truth(path: Path) -> tuple:
     return world, rows
 
 
+def _truth_cutoff(artifact_root, world: str | None) -> str | None:
+    """The cutoff of the snapshot a truth export describes: the world's own snapshot, as the generator wrote it. A world can
+    have earlier snapshots (decision AM-68) whose customers had acted less, so truth applies to this one only. None when
+    the world's manifest is not in the artifact root."""
+    if world is None:
+        return None
+    manifest = Path(artifact_root) / "worlds" / world / "operational" / "manifest.json"
+    return json.loads(manifest.read_text(encoding="utf-8"))["cutoff"] if manifest.is_file() else None
+
+
 def sync_published(config: ServiceConfig, store: Store) -> list:
     """Load every published experiment report, with its truth export, into the database. Returns the identifiers."""
     root = Path(config.artifact_root) / "experiments"
@@ -46,11 +57,12 @@ def sync_published(config: ServiceConfig, store: Store) -> list:
     for path in sorted(root.glob("*/published/experiment.json")):
         report = json.loads(path.read_text(encoding="utf-8"))
         base = path.parents[1]
-        rel = lambda p: p.relative_to(config.artifact_root).as_posix() if p.is_file() else None  # noqa: E731
+        rel = lambda p: p.relative_to(config.artifact_root).as_posix() if p.is_file() else None
         world, rows = _truth(path.with_name("truth.parquet"))
+        cutoff = _truth_cutoff(config.artifact_root, world)
         store.load_experiment({"id": report["summary"]["experiment_id"], "config_hash": report["summary"]["config_hash"],
                                "report_key": rel(path), "selection_key": rel(base / "selection.json"),
-                               "test_key": rel(base / "reports" / "test.json")}, report, world, rows)
+                               "test_key": rel(base / "reports" / "test.json")}, report, world, rows, cutoff)
         loaded.append(report["summary"]["experiment_id"])
     return loaded
 
@@ -70,9 +82,10 @@ def import_legacy_runs(config: ServiceConfig, store: Store) -> dict:
             continue
         try:
             summary = json.loads((directory / "run.json").read_text(encoding="utf-8"))
-            output = RunOutput(summary=summary, **{name: pd.read_parquet(directory / f"{name}.parquet") for name in LEGACY_TABLES})
+            present = [*LEGACY_TABLES, *(name for name in LEGACY_OPTIONAL if (directory / f"{name}.parquet").is_file())]
+            output = RunOutput(summary=summary, **{name: pd.read_parquet(directory / f"{name}.parquet") for name in present})
             if store.import_results(run_id, summary, results.tables(output)):
                 imported.append(run_id)
-        except Exception:                                        # noqa: BLE001  one unreadable run must not stop the others
+        except Exception:                                        # one unreadable run must not stop the others
             log.exception("run=%s result files could not be imported; the run stays unavailable until they can", run_id)
     return {"imported": imported, "output_missing": missing}

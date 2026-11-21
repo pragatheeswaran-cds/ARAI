@@ -8,19 +8,27 @@ It contains separate component requirements, acceptance criteria, bundled contra
 - [Decision provenance](final-spec/DECISIONS.md)
 - [Package verification](final-spec/verification/REPORT.md)
 
-The folder is at version 4.0 (amended 2026-10-05; see the amendment sections of the decision provenance).
-Copy the entire final-spec folder or the ARAI-final-spec-v4.0.zip archive to another system.
+The folder is at version 4.1 (amended 2026-10-14; see the amendment sections of the decision provenance).
+Copy the entire final-spec folder to another system; ARAI-final-spec-v4.0.zip is the last packaged archive (4.1 amends the API contract only).
 After any edit to final-spec, run `uv run python scripts/spec_package.py` to rebuild its register and hashes.
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
 Older specs/ versions and docs/ are historical evidence, not competing development contracts.
 Existing code/synthetic-data assets remain preserved; the final package bundles the required inputs.
 
-## Code (branch `v4`)
+## Code
+
+The latest work is on branch `year-of-snapshots`, which contains every earlier branch (`git checkout year-of-snapshots`).
+
+**Want to try it end to end?** [HANDS-ON.md](HANDS-ON.md) is a guided two-hour lab, from generating the data to every
+screen as each role, with what you should see at each step.
+
+**New machine or fresh clone?** Start with the section "Start here: a fresh clone on a new machine" at the top of
+[RUNBOOK.md](RUNBOOK.md): the data is not in git, and it lists the people you can sign in as (development login and Keycloak).
 
 The Python side is managed with [uv](https://docs.astral.sh/uv/); every dependency lives in the project's `.venv`.
 The web side is a React/Vite app under `web/`.
 
-**Day-to-day operation (start, stop, validate, troubleshoot) is in [RUNBOOK.md](RUNBOOK.md).**
+**Day-to-day operation (set up, generate data, start, stop, validate, troubleshoot) is in [RUNBOOK.md](RUNBOOK.md); its section 0 lists every command.**
 
 ### Run the demonstration locally (no Docker)
 
@@ -28,7 +36,12 @@ The web side is a React/Vite app under `web/`.
 uv sync                                    # create .venv from uv.lock
 cd web && npm install && npm run build     # build the UI once
 cd .. && uv run arai local                 # embedded PostgreSQL + API + worker + UI on http://127.0.0.1:8000
+uv run arai baseline-rehearsal             # optional second instance serving the return-rate rule only, http://127.0.0.1:8011
+uv run arai db-clean --all --dry-run       # housekeeping for either demo database: notes, runs, datasets or a full reset
 ```
+
+Every command that manages the environment (set up, start, stop, clean up, load data, check) is listed in one table at
+the top of `RUNBOOK.md`, section 0.
 
 `arai local` needs the artifacts of the current experiment (worlds, bundles, the published experiment). They are
 not in git; the offline pipeline below reproduces them from seeds, the specification and `uv.lock`.
@@ -51,18 +64,19 @@ Its `private` folder (simulation truth) is never visible to serving.
 ### Offline pipeline, in order
 
 ```
-uv run arai generate --seed 5101 ... 5110 5501 ... 5510   # development worlds of the current contract (experiment 4)
+uv run arai generate --seed 5101 5102 5103 5104 5105 5106 5107 5108 5109 5110 5501 5502 5503 5504 5505 5506 5507 5508 5509 5510 5511   # training and stress worlds of the current contract (experiment 4)
 uv run arai train                          # freeze features, fit nine candidates and two references
 uv run arai dry-run                        # gate dry run and calibration check, before any validation world
 uv run arai ablation                       # what the result depends on, and which honest groups are reviewed (training worlds)
 uv run arai stress                         # the frozen models on the stress worlds; diagnostic, selects nothing
-uv run arai generate --seed 5201 ... 5205  # validation worlds
+uv run arai generate --seed 5201 5202 5203 5204 5205  # validation worlds
 uv run arai select                         # apply the gate, freeze the selection
-uv run arai generate --seed 5301 ... 5305  # test worlds
+uv run arai generate --seed 5301 5302 5303 5304 5305  # test worlds
 uv run arai test                           # the final test: runs once
 uv run arai generate --seed 5401           # demonstration world
 uv run arai publish --demo-world W5401     # bundles, active pointer, published experiment report
 uv run arai register data/EXP-20261005-04/artifacts/worlds/W5401/operational   # or upload through the UI
+uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09   # the same customers month by month for a year (RUNBOOK 4.1)
 ```
 
 Every command defaults to the experiment named in `final-spec/contracts/experiment.yaml` (now EXP-20261005-04) and
@@ -79,21 +93,25 @@ points serving at the new bundle only after the report is written.
 ### Tests
 
 ```
-uv run pytest                              # 185+ tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
+uv run pytest                              # 237 tests, including the whole offline pipeline on small worlds; PostgreSQL starts itself
 cd web && npm test                         # front-end unit tests
 uv run python tests/e2e/walkthrough.py     # browser walkthrough against a running `arai local`
+uvx ruff@0.16.8 check src tests scripts    # lint (rules in pyproject.toml)
 ```
 
 ### Where things are
 
 - `src/arai/generator/` builds a synthetic world; `validation.py` checks an operational snapshot against the contract.
+  `snapshots.py` replays a generated world at an earlier cutoff: a world is one population of customers, and each
+  upload of it is a snapshot in which a customer keeps its identifier (decision AM-68).
 - `src/arai/features.py` computes the 43 model features and the evidence; `modeling.py`, `evaluation.py`,
   `selection.py`, `experiment.py` train, evaluate and select; `ablation.py` measures what the result depends on
   and which honest groups are sent for review; `contract.py` reads the numbers the specification fixes.
 - `src/arai/bundles.py`, `publishing.py` and `src/arai/service/` are the serving side: immutable bundles, PostgreSQL,
   batch scoring, the worker and the API (`final-spec/contracts/openapi.yaml` is the contract). Everything the API
   serves is read from PostgreSQL: a run's results are written there in the transaction that marks it succeeded
-  (`run_customers`, `run_styles`, `run_skus`, `run_neighbors`, `run_timeline`, `run_customer_styles`), and the worker
+  (`run_customers`, `run_styles`, `run_skus`, `run_neighbors`, `run_timeline`, `run_customer_styles`,
+  `run_communities`, `run_attributions`, `run_style_reasons`, `run_memos`), and the worker
   loads the published experiment report and truth export at startup. Registered snapshots and model bundles stay files.
 - `web/` is the analyst UI.
 - `notebooks/` walk through generation, exploration and features. `records/` holds the dated development records,
@@ -152,6 +170,10 @@ experiments 1 to 3 is kept untouched, with a copy of experiments 1 and 2 under `
   (or `EXP-20261005-02` with its guide) writes the data, its truth, its configuration and the guide as zip
   archives under `data/exports/<experiment>/` (not in git), after checking every file against the hashes recorded
   when the world was written. Both packages have been built.
+- `samples/` holds five small snapshots (about 8 MB in all) for trying the upload, score and review flow by hand;
+  `samples/README.md` walks through them. `scripts/make_samples.py` regenerates them from their seeds and
+  `scripts/db_clear.py` clears a database's demo state afterwards (`arai db-clean` does the same for the embedded
+  instances).
 - `records/2026-10-05-status-and-open-decisions.md` is the current state of the four experiments and the decisions
   still to be taken.
 - `docs/experiment-4-verification-guide.md` says what was done in experiment 4 and how to check it;

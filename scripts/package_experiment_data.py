@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -46,7 +46,7 @@ def git(*args: str) -> bytes:
 
 def worlds_of(experiment: Path) -> dict:
     """{world_id: role} from the experiment's own records, never from the contract now in the repository."""
-    load = lambda name: json.loads((experiment / name).read_text(encoding="utf-8"))  # noqa: E731
+    load = lambda name: json.loads((experiment / name).read_text(encoding="utf-8"))
     roles = {w: "train" for w in load("config.json")["training_worlds"]}
     roles |= {w: "validation" for w in load("selection.json")["validation_worlds"]}
     roles |= {w: "test" for w in load("reports/test.json")["worlds"]}
@@ -116,7 +116,7 @@ def verify_configuration(extracted: Path, manifests: dict) -> None:
     sys.modules[spec.name] = module                               # dataclasses look their module up while it is being defined
     spec.loader.exec_module(module)
     checked = 0
-    for world_id, manifest in manifests.items():
+    for manifest in manifests.values():
         seed = manifest["generator"]["seed"]
         try:
             expected = module.load_settings(seed, spec_root=extracted / "final-spec").config_sha256()
@@ -169,7 +169,7 @@ def main() -> int:
         extract_configuration(commit, scratch / "configuration")
         verify_configuration(scratch / "configuration", manifests)
         top = [("DATA-GUIDE.md", guide), ("WORLDS.csv", scratch / "WORLDS.csv")]
-        place = lambda w: f"{roles[w]}/{w}"  # noqa: E731
+        place = lambda w: f"{roles[w]}/{w}"
 
         archives.append(write_zip(out / f"{prefix}-1-operational-csv.zip", top + [
             (f"operational-csv/{place(w)}/{p.name}", p) for w in worlds for p in sorted((ARTIFACTS / "worlds" / w / "operational").iterdir())]))
@@ -188,7 +188,7 @@ def main() -> int:
         features = [(f"features/{place(w)}/{p.name}", p) for w in featured for p in sorted((ARTIFACTS / "features" / w).iterdir())]
         archives.append(write_zip(out / f"{prefix}-5-features-and-results.zip", top + features + results))
 
-    package = {"experiment_id": args.experiment, "packaged_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    package = {"experiment_id": args.experiment, "packaged_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                "contract_commit": commit, "worlds": {w: roles[w] for w in worlds}, "archives": archives,
                "note": "Synthetic data from one simulator. Private truth is in its own archive: keep it away from anything a model reads."}
     (out / "PACKAGE.json").write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")

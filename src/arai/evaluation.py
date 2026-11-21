@@ -44,7 +44,7 @@ def select(frame: pd.DataFrame, score: str, fraction: float = PRIMARY_FRACTION) 
 def confusion(frame: pd.DataFrame, selected: pd.Series) -> dict:
     """Pooled counts over worlds (k is chosen per world first), with segment false-positive rates."""
     y = frame["y_abuse"] == 1
-    out = {"eligible": int(len(frame)), "k": int(selected.sum()), "true_positives": int((selected & y).sum()),
+    out = {"eligible": len(frame), "k": int(selected.sum()), "true_positives": int((selected & y).sum()),
            "positives": int(y.sum())}
     out["precision"] = ratio(out["true_positives"], out["k"])
     out["recall"] = ratio(out["true_positives"], out["positives"])

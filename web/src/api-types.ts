@@ -4,6 +4,193 @@
  */
 
 export interface paths {
+    "/auth/dev-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.16.0 (AM-69). The people of the development login (AUTH_MODE=dev, laptops and demos) with their roles. 404 when the instance uses single sign-on. */
+        get: operations["listDevUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/dev-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 1.16.0 (AM-69). Sign in as a person of the development login. Sets the session cookie arai_session (HttpOnly, SameSite=Lax, Secure on the vm profile) and returns the signed-in user with the CSRF token every later POST and DELETE must send as X-CSRF-Token. Refused with AUTH_MODE=oidc (404). */
+        post: operations["devLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.17.0 (AM-70). Keycloak single sign-on (AUTH_MODE=oidc). Redirects the browser to the realm's sign-in page with the authorization code flow, PKCE (S256), a fresh state and a nonce; the attempt is kept for ten minutes. 404 with the development login. When Keycloak cannot be reached it redirects to /?signin_error=single_sign_on_unavailable instead, so the sign-in page can say so. */
+        get: operations["singleSignOn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.17.0 (AM-70). Keycloak's answer. The state must be one this server issued in the last ten minutes and is accepted once; the code is exchanged over the back channel with the client secret and the PKCE verifier; the ID token is checked against the realm's published keys (RS256, PS256 or ES256), issuer, audience (the client), expiry and the attempt's nonce. Roles come from the token's groups claim through AUTH_ROLE_MAP; a person with no ARAI group is refused. Success sets the arai_session cookie and redirects to return_to; a refusal redirects to /?signin_error=<code> (sign_in_expired, sign_in_failed, invalid_token, no_role, single_sign_on_unavailable; since contract 2.0.0 also user_disabled). */
+        get: operations["singleSignOnCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 1.16.0 (AM-69). End the session and clear its cookie. Needs X-CSRF-Token. */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.16.0 (AM-69). The signed-in user, roles, permissions, the session's CSRF token and its limits. */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 2.0.0 (AM-71). Admin only. Everyone who has signed in (at most 1000, by name), with each role and where it comes from (keycloak_group, bootstrap, dev), status, open sessions and last activity. Roles are read-only in ARAI; they change in Keycloak or the development list and apply at the next sign-in. */
+        get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{user_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 2.0.0 (AM-71). Admin only. Ends every open session of the person now, stops their bearer tokens and refuses their next sign-in (403 user_disabled, or /?signin_error=user_disabled) until enabled. Logged with the admin and the optional reason. 409 cannot_disable_self for the admin's own account. */
+        post: operations["disableUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{user_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 2.0.0 (AM-71). Admin only. Lets a disabled person sign in again; sessions ended by the disable stay ended. Logged with the admin and the optional reason. */
+        post: operations["enableUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{user_id}/end-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 2.0.0 (AM-71). Admin only. Signs the person out everywhere now (they may sign in again, with roles read afresh). A bearer token stays valid until it expires; disable the person to stop scripts. */
+        post: operations["endUserSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/auth-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 2.0.0 (AM-71). Admin only. The append-only sign-in log, newest first - sign-ins, sign-outs, ended sessions, refused requests, exports, role changes and the admin actions above. */
+        get: operations["listAuthEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/datasets": {
         parameters: {
             query?: never;
@@ -30,7 +217,8 @@ export interface paths {
         get: operations["getDataset"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** @description Remove a dataset registered by mistake, with its stored files, while no run was scored on it. A dataset a run was scored on is kept (409 dataset_in_use), because runs, results and review notes refer to it. Runs and notes themselves have no delete. */
+        delete: operations["deleteDataset"];
         options?: never;
         head?: never;
         patch?: never;
@@ -68,6 +256,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Stop a run that has not finished. A queued run is interrupted at once; a running run is asked to stop and does so at its next stage, leaving no result (results are written only when a run succeeds). A run that has finished is a 409 run_finished. Nothing published is touched. */
+        post: operations["cancelRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{run_id}/customers": {
         parameters: {
             query?: never;
@@ -76,6 +281,23 @@ export interface paths {
             cookie?: never;
         };
         get: operations["listCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/customers/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 1.14.0. The filtered queue as CSV, every row in queue order, for a hand-off to the returns-policy or service team. Takes the list's filters (no cursor, no limit). Columns - rank, customer_id, score, tier, recommendation, primary_signals, rule_rank, rule_selected, mature_requested_units, mature_purchased_units, refunded_inr, claim_refunded_inr, linked_accounts, community_id, wardrobing, cleared_reason, not_observed, status, opened_by, decided_by, latest_reading, previous_cutoff, previous_rank, previous_in_queue, earlier_decision, run_id, world_id, cutoff (the history columns since contract 1.15.0). A cell of free text that starts like a spreadsheet formula is prefixed with a quote. No note text is exported. */
+        get: operations["exportCustomers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -110,6 +332,22 @@ export interface paths {
         get: operations["listReviews"];
         put?: never;
         post: operations["appendReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/score-distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getScoreDistribution"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -197,6 +435,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/experiments/{experiment_id}/curves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEvaluationCurves"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -217,6 +471,85 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Me: {
+            user_id: string;
+            display_name: string;
+            email: string | null;
+            roles: ("viewer" | "reviewer" | "approver" | "admin")[];
+            /** @description read (every screen), export (CSV and case summary), review (notes, open, request approval), decide (approve, reject), manage (datasets and runs), administer (people and access, contract 2.0.0). Admin manages and does not review. */
+            permissions: ("read" | "export" | "review" | "decide" | "manage" | "administer")[];
+            /** @enum {string} */
+            auth_mode: "dev" | "oidc";
+            /** @description Send as the X-CSRF-Token header on every POST and DELETE of this session. Empty for a request authenticated by a bearer token, which needs none. */
+            csrf_token: string;
+            /**
+             * Format: date-time
+             * @description The session's maximum age; it also ends after idle_minutes without a request. Null for a request authenticated by a bearer token, which has no ARAI session.
+             */
+            session_expires_at: string | null;
+            idle_minutes: number;
+            /** @description Contract 1.17.0 (AM-70). Keycloak's end-session address; the UI goes there after signing out so the Keycloak session ends too. Null with the development login. */
+            sso_logout_url: string | null;
+        };
+        DevUsers: {
+            /** @enum {string} */
+            auth_mode: "dev";
+            users: {
+                display_name: string;
+                roles: string[];
+            }[];
+        };
+        AdminActionRequest: {
+            /** @description Why, for the sign-in log. */
+            reason?: string;
+        };
+        AdminUser: {
+            user_id: string;
+            display_name: string;
+            email: string | null;
+            /** @enum {string} */
+            sign_in: "keycloak" | "development_login";
+            /** @enum {string} */
+            status: "active" | "disabled";
+            /** @description Read at the person's last sign-in. keycloak_group is a mapped Keycloak group, bootstrap is ARAI_BOOTSTRAP_ADMINS, dev is the development list. */
+            roles: {
+                /** @enum {string} */
+                role: "viewer" | "reviewer" | "approver" | "admin";
+                source: string;
+            }[];
+            /** @description Sessions that are neither ended, expired nor idle. */
+            open_sessions: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_sign_in_at: string | null;
+            /** Format: date-time */
+            last_seen_at: string | null;
+        };
+        AdminUserList: {
+            items: components["schemas"]["AdminUser"][];
+        };
+        AuthEvent: {
+            event_id: number;
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            kind: "sign_in" | "sign_out" | "session_ended" | "refused" | "export" | "role_change" | "user_disabled" | "user_enabled" | "sessions_ended";
+            user_id: string | null;
+            display_name: string | null;
+            request_id: string | null;
+            /** @description What happened, by kind (for example reason and path of a refusal, from and to of a role change, by and by_name of an admin action). Never a token or a password. */
+            detail: {
+                [key: string]: unknown;
+            };
+        };
+        AuthEventPage: {
+            items: components["schemas"]["AuthEvent"][];
+            next_cursor: string | null;
+        };
+        DevLoginRequest: {
+            user: string;
+        };
         Error: {
             error_code: string;
             message: string;
@@ -283,6 +616,65 @@ export interface components {
             model_only_count: number | null;
             baseline_only_count: number | null;
             warnings: string[];
+            /** @description The review budget k of this run (the primary budget fraction of the eligible customers, at least one). selected_count equals it whenever there are at least k eligible customers. Null until the run succeeded. */
+            review_budget: number | null;
+            /** @description The risk score of the customer at rank k, the last inside the budget; the queue is every eligible customer scoring at or above it. Null until the run succeeded or when the budget is zero. */
+            threshold_score: number | null;
+            /** @description Median risk score of the eligible customers. The score is a training reference percentile, so a snapshot like the training worlds has a median near 50. Null until the run succeeded. */
+            median_score: number | null;
+            /** @description Pooled return rate of the eligible customers on mature sale lines, eligible_requested_units over eligible_purchased_units; the run-wide figure a customer's or a group's rate is read against. Null until the run succeeded or when no mature unit was purchased. */
+            mean_return_rate: number | null;
+            /** @description Sum of mature_requested_units over the eligible customers (the numerator of mean_return_rate). */
+            eligible_requested_units: number | null;
+            /** @description Sum of mature_purchased_units over the eligible customers (the denominator of mean_return_rate). */
+            eligible_purchased_units: number | null;
+            /** @description Supported relationship edges found in the snapshot (two or more shared identifier types). Null until the run succeeded. */
+            graph_edges: number | null;
+            /** @description The raw return rate at the 90th percentile of this run's eligible customers (linear interpolation), the gate's own definition of a heavy returner. A customer at or above it who is not selected for review is a cleared heavy returner. Null until the run succeeded. */
+            heavy_returner_cutoff: number | null;
+            /** @description Groups of linked accounts in the snapshot, the connected components of the supported edges (a component of thirteen or more members is split by Louvain with a fixed seed). Null until the run succeeded. */
+            community_count: number | null;
+            /** @description Of community_count, the groups the stated rule calls a ring (see Customer.community.kind; contract 1.14.0 asks more of groups whose edges share only an address and a device). Evidence about the group, not a verdict on any member. Null until the run succeeded. */
+            ring_count: number | null;
+            /** @description How far the run's investigation memos are. They are drafted after the run succeeded, one per selected customer, so results are served while they arrive; complete when every selected customer has a decided memo (ok or unavailable). Null until the run succeeded. */
+            memos: {
+                selected: number;
+                ok: number;
+                unavailable: number;
+                complete: boolean;
+            } | null;
+            /** @description When each stage began, in order, from validate on; the stepper derives elapsed times from consecutive entries and completed_at. Empty for a queued run and for runs scored before contract 1.12.0. */
+            stage_log: {
+                stage: string;
+                /** Format: date-time */
+                at: string;
+            }[];
+            /** @description Styles whose state is quality, targeting or mixed_or_uncertain, for the done summary. Null until the run succeeded. */
+            styles_with_verdict: number | null;
+            /** @description Contract 1.14.0. Refunds paid to the customers of the review set and to the customers the return-rate rule would select, from the run's stored timeline, for the Overview. Observed money, not losses. Null until the run succeeded, and for a run scored before return-line statuses were stored. */
+            refunds?: {
+                review_set: components["schemas"]["RefundTotals"];
+                rule_set: components["schemas"]["RefundTotals"];
+            } | null;
+            /** @description Contract 1.15.0 (AM-68). This run's review set against the previous snapshot of the same world (the latest earlier cutoff with a succeeded run, read from its latest succeeded run) - customers in both review sets, new to this one, gone from it, and how many of this review set had their review end in approve or reject on an earlier snapshot. Null until the run succeeded and on a world's first scored snapshot. */
+            previous_snapshot: {
+                dataset_id: string;
+                run_id: string;
+                /** Format: date-time */
+                cutoff: string;
+                repeat: number;
+                new: number;
+                left: number;
+                approved_before: number;
+                rejected_before: number;
+            } | null;
+        };
+        RefundTotals: {
+            customers: number;
+            /** @description Refunds paid on return lines whose status is refunded, in INR. */
+            refunded_inr: number;
+            /** @description The part paid on transaction-claim lines. */
+            claim_refunded_inr: number;
         };
         Support: {
             mature_sale_lines: number;
@@ -314,9 +706,102 @@ export interface components {
             wardrobing_status: "elevated" | "possible" | "no_elevated_signal" | "insufficient_evidence" | "incomplete";
             /** @enum {string|null} */
             latest_disposition: "needs_investigation" | "likely_legitimate" | "unresolved" | null;
+            /** @description Contract 1.14.0. Refunds paid on this customer's return lines whose status is refunded, in INR, from the run's stored timeline. Observed money, not a loss and not proof of anything; rejected and withdrawn requests carry none. Null for a run scored before return-line statuses were stored. */
+            refunded_inr?: number | null;
+            /** @description Contract 1.14.0. The part of refunded_inr paid on transaction-claim lines (item not received, empty package, missing parts, wrong item sent), where no item comes back to inspect. */
+            claim_refunded_inr?: number | null;
+            /** @description Contract 1.14.0. For an eligible customer outside the review set, the evidence tags the customer does not carry, so the cleared view can say what was not observed. Null for a selected or unranked customer. */
+            absent_signals?: ("repeat_claims" | "linked_claims" | "late_returns" | "returns_above_expected" | "supported_links")[] | null;
+            /** @description Contract 1.15.0 (AM-68). The same customer in the previous snapshot of its world - absent (present false, an account that did not exist yet) or its rank, score, place in that review set and where its review ended there (null with no workflow event). Null when the run has no previous snapshot. */
+            previous: {
+                /** Format: date-time */
+                cutoff: string;
+                run_id: string;
+                present: boolean;
+                rank: number | null;
+                risk_score: number | null;
+                selected_for_review: boolean | null;
+                /** @enum {string|null} */
+                workflow_state: "in_review" | "awaiting_approval" | "approved" | "rejected" | null;
+            } | null;
+            /** @description Contract 1.15.0 (AM-68). The latest earlier snapshot of the world on which this customer's review ended in a decision, with who decided and when. The workflow runs per snapshot, so a decision there does not decide this snapshot's case. Null without one. */
+            earlier_decision: {
+                /** @enum {string} */
+                state: "approved" | "rejected";
+                decided_by: string;
+                /** Format: date-time */
+                decided_at: string;
+                /** Format: date-time */
+                cutoff: string;
+            } | null;
+            /** @description Units requested for return on mature sale lines against the units a customer buying the same products would be expected to request, with the normal band expected +/- 2 sd, sd = sqrt(d * sum q p (1 - p)) over the lines with d the mean lines per order and style clipped to [1, 4]. The same quantities the model's expected return rate and residual z are built from; nothing is recomputed. sd, the band and z are null when every line's expected probability is 0 or 1, and for runs scored before contract 1.5.0. */
+            basket_expectation: {
+                actual_units: number;
+                purchased_units: number;
+                expected_units: number;
+                sd: number | null;
+                band_low: number | null;
+                band_high: number | null;
+                z: number | null;
+            } | null;
+            /**
+             * @description Why an eligible customer outside the review queue is not in it, as a template key the UI renders in one line; the first rule that holds of size_bracketing (half or more of mature units bought as several sizes of one style), high_return_styles (expected return rate of the basket .35 or more), as_basket_predicts (residual z below 1), else below_threshold. Null for customers in the queue and for unranked customers. A template, never generated text.
+             * @enum {string|null}
+             */
+            cleared_reason: "size_bracketing" | "high_return_styles" | "as_basket_predicts" | "below_threshold" | null;
+            /** @description The group of linked accounts this customer belongs to (a connected component of the supported edges), with its observable kind. Null for a customer with no supported edge, and for runs scored before contract 1.6.0. Membership of a group is evidence about the relationship, not guilt. */
+            community: {
+                id: string;
+                /**
+                 * @description From observed evidence only (decision D3, revised by AM-66 in contract 1.14.0). Where some edge of the group shares a payment instrument - ring when any edge has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero. Where every edge shares only an address and a device (the shape of a household) - ring only with two or more coordinated claim matches or two or more members selected for review. household otherwise. Runs scored before 1.14.0 keep the kinds they were scored with.
+                 * @enum {string}
+                 */
+                kind: "ring" | "household";
+                size: number;
+            } | null;
+            /**
+             * @description Anchored to the queue, not to fixed percentiles (the score is a training reference percentile, so fixed bands would put a quarter of customers in the top band). HIGH is selected for review; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer. Null for a customer without a score.
+             * @enum {string|null}
+             */
+            tier: "HIGH" | "MEDIUM" | "LOW" | null;
+            /**
+             * @description A presentation rule over stored results, not a model output, and the UI says so. ESCALATE is selected and either in a ring or with the wardrobing indicator elevated; HOLD is selected otherwise; WARNING is not selected and either MEDIUM or at or above the run's heavy_returner_cutoff; LOW is every other eligible customer. Null for a customer without a score.
+             * @enum {string|null}
+             */
+            gate_outcome: "ESCALATE" | "HOLD" | "WARNING" | "LOW" | null;
+            /** @description Up to three of the customer's evidence_tags, in the order the score breakdown ranks their families (the family whose typical values lower the score most comes first; a tag with no family comes last), each as a plain phrase under 40 characters with the value and denominator of the signal behind it. Nothing new is measured; the tags are unchanged. */
+            primary_signals: {
+                tag: string;
+                label: string;
+                /** @enum {string|null} */
+                family: "claims" | "timing" | "expected_vs_actual" | "composition" | "volume" | null;
+                value: number | null;
+                denominator: number | null;
+                unit: string;
+            }[];
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            workflow: {
+                /** @enum {string} */
+                state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                opened_by: string | null;
+                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case. */
+                opened_by_user_id: string | null;
+                /** Format: date-time */
+                opened_at: string | null;
+                /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
+                decided_by: string | null;
+                /** Format: date-time */
+                decided_at: string | null;
+            };
         };
+        /** @description Contract 2.0.0 (AM-71) removed reviewer_name (ignored since 1.16.0); a body that carries it is a 422. The author is the signed-in user. */
         ReviewRequest: {
-            reviewer_name: string;
+            /**
+             * @description What the review does. note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; request_approval asks for a second person; approve and reject decide it. The rules, checked under one lock per customer - open needs a case that is not open (409 case_already_open while it is in review or awaiting approval); request_approval, approve and reject need an open case (409 case_not_open) that is not yet decided (409 case_decided; reopen first), and approval cannot be requested twice (409 case_already_open); approve and reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed message the UI shows as it is, names compared without regard to case or spacing; the four workflow kinds apply only to a customer selected for review and feedback only to the others (409 out_of_scope). approve and reject carry a reading, needs_investigation or likely_legitimate (422 request.decision_disposition). Every kind needs a note, and no text may hold a NUL byte.
+             * @default note
+             * @enum {string}
+             */
+            kind: "note" | "open" | "request_approval" | "approve" | "reject" | "feedback";
             /** @enum {string} */
             disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
             note: string;
@@ -329,20 +814,63 @@ export interface components {
             run_id: string;
             model_id: string;
             reviewer_name: string;
+            /**
+             * @description Rows written before contract 1.8.0 are notes.
+             * @enum {string}
+             */
+            kind: "note" | "open" | "request_approval" | "approve" | "reject" | "feedback";
             /** @enum {string} */
             disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
             note: string;
             /** Format: date-time */
             created_at: string;
+            /** @description Contract 1.15.0 (AM-68). The snapshot the note was written on. Notes follow the customer across the snapshots of its world; open, approval and decision events count only in their own snapshot. */
+            dataset_id: string;
+            /**
+             * Format: date-time
+             * @description Contract 1.15.0. The cutoff of that snapshot.
+             */
+            snapshot_cutoff: string;
+            /** @description Contract 1.16.0 (AM-69). Who wrote it. verified is true for a review written by a signed-in user, whose display name the server recorded; false for a review written before sign-in existed, whose name was typed and never checked (user_id null). */
+            author: {
+                user_id: string | null;
+                display_name: string;
+                verified: boolean;
+            };
         };
+        /** @description One source transaction of the customer. The sentence in description is built from the fact fields that follow it; read the fields, not the sentence. A fact that does not apply to the event kind is null, and every fact is null for a run scored before contract 1.4.0 (results are written once). The customer's free-text reason is never carried. */
         TimelineEvent: {
             source_ref: string;
             event_type: string;
+            /** @description When the event happened - an ISO date (the order date) for a purchase, an ISO date-time with offset (the request time) for a return_request. Order the timeline by this field as text. */
             observed_at: string;
             description: string;
             amount_inr: number | null;
             style_id: string | null;
             sku: string | null;
+            /** @description The sale order of the line, for a purchase and for a return of that line alike; groups the sizes of one style ordered together. */
+            order_id: string | null;
+            order_line_no: number | null;
+            /** @description Units ordered for a purchase; units requested for return for a return event. */
+            quantity: number | null;
+            size: string | null;
+            /** @description Return events only; a code of the reason codebook. */
+            reason_code: string | null;
+            /**
+             * @description Return events only; the four groups partition the codebook (reason-groups.yaml).
+             * @enum {string|null}
+             */
+            reason_group: "transaction_claim" | "item_complaint" | "fit" | "discretionary" | null;
+            /** @description Return events only; days after delivery at which the request was made. */
+            day_in_window: number | null;
+            /** @description The line's return window in days. */
+            window_days: number | null;
+            /** @description The sale line's status for a purchase; the return line's status for a return event. */
+            line_status: string | null;
+            /** @description Return events only; whether the returned item was received. Null when the reason needs no item back. */
+            item_received: boolean | null;
+            /** @description Return events only; a linked account claimed on the same style within 7 days. */
+            linked_claim: boolean | null;
         };
         Neighbor: {
             customer_id: string;
@@ -351,6 +879,11 @@ export interface components {
             supported: boolean;
             max_value_fanout: number;
             coordinated_claim_matches: number;
+            /** @description The neighbour's own risk score in this run (null if the neighbour is not eligible). A link is evidence about the relationship; this score says nothing about the customer whose case is shown. */
+            risk_score: number | null;
+            rank: number | null;
+            selected_for_review: boolean;
+            evidence_tags: string[];
         };
         Wardrobing: {
             /** @enum {string} */
@@ -362,6 +895,30 @@ export interface components {
         Style: {
             style_id: string;
             category: string;
+            /** @description "{brand} {category}" from sku_master, which has no name column, with the style id appended when that pair is not unique in the run; the style id alone for runs scored before contract 1.9.0. */
+            name: string;
+            /** @description Median day after delivery of the style's return requests on mature lines. Null without a timed request and for runs scored before 1.9.0. */
+            median_return_day: number | null;
+            /** @description Share of the style's timed requests made in the last five days of the return window. */
+            share_in_last_five_days: number | null;
+            /** @description Of the customers with a request on the style's mature lines (unique_returners), how many are selected for review in this run. A share of returners, not a statement about the product. */
+            flagged_returner_share: {
+                numerator: number;
+                denominator: number;
+                share: number | null;
+            } | null;
+            /** @description Returners whose group of linked accounts the stated rule calls a ring. */
+            ring_returners: number | null;
+            /** @description Median risk score of the eligible returners, to read against the run's median_score. */
+            median_returner_score: number | null;
+            /** @description The style's return requests on mature lines by reason code, most units first; the units sum to requested_units. From the codebook, never the customer's free text. Empty for runs scored before 1.9.0. */
+            reason_codes: {
+                code: string;
+                /** @enum {string} */
+                group: "transaction_claim" | "item_complaint" | "fit" | "discretionary";
+                lines: number;
+                units: number;
+            }[];
             /** @enum {string} */
             state: "quality" | "targeting" | "mixed_or_uncertain" | "no_elevated_signal" | "insufficient_support" | "no_return_evidence";
             mature_sale_lines: number;
@@ -389,6 +946,25 @@ export interface components {
             /** @enum {string} */
             support_status: "supported" | "insufficient_support" | "no_return_evidence";
         };
+        /** @description A member of the community with its own result in this run. The score is the member's, and says nothing about the customer whose case is shown. */
+        CommunityMember: {
+            customer_id: string;
+            risk_score: number | null;
+            rank: number | null;
+            selected_for_review: boolean;
+            /** @enum {string} */
+            eligibility_status: "eligible" | "insufficient_history";
+            mature_requested_units: number;
+            mature_purchased_units: number;
+            evidence_tags: string[];
+        };
+        /** @description A supported edge between two members (a sorts before b), the identifier types shared, and how many claim lines of either account the other matched on the same style within 7 days (the larger of the two directions). */
+        CommunityEdge: {
+            a: string;
+            b: string;
+            types: ("address" | "device" | "payment")[];
+            coordinated_claim_matches: number;
+        };
         Case: {
             run_id: string;
             dataset_id: string;
@@ -403,13 +979,166 @@ export interface components {
             neighbors: components["schemas"]["Neighbor"][];
             styles: components["schemas"]["Style"][];
             wardrobing: components["schemas"]["Wardrobing"];
+            /** @description The customer's group of linked accounts with every member's own result and the edges between members, so the group can be drawn and its captions derived (requested_units over purchased_units is the group's return rate on mature lines; a member's rate is read against the run's mean_return_rate). Null for a customer with no supported edge, and for runs scored before contract 1.6.0. */
+            community: {
+                id: string;
+                /**
+                 * @description From observed evidence only (decision D3, revised by AM-66 in contract 1.14.0). Where some edge of the group shares a payment instrument - ring when any edge has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero. Where every edge shares only an address and a device (the shape of a household) - ring only with two or more coordinated claim matches or two or more members selected for review. household otherwise. Runs scored before 1.14.0 keep the kinds they were scored with.
+                 * @enum {string}
+                 */
+                kind: "ring" | "household";
+                /**
+                 * @description components when the group is a whole connected component of the supported edges; louvain when it is one part of a component of thirteen or more members, split on the edge weight with a fixed seed.
+                 * @enum {string}
+                 */
+                method: "components" | "louvain";
+                size: number;
+                selected_count: number;
+                requested_units: number;
+                purchased_units: number;
+                coordinated_claim_matches: number;
+                members: components["schemas"]["CommunityMember"][];
+                edges: components["schemas"]["CommunityEdge"][];
+            } | null;
+            /** @description The score the frozen pipeline gives when one feature family sits at typical values and everything else stays as observed, for each of the five families that partition the 43 model features. The honest reading is "the score with this family at typical values"; boosted trees do not decompose additively, so these are never contributions that sum to the score. Each row is also the counterfactual for that family removed. Predict-side only; nothing is fitted and no selection changes. Null for a customer without a score and for runs scored before contract 1.7.0. */
+            score_breakdown: {
+                /** @enum {string} */
+                method: "family_at_typical_values";
+                /**
+                 * @description Whose medians stood in for a family's features. training is the bundle's frozen training median (the normal case); snapshot is the median of this run's eligible customers, used only when a bundle carries no feature quantiles.
+                 * @enum {string|null}
+                 */
+                typical_from: "training" | "snapshot" | null;
+                /** @description The pipeline's raw score of the customer at rank k, the queue's edge; in_queue_without compares against it. Null when the budget is zero. */
+                threshold_raw_score: number | null;
+                families: {
+                    /** @enum {string} */
+                    family: "claims" | "timing" | "expected_vs_actual" | "composition" | "volume";
+                    label: string;
+                    /** @description How many of the family's features this run's bundle reads; 0 for a family the baseline fallback does not read (it scores on raw_return_rate alone). */
+                    feature_count: number;
+                    raw_score_without: number;
+                    score_without: number;
+                    /** @description score_without minus the customer's risk_score; negative when the family raises the score. */
+                    delta_points: number;
+                    /** @description Whether raw_score_without is at or above threshold_raw_score, everyone else unchanged. */
+                    in_queue_without: boolean;
+                    /**
+                     * @description The tier rule applied to the re-scored customer, in_queue_without standing for selected.
+                     * @enum {string}
+                     */
+                    tier_without: "HIGH" | "MEDIUM" | "LOW";
+                }[];
+            } | null;
+            /** @description The analyst rulebook's five rules as they stand for this customer, shown as rules that would have fired. Report-only; they are not part of the score. fired is null when the rule's training threshold is not in the bundle, an input is missing, or the run predates contract 1.7.0. */
+            rules_fired: {
+                /** @enum {string} */
+                rule_id: "rate_p90" | "claims_2" | "refund_ratio_p90" | "linked_claimant" | "late_half";
+                label: string;
+                fired: boolean | null;
+            }[];
+            /** @description The investigation memo drafted for a selected customer from this case alone (no free text, no private truth, no other customer's identifier), after a deterministic gate in which every number it cites is a value or denominator of the case, every panel exists, the action is a gate outcome, no other customer is named, the sections are short. A failed draft is retried once; two failures give unavailable with the reason. The UI shows memo content only when status is ok. A memo is a draft for a reviewer, never a decision; it changes no score, rank or selection. */
+            memo: {
+                /**
+                 * @description pending while the run's memos are still being drafted; not_selected for a customer outside the queue; unavailable with reason no_api_key when the deployment has no key (by design, every memo is unavailable then).
+                 * @enum {string}
+                 */
+                status: "ok" | "unavailable" | "pending" | "not_selected";
+                summary: string | null;
+                key_evidence: {
+                    statement: string;
+                    /** @enum {string} */
+                    panel: "expected" | "returns" | "linked" | "wardrobing";
+                    value: number;
+                    denominator: number | null;
+                }[];
+                alternative_explanations: string[];
+                /** @enum {string|null} */
+                recommended_action: "ESCALATE" | "HOLD" | "WARNING" | "LOW" | null;
+                attempts: number;
+                reason: string | null;
+                model: string | null;
+                /** Format: date-time */
+                generated_at: string | null;
+            };
+            /** @description Every note on this customer in any snapshot of its world, oldest first. */
             reviews: components["schemas"]["Review"][];
+            /** @description Contract 1.15.0 (AM-68). The customer in every scored snapshot of its world, oldest cutoff first, each read from that snapshot's stored results (this run for this run's snapshot, otherwise the snapshot's latest succeeded run). Nothing is recomputed or carried from one snapshot to another. */
+            history: components["schemas"]["HistoryEntry"][];
+        };
+        HistoryEntry: {
+            dataset_id: string;
+            /** Format: date-time */
+            cutoff: string;
+            run_id: string;
+            /** @enum {string} */
+            model_kind: "supervised" | "unsupervised" | "baseline_fallback";
+            /** @description True for the snapshot of the run being viewed. */
+            current: boolean;
+            /** @description False when the account did not exist yet at that cutoff; every other value is then null or empty. */
+            present: boolean;
+            /** @enum {string|null} */
+            eligibility_status: "eligible" | "insufficient_history" | null;
+            rank: number | null;
+            risk_score: number | null;
+            /** @enum {string|null} */
+            tier: "HIGH" | "MEDIUM" | "LOW" | null;
+            /** @enum {string|null} */
+            gate_outcome: "ESCALATE" | "HOLD" | "WARNING" | "LOW" | null;
+            selected_for_review: boolean | null;
+            mature_requested_units: number | null;
+            mature_purchased_units: number | null;
+            refunded_inr: number | null;
+            evidence_tags: string[];
+            /** @enum {string|null} */
+            community_kind: "ring" | "household" | null;
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            workflow: {
+                /** @enum {string} */
+                state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                opened_by: string | null;
+                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case. */
+                opened_by_user_id: string | null;
+                /** Format: date-time */
+                opened_at: string | null;
+                /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
+                decided_by: string | null;
+                /** Format: date-time */
+                decided_at: string | null;
+            } | null;
+            /** @description Notes written on that snapshot. */
+            notes: number;
         };
         StyleDetail: {
             run_id: string;
             style: components["schemas"]["Style"];
             skus: components["schemas"]["Sku"][];
+            /** @description The returners' ids in the same order as returners. */
             customer_ids: string[];
+            /** @description Customers with a request on the style, those with linked claims first, each with its own result in the run. A customer's score is the customer's; the style's state is the style's. */
+            returners: {
+                customer_id: string;
+                risk_score: number | null;
+                rank: number | null;
+                selected_for_review: boolean;
+                /** @enum {string|null} */
+                tier: "HIGH" | "MEDIUM" | "LOW" | null;
+                community: {
+                    id: string;
+                    /**
+                     * @description From observed evidence only (decision D3, revised by AM-66 in contract 1.14.0). Where some edge of the group shares a payment instrument - ring when any edge has a coordinated claim match (both accounts claimed on the same style within 7 days), or two or more members are selected for review, or a member has a coordinated claim share above zero. Where every edge shares only an address and a device (the shape of a household) - ring only with two or more coordinated claim matches or two or more members selected for review. household otherwise. Runs scored before 1.14.0 keep the kinds they were scored with.
+                     * @enum {string}
+                     */
+                    kind: "ring" | "household";
+                    size: number;
+                } | null;
+                requested_units: number;
+                claim_lines: number;
+                linked_claim_lines: number;
+                return_lines: number | null;
+                purchased_lines: number | null;
+                last_reason_code: string | null;
+            }[];
             signals: components["schemas"]["Signal"][];
         };
         Metric: {
@@ -438,6 +1167,18 @@ export interface components {
         ExperimentSummary: {
             experiment_id: string;
             config_hash: string;
+            /** @description The commit of the code that published the experiment, which publishing verified still reproduces the frozen training features. Null when published outside a repository or before contract 1.10.0. */
+            git_sha: string | null;
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            train_seeds: number[];
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            validation_seeds: number[];
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            test_seeds: number[];
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            demo_seeds: number[];
+            /** @description World seeds experiment.yaml fixes; empty for reports published before contract 1.10.0. */
+            stress_seeds: number[];
             /** @enum {string} */
             selection_status: "not_completed" | "selected" | "no_selected_model";
             selected_model_id: string | null;
@@ -490,6 +1231,25 @@ export interface components {
             items: components["schemas"]["Run"][];
             next_cursor: string | null;
         };
+        ScoreBin: {
+            lower: number;
+            upper: number;
+            /** @description Eligible customers whose risk score is in [lower, upper); the last bin includes 100. */
+            count: number;
+            /** @description Of those, the customers selected for review. */
+            selected_count: number;
+            /** @description Eligible customers scoring at or above lower, which is the queue a threshold at lower would produce. */
+            at_or_above: number;
+        };
+        /** @description How the eligible customers' risk scores spread, in twenty five-point bins from 0 to 100, with the queue size at any threshold. Every number is a count over the run's stored rows; nothing is recomputed and no threshold here changes the run's selection, which stays at threshold_score. */
+        ScoreDistribution: {
+            run_id: string;
+            eligible_count: number;
+            review_budget: number | null;
+            threshold_score: number | null;
+            bin_width: number;
+            bins: components["schemas"]["ScoreBin"][];
+        };
         CustomerPage: {
             items: components["schemas"]["Customer"][];
             next_cursor: string | null;
@@ -506,6 +1266,25 @@ export interface components {
             items: components["schemas"]["ExperimentSummary"][];
             next_cursor: string | null;
         };
+        /** @description For a run on the demonstration world, how many abusers and how many legitimate heavy returners the model's first k customers and the return-rate rule's first k customers contain, for k from 1 to the eligible count. Counts over stored result rows and the synthetic truth export; the evaluation page only, never the queue. A legitimate heavy returner is a non-abuser whose raw return rate is at or above the run's heavy_returner_cutoff. */
+        Curves: {
+            synthetic_only: boolean;
+            experiment_id: string;
+            run_id: string;
+            world_id: string;
+            eligible_count: number;
+            review_budget: number | null;
+            heavy_returner_cutoff: number | null;
+            abusers: number;
+            legitimate_heavy_returners: number;
+            points: {
+                k: number;
+                model_abusers_caught: number;
+                model_legitimate_heavy_reviewed: number;
+                baseline_abusers_caught: number;
+                baseline_legitimate_heavy_reviewed: number;
+            }[];
+        };
         TruthPage: {
             synthetic_only: boolean;
             world_id: string | null;
@@ -521,6 +1300,462 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listDevUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevUsers"];
+                };
+            };
+            /** @description The development login is off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    devLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Contract 2.0.0 (AM-71). The person is disabled by an admin (user_disabled) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The development login is off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not a user of the development login */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    singleSignOn: {
+        parameters: {
+            query?: {
+                /** @description A path of this site to come back to after signing in; anything else is replaced by /. */
+                return_to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description To Keycloak's sign-in page, or to /?signin_error=single_sign_on_unavailable */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Single sign-on is off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    singleSignOnCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed in (to return_to) or refused (to /?signin_error=...) */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Single sign-on is off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserList"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    disableUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description An admin cannot disable their own account */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    enableUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    endUserSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAuthEvents: {
+        parameters: {
+            query?: {
+                user_id?: string;
+                kind?: "sign_in" | "sign_out" | "session_ended" | "refused" | "export" | "role_change" | "user_disabled" | "user_enabled" | "sessions_ended";
+                /** @description The next_cursor of the page before. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthEventPage"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown kind or cursor */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listDatasets: {
         parameters: {
             query?: {
@@ -542,8 +1777,17 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -628,7 +1872,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Identical already registered dataset */
+            /** @description Identical already registered dataset. A dataset is one snapshot of a world at its cutoff (contract 1.15.0, AM-68) - another cutoff of the same world is a new dataset (201); the same world and cutoff with other content is 409 world_content_differs. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -646,8 +1890,17 @@ export interface operations {
                     "application/json": components["schemas"]["Dataset"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -706,9 +1959,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                dataset_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -722,8 +1973,17 @@ export interface operations {
                     "application/json": components["schemas"]["Dataset"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -778,6 +2038,71 @@ export interface operations {
             };
         };
     };
+    deleteDataset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listRuns: {
         parameters: {
             query?: {
@@ -800,8 +2125,17 @@ export interface operations {
                     "application/json": components["schemas"]["RunPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -878,8 +2212,17 @@ export interface operations {
                     "application/json": components["schemas"]["Run"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -954,8 +2297,102 @@ export interface operations {
                     "application/json": components["schemas"]["Run"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run as it now stands (interrupted, or running with the cancel requested) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1021,6 +2458,24 @@ export interface operations {
                 evidence?: string;
                 disposition?: "all" | "unreviewed" | "needs_investigation" | "likely_legitimate" | "unresolved";
                 comparison?: "all" | "model_only" | "baseline_only" | "both";
+                /** @description Show only customers whose independent wardrobing indicator is in this band. A filter chooses what is shown; it changes no score or selection. */
+                wardrobing?: "all" | "elevated" | "possible" | "no_elevated_signal" | "insufficient_evidence" | "incomplete";
+                /** @description Show only customers whose group of linked accounts is of this kind (ring, household), or only customers with no supported edge (none). A filter chooses what is shown; it changes no score or selection. */
+                community?: "all" | "ring" | "household" | "none";
+                /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
+                community_id?: string;
+                /** @description Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
+                tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
+                /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
+                gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
+                /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
+                state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
+                exclude_mine?: boolean;
+                /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
+                cleared_heavy?: boolean;
+                /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
+                history?: "all" | "new_in_queue" | "repeat_in_queue" | "decided_before";
             };
             header?: never;
             path: {
@@ -1039,8 +2494,127 @@ export interface operations {
                     "application/json": components["schemas"]["CustomerPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportCustomers: {
+        parameters: {
+            query?: {
+                review_only?: boolean;
+                eligibility?: "all" | "eligible" | "insufficient_history";
+                search?: string;
+                evidence?: string;
+                disposition?: "all" | "unreviewed" | "needs_investigation" | "likely_legitimate" | "unresolved";
+                comparison?: "all" | "model_only" | "baseline_only" | "both";
+                /** @description Show only customers whose independent wardrobing indicator is in this band. A filter chooses what is shown; it changes no score or selection. */
+                wardrobing?: "all" | "elevated" | "possible" | "no_elevated_signal" | "insufficient_evidence" | "incomplete";
+                /** @description Show only customers whose group of linked accounts is of this kind (ring, household), or only customers with no supported edge (none). A filter chooses what is shown; it changes no score or selection. */
+                community?: "all" | "ring" | "household" | "none";
+                /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
+                community_id?: string;
+                /** @description Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
+                tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
+                /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
+                gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
+                /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
+                state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
+                exclude_mine?: boolean;
+                /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
+                cleared_heavy?: boolean;
+                /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
+                history?: "all" | "new_in_queue" | "repeat_in_queue" | "decided_before";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1116,8 +2690,17 @@ export interface operations {
                     "application/json": components["schemas"]["Case"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1196,8 +2779,17 @@ export interface operations {
                     "application/json": components["schemas"]["ReviewPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1277,8 +2869,102 @@ export interface operations {
                     "application/json": components["schemas"]["Review"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getScoreDistribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreDistribution"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1357,8 +3043,17 @@ export interface operations {
                     "application/json": components["schemas"]["StylePage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1434,8 +3129,17 @@ export interface operations {
                     "application/json": components["schemas"]["StyleDetail"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1511,8 +3215,17 @@ export interface operations {
                     "application/json": components["schemas"]["ExperimentSummaryPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1587,8 +3300,17 @@ export interface operations {
                     "application/json": components["schemas"]["Experiment"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1666,8 +3388,107 @@ export interface operations {
                     "application/json": components["schemas"]["TruthPage"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEvaluationCurves: {
+        parameters: {
+            query: {
+                /** @description A succeeded run scored on the experiment's demonstration world (the world of the published truth); another world is a 409 world_mismatch. */
+                run_id: string;
+                /** @description At most this many points, thinned evenly over k, always keeping k = 1, the review budget and the last k. */
+                max_points?: number;
+            };
+            header?: never;
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Curves"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1740,8 +3561,17 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
-            /** @description VM authentication required */
+            /** @description Not signed in (no live session) */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

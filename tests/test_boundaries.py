@@ -44,7 +44,7 @@ def test_quantity_three_line_with_one_honest_and_one_abusive_request_yields_two_
     profiles = builder.profiles.assign(claim_propensity=False, temporary_use_propensity=False,
                                        claim_action_rate=0.0, temporary_use_action_rate=0.0)
     profiles.loc[line["cust"], ["claim_propensity", "claim_action_rate"]] = [True, 1.0]
-    actions, events = abuse.run_solo_actions(builder.ctx, profiles, builder.orders, builder.units, builder.reserved)
+    _, events = abuse.run_solo_actions(builder.ctx, profiles, builder.orders, builder.units, builder.reserved)
 
     event = events[events["order_id"] == order_id].iloc[0]
     assert event["order_line_no"] == line_no and event["unit_indices"][0] != honest_unit

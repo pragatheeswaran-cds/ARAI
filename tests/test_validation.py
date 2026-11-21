@@ -43,6 +43,29 @@ def test_changed_file_without_manifest_update_is_rejected(copy):
     assert "M002" in _rules(validate_world(copy))
 
 
+def test_a_manifest_naming_another_world_than_its_rows_is_rejected(copy):
+    manifest = json.loads((copy / "manifest.json").read_text(encoding="utf-8"))
+    manifest["world_id"] = "W9999"
+    (copy / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    report = validate_world(copy)
+    assert not report.accepted and any(v["rule_id"] == "M004" and v["row_key"] == "W2001" for v in report.violations)
+
+
+def test_a_world_id_outside_the_pattern_and_a_future_cutoff_are_rejected(copy):
+    manifest = json.loads((copy / "manifest.json").read_text(encoding="utf-8"))
+    (copy / "manifest.json").write_text(json.dumps({**manifest, "world_id": "bad world id"}), encoding="utf-8")
+    assert "M001" in _rules(validate_world(copy))
+    (copy / "manifest.json").write_text(json.dumps({**manifest, "cutoff": "2031-01-01T00:00:00+05:30"}), encoding="utf-8")
+    report = validate_world(copy)
+    assert not report.accepted and any(v["rule_id"] == "M001" and "future" in v["message"] for v in report.violations)
+
+
+def test_an_empty_or_unreadable_file_is_a_rule_not_a_crash(copy):
+    (copy / "return_order_line.csv").write_bytes(b"")
+    report = validate_world(copy)
+    assert not report.accepted and any(v["rule_id"] == "M002" and "cannot be read" in v["message"] for v in report.violations)
+
+
 def test_extra_or_private_file_is_rejected(copy):
     (copy / "customer_truth.csv").write_text("customer_id,y_abuse\n", encoding="utf-8")
     assert "M003" in _rules(validate_world(copy))

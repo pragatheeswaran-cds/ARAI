@@ -1,0 +1,194 @@
+{
+  "realm": "arai",
+  "displayName": "ARAI (development realm)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 3600,
+  "ssoSessionMaxLifespan": 36000,
+  "groups": [
+    {
+      "name": "arai-viewers",
+      "path": "/arai-viewers"
+    },
+    {
+      "name": "arai-reviewers",
+      "path": "/arai-reviewers"
+    },
+    {
+      "name": "arai-approvers",
+      "path": "/arai-approvers"
+    },
+    {
+      "name": "arai-admins",
+      "path": "/arai-admins"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "arai",
+      "name": "ARAI",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "arai-dev-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:8000/api/v1/auth/callback",
+        "http://localhost:8000/api/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "http://127.0.0.1:8000",
+        "http://localhost:8000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://127.0.0.1:8000/##http://localhost:8000/"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "arai-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "arai-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "asha",
+      "enabled": true,
+      "email": "asha@arai.test",
+      "emailVerified": true,
+      "firstName": "Asha",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "arai-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/arai-reviewers",
+        "/arai-approvers"
+      ]
+    },
+    {
+      "username": "ravi",
+      "enabled": true,
+      "email": "ravi@arai.test",
+      "emailVerified": true,
+      "firstName": "Ravi",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "arai-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/arai-reviewers",
+        "/arai-approvers"
+      ]
+    },
+    {
+      "username": "meera",
+      "enabled": true,
+      "email": "meera@arai.test",
+      "emailVerified": true,
+      "firstName": "Meera",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "arai-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/arai-reviewers",
+        "/arai-approvers"
+      ]
+    },
+    {
+      "username": "arjun",
+      "enabled": true,
+      "email": "arjun@arai.test",
+      "emailVerified": true,
+      "firstName": "Arjun",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "arai-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/arai-reviewers"
+      ]
+    },
+    {
+      "username": "priya",
+      "enabled": true,
+      "email": "priya@arai.test",
+      "emailVerified": true,
+      "firstName": "Priya",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "arai-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/arai-viewers"
+      ]
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@arai.test",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "arai-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/arai-admins"
+      ]
+    }
+  ]
+}

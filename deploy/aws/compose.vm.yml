@@ -1,0 +1,43 @@
+# Override for the AWS demonstration VM (docs/design/aws-deployment.md, sections 2.9 and 6). Always together with the base file:
+#   docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml up -d --build
+# deploy/aws/bringup.sh writes /opt/arai/.env (APP_PROFILE=vm, the hostname, the secrets from Parameter Store) and
+# /opt/arai/nginx.conf, then runs exactly that command.
+#
+# One public hostname, APP_HOST: the UI and the API from nginx (D-044 as amended, AM-73). No Keycloak on the VM
+# (AM-74): the development login's personas, AUTH_DEV_ON_VM=1; no shared login (AM-75). Four containers: db, api,
+# worker, web. Memory limits for the 2 GB t3.small: a runaway container is restarted, not the whole VM.
+services:
+  db:
+    command: ["postgres", "-c", "shared_buffers=64MB"]                            # a few megabytes of data; leave RAM to the app
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data                                    # the data volume, not the root disk
+    mem_limit: 300m
+
+  api:
+    environment:
+      UI_ORIGINS: https://${APP_HOST}
+      AUTH_DEV_ON_VM: "1"                        # AM-74; the base file's list of variables does not carry it
+      AUTH_DEV_USERS: ${AUTH_DEV_USERS:-}
+    volumes:
+      - /data/artifacts:/data/artifacts
+    mem_limit: 600m
+
+  worker:
+    environment:
+      AUTH_DEV_ON_VM: "1"
+      AUTH_DEV_USERS: ${AUTH_DEV_USERS:-}
+    volumes:
+      - /data/artifacts:/data/artifacts
+    mem_limit: 900m
+
+  web:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/arai/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    depends_on:
+      - api
+    mem_limit: 100m

@@ -1,0 +1,51 @@
+﻿{
+    "app_host":  "arai-demo.duckdns.org",
+    "executed_at":  "2026-10-19T00:03:15.0888018+05:30",
+    "checks":  [
+                   {
+                       "observed":  "301 https://arai-demo.duckdns.org/",
+                       "pass":  true,
+                       "id":  "https-redirect"
+                   },
+                   {
+                       "observed":  "401",
+                       "pass":  true,
+                       "id":  "shared-login-401"
+                   },
+                   {
+                       "observed":  "200",
+                       "pass":  true,
+                       "id":  "health-behind-shared-login"
+                   },
+                   {
+                       "observed":  "401",
+                       "pass":  true,
+                       "id":  "no-session-401"
+                   },
+                   {
+                       "observed":  "200 {\"auth_mode\":\"dev\",\"users\":[{\"display_name\":\"Asha\",\"roles\":[\"reviewer\",\"approver",
+                       "pass":  true,
+                       "id":  "dev-login-personas"
+                   },
+                   {
+                       "observed":  "tcp 5432 open=False at 13.201.70.172",
+                       "pass":  true,
+                       "id":  "db-port-closed"
+                   },
+                   {
+                       "observed":  "200,200,200,200,200,200,200,200,200,200,200,429",
+                       "pass":  true,
+                       "id":  "auth-rate-limit"
+                   },
+                   {
+                       "observed":  "MANUAL: sign in as Priya (viewer), open a case, attempt a review: 403; screenshot to D:\\Projects\\ARAI\\scripts\\..\\reports\\ops-ac-05\\2026-10-19",
+                       "pass":  null,
+                       "id":  "viewer-role-refusal"
+                   },
+                   {
+                       "observed":  "MANUAL: leave the UI idle past SESSION_IDLE_MINUTES (60); the next request signs out; screenshot to D:\\Projects\\ARAI\\scripts\\..\\reports\\ops-ac-05\\2026-10-19",
+                       "pass":  null,
+                       "id":  "session-expiry"
+                   }
+               ]
+}

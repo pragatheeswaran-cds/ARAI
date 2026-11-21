@@ -1,0 +1,75 @@
+{
+  "adapter": "raw_return_rate",
+  "bundle_schema": "1.0",
+  "candidate_id": null,
+  "code_sha256": "dd31e7230cb29acf2732dce02e1d13c02e32a07282836051a2400de04dd5b48f",
+  "dependency_lock_sha256": "9bb72256cbc1979ac8e83bc0f249d95ce6e1951f6e39cc523277e1f56def4a2d",
+  "experiment_config_sha256": "13fc57ba582ef886e8a1d550861bd96b0108b16033a5c666d1e40e98c85bc867",
+  "experiment_id": "EXP-20261005-04",
+  "family": null,
+  "feature_check": {
+    "cutoff": "2026-09-09T23:59:59+05:30",
+    "features_sha256": "0e5a50c077e0ff300db8f8e9ebbcade54b8d43f3425fe2a27cca51f48d8601c2",
+    "rows": 10000,
+    "world_id": "W5101"
+  },
+  "feature_order": [
+    "raw_return_rate"
+  ],
+  "feature_quantiles": {
+    "raw_return_rate": [
+      0.0,
+      0.16666666666666666,
+      0.40476190476190477
+    ]
+  },
+  "feature_reference": {
+    "category_rate": {
+      "Dress": 0.25074937372668016,
+      "Jacket": 0.18303769680008714,
+      "Jeans": 0.21618476628401856,
+      "Shirt": 0.20361304168269756,
+      "T-shirt": 0.17296457390736508
+    }
+  },
+  "kind": "baseline_fallback",
+  "libraries": {
+    "numpy": "2.5.3",
+    "scikit-learn": "1.9.1",
+    "skops": "0.16.0"
+  },
+  "model_sha256": null,
+  "params": {},
+  "preprocessing": [],
+  "reference_count": 56511,
+  "reference_kind": "eligible training raw_return_rate",
+  "reference_logical_sha256": "f84b42ca4d3fb24096c3b17892dc530e23e7ac0079d5af83c0e403b72c4a8241",
+  "score_label": "Return-rate reference percentile",
+  "training_code_sha256": "dd31e7230cb29acf2732dce02e1d13c02e32a07282836051a2400de04dd5b48f",
+  "training_code_source": "training record",
+  "training_cutoff": "2026-09-09T23:59:59+05:30",
+  "training_features_sha256": {
+    "W5101": "0e5a50c077e0ff300db8f8e9ebbcade54b8d43f3425fe2a27cca51f48d8601c2",
+    "W5102": "e43a59d9f099393966ad6669b8d1efb708279f2ce72accbcd9eda3196062f45d",
+    "W5103": "6fe9cfb23e207046ab1c022dd1cc90a5586e5acdd9a1349e586c1fd3f85a2a46",
+    "W5104": "21b06dc32681cd38ee07302b8f75475eed2c8419bdf7ad79dddfb750d78b562e",
+    "W5105": "f5280fcaaaae2bac1b5ac3f65b0e51645b5223c95bdc8ed2edbf53d20712d6b3",
+    "W5106": "9b0f26f09cf7769ae8311ee944f1df7df63f35b5e69794e52c642497ff03c41a",
+    "W5107": "7603ef2c1a9fbff1c5c32bd826178912cae2ddc3760eb263c4f91bdea67a1aa6",
+    "W5108": "69ccb926a14e9e49737b27589e84972ab7849c5249251e374e70f0f761f57f72",
+    "W5109": "4e18eaced76611e28d295c4b9190c8005cb5f802a9242d86da75b215bb013841",
+    "W5110": "1e358b9d561aa8297da7cc196b5728047002417bff0cea492127476e79eb1a5a"
+  },
+  "training_worlds": [
+    "W5101",
+    "W5102",
+    "W5103",
+    "W5104",
+    "W5105",
+    "W5106",
+    "W5107",
+    "W5108",
+    "W5109",
+    "W5110"
+  ]
+}

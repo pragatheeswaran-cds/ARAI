@@ -9,6 +9,9 @@ conventions:
   currency: INR; monetary values rounded to 2 decimals (paise)
   ids: opaque world-namespaced strings; join keys only, never model features; no persona
     or role prefix
+  snapshots: a world is one population of customers; each upload is a snapshot of it at
+    manifest.cutoff, a dataset is keyed by world_id and cutoff, and a customer keeps its
+    customer_id in every snapshot of its world (AM-68); worlds are never linked
   cutoff_rule: every row and field value in an upload has availability <= manifest.cutoff
   day_arithmetic: calendar days between Asia/Kolkata local dates; order gap from order_date
     (D-026)

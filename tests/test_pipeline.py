@@ -46,7 +46,7 @@ def small(tmp_path, monkeypatch):
 def test_the_offline_pipeline_runs_end_to_end_under_the_roots_it_is_given(small, monkeypatch):
     config, roots, out = small["config"], small["roots"], small["out"]
     artifact_root = roots["artifact_root"]
-    read = lambda name: json.loads((out / name).read_text(encoding="utf-8"))  # noqa: E731
+    read = lambda name: json.loads((out / name).read_text(encoding="utf-8"))
 
     # ---- training: records the code that fitted the models, the cutoff and the training quantiles
     halved = next(seed for seed, text in config["stress_seeds"].items() if "action rate x0.5" in text)

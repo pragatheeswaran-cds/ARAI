@@ -1,0 +1,71 @@
+{
+ "checks": [
+  {
+   "check": "guard: AUTH_MODE=dev refused on vm without the opt-in",
+   "pass": true,
+   "observed": "exit 1; raise ValueError(\"AUTH_MODE=dev is the development login and is refused with APP_PROFILE=v"
+  },
+  {
+   "check": "no shared login: health is open, 200",
+   "pass": true,
+   "observed": "200 alive=True"
+  },
+  {
+   "check": "dev-users lists the personas",
+   "pass": true,
+   "observed": "200 ['Admin', 'Arjun', 'Asha', 'Meera', 'Priya', 'Ravi']"
+  },
+  {
+   "check": "dev-login as Priya sets a Secure HttpOnly cookie",
+   "pass": true,
+   "observed": "200 ['HttpOnly', 'Max-Age=36000', 'Path=/', 'SameSite=lax', 'Secure']"
+  },
+  {
+   "check": "/me: Priya is a viewer on auth_mode dev",
+   "pass": true,
+   "observed": "200 roles=['viewer'] mode=dev"
+  },
+  {
+   "check": "viewer may read a review route (404: no such run)",
+   "pass": true,
+   "observed": "404 Unknown run."
+  },
+  {
+   "check": "viewer refused an admin route",
+   "pass": true,
+   "observed": "403 This needs the admin role."
+  },
+  {
+   "check": "POST without the CSRF header is refused",
+   "pass": true,
+   "observed": "403 The request lacks this session's X-CSRF-Token header."
+  },
+  {
+   "check": "POST with CSRF, still refused for the role",
+   "pass": true,
+   "observed": "403 This needs the reviewer role."
+  },
+  {
+   "check": "Admin sees the people page",
+   "pass": true,
+   "observed": "200 {'items': [{'user_id': 'usr-25685793b5a24265982c', 'display_name': 'Ad"
+  },
+  {
+   "check": "sign-in log holds Priya's refusals",
+   "pass": true,
+   "observed": "200 refused present=True"
+  },
+  {
+   "check": "unknown persona is refused",
+   "pass": true,
+   "observed": "422"
+  },
+  {
+   "check": "the single sign-on route is off",
+   "pass": true,
+   "observed": "404"
+  }
+ ],
+ "passed": 13,
+ "total": 13
+}

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "model_id": null,
+  "baseline_id": "b-c4635e2d8a80a139a27d3619",
+  "selection_status": "no_selected_model",
+  "experiment_id": "EXP-20261005-04",
+  "reason": "Baseline rehearsal: the return-rate rule is served as if no candidate had passed the gate.",
+  "activated_at": "2026-10-15T17:32:38Z"
+}

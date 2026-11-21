@@ -8,6 +8,8 @@ Named adapters only: sku_id->sku, color->colour, color_id->colour_id, team boole
 
 Validate limits/encoding/headers; types/enums/nullability; primary keys; references/customer ownership; money/quantity; chronology/availability; status/window/cumulative requests; header sums; catalog/reference conformance; manifest hashes/counts. Structural failure rejects entire world, command exits nonzero. Emit rule_id, table, row key, count, severity and safe example with accepted=false. No accepted manifest on failure.
 
+Contract 1.13.0 (AM-65): the manifest's world_id follows the pattern in manifest.schema.json; a cutoff more than a day in the future is M001; row identifiers carrying another world id than the manifest are M004 (customer_master); a file that cannot be read as CSV is M002. These are rules in the report, never an unhandled error from the reader.
+
 One immutable snapshot per world. Historical rescoring cannot filter final-state rows by order date; it requires event logs/new snapshot construction. Late requests are rejected but count as requests; ratios cap at two only during features, not raw dates.
 
 Optional missing evidence stays null. Learned feature imputation belongs to training, not cleaning. Behavioral outliers are documented rather than deleted to improve scores. Private labels cannot govern retention. Statistical warnings differ from structural rejections; small samples need denominators.
