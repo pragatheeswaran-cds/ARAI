@@ -181,8 +181,9 @@ Kept up to date as each step is built (decision 14).
 - Workflow (AM-76, contract 3.0.0): Open, In Review, Escalated, Closed. A closed case shows how it ended: cleared,
   confirmed after escalation, or not confirmed after escalation. Only a lead (the approver role) closes an escalated
   case; an admin cannot, because admins do not review cases in this app (decision 7 said "lead or admin").
-- Outcome labels avoid the word "fraud" in the queue table, following the app's rule that signals are not proof of
-  misconduct. The case page does say "escalated to the fraud team".
+- No screen uses the word "fraud", following the app's rule that signals are not proof of misconduct: the board's
+  "Escalate to Fraud Team" reads "escalated to the investigation team", and outcomes read "confirmed after
+  escalation" and "not confirmed after escalation".
 - Case ID is the customer's own number ("CASE-03245" for W5401-C03245), since a case is one customer in one run.
   There is no Return ID, Region, Channel, Refund Status or Amount at Risk.
 - Risk Queue: no Date Range filter and no count tiles yet (both come with the step 3 aggregations); no row

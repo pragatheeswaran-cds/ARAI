@@ -191,7 +191,7 @@ with sync_playwright() as pw:
     page.wait_for_function("document.querySelector('main').innerText.includes('In Review')", timeout=15000)
     page.get_by_label("Note (required with every action)").fill(f"Walkthrough escalate {stamp}.")
     page.get_by_role("button", name="Escalate Case", exact=True).click()
-    page.wait_for_function("document.querySelector('main').innerText.includes('Escalated to the fraud team')", timeout=15000)
+    page.wait_for_function("document.querySelector('main').innerText.includes('Escalated to the investigation team')", timeout=15000)
     check("the reviewer who opened a case escalates it, and a lead is offered the outcome",
           "Escalated" in main_text(page) and page.get_by_role("button", name="Close: confirmed", exact=True).count() == 1)
     shot(page, "07b-case-escalated")

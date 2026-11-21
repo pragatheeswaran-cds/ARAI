@@ -546,7 +546,7 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
       {mine && w.state === "in_review" && <Callout>You opened this case. Clear it or escalate it when you have read the evidence.</Callout>}
       {w.state === "escalated" && (
         <Callout>
-          Escalated to the fraud team. {decide ? "Record their outcome below to close the case." : "A lead records their outcome to close the case."}
+          Escalated to the investigation team. {decide ? "Record their outcome below to close the case." : "A lead records their outcome to close the case."}
         </Callout>
       )}
       {!can("review") ? (
@@ -629,7 +629,7 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
       {error && <ErrorBox error={error} />}
       <p className="small">
         <b>What a decision means.</b> Open takes the case into review. Clear Case closes it as likely legitimate. Escalate Case hands it to the
-        fraud team; a lead later closes it with their outcome, confirmed or not confirmed. None of these approves, refuses or reverses a return
+        investigation team; a lead later closes it with their outcome, confirmed or not confirmed. None of these approves, refuses or reverses a return
         or a refund: nothing here reaches the order or refund system.
       </p>
       <p className="muted">

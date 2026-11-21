@@ -48,7 +48,7 @@ def _sql_list(kinds: tuple) -> str:
 _WORKFLOW_IN, _ESCALATED_IN, _CLOSED_IN = _sql_list(WORKFLOW_KINDS), _sql_list(ESCALATED_KINDS), _sql_list(CLOSED_KINDS)
 CASE_NOT_OPEN_MESSAGE = "Open the case first: clearing and escalating follow an open."
 CASE_ALREADY_OPEN_MESSAGE = "This case is already open. Clear it, escalate it, or add a note."
-CASE_ESCALATED_MESSAGE = "This case was escalated. A lead records the fraud team's outcome to close it."
+CASE_ESCALATED_MESSAGE = "This case was escalated. A lead records the investigation team's outcome to close it."
 CASE_NOT_ESCALATED_MESSAGE = "Only an escalated case is closed with an outcome. Clear an open case instead, or escalate it first."
 CASE_DECIDED_MESSAGE = "This case is closed. Reopen it before deciding again."
 OUT_OF_SCOPE_MESSAGE = ("Open, clear, escalate and close apply to a customer selected for review; feedback applies to the "
@@ -56,7 +56,7 @@ OUT_OF_SCOPE_MESSAGE = ("Open, clear, escalate and close apply to a customer sel
 
 
 def outcome(kind: str | None, disposition: str | None) -> str | None:
-    """How a closed case ended: cleared by the analyst, or closed by a lead after an escalation with the fraud team's
+    """How a closed case ended: cleared by the analyst, or closed by a lead after an escalation with the investigation team's
     outcome (confirmed when the reading is needs_investigation, not_confirmed otherwise). None while it is not closed."""
     if kind not in CLOSED_KINDS:
         return None
@@ -353,7 +353,7 @@ class Store:
 
     def snapshot_comparison(self, run_id: str, previous_run_id: str, world_id: str, cutoff) -> dict:
         """The review set against the previous snapshot's: customers in both, new to it, gone from it; and how many customers
-        of the current review set were closed in an earlier snapshot: confirmed by the fraud team, or cleared (by the analyst,
+        of the current review set were closed in an earlier snapshot: confirmed by the investigation team, or cleared (by the analyst,
         or closed as not confirmed)."""
         with self.transaction() as db:
             row = db.execute("""SELECT count(*) FILTER (WHERE c.selected_for_review AND p.selected_for_review) AS repeat,

@@ -46,7 +46,7 @@ STORY = [
          ("Ring of five accounts sharing a device and a payment instrument; four are in this queue and two claimed 'not received' on "
          "the same style within days.")),
         ("Asha", "escalate", "needs_investigation",
-         "Matched claims across the linked accounts; handing the ring to the fraud team."),
+         "Matched claims across the linked accounts; handing the ring to the investigation team."),
         ("Ravi", "close", "needs_investigation",
          ("Outcome: the matched claims and the shared payment instrument hold up. Refer to the returns policy team; ask for proof "
          "of delivery before refunding the next non-receipt claim.")),
@@ -62,7 +62,7 @@ STORY = [
         ("Asha", "open", "needs_investigation",
          "Ring member with late occasion-wear returns. Opened for a closer look at the linked accounts."),
         ("Asha", "escalate", "needs_investigation",
-         "Evidence collected; escalated to the fraud team."),
+         "Evidence collected; escalated to the investigation team."),
     ]),
 ]
 

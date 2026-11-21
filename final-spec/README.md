@@ -30,6 +30,8 @@ Amendment 3.0 (2026-10-05) records that experiment 2 passed its final test and s
 
 Amendment 4.0 (2026-10-05) records the owner's decisions after experiment 3 and is the contract of experiment 4, EXP-20261005-04: the less generous simulator is set aside and its data kept untouched; new worlds are generated as generator-config 1.3 did, in a data folder of their own; the gate gets a fifth leg for honest customers with exactly one genuine delivery failure, with training weights on both honest claimant groups; and the wardrobing indicator is rebuilt so that a late return counts only when what the customer returned supports it.
 
+Amendment 4.2 (2026-11-22) records the owner's decisions when the screens were redrawn in Penpot (AM-76 to AM-78 in DECISIONS.md, under the 4.1 table), with no new experiment: the review workflow is Open, In Review, Escalated, Closed, an analyst clearing or escalating a case and a lead closing an escalated one with its outcome, and the tier gains Critical for a selected customer in a detected ring (API contract 3.0.0); scoring stores the snapshot's own aggregates by day, channel, category and style, and the API serves them with live counts, the groups of linked accounts, the decision log, bulk actions, notifications and a read-only profile (3.1.0); customer_master gains the optional columns region, email and phone, written by the generator from streams of their own and served as Customer.contact (data contract 1.2, API contract 3.2.0). The features, the bundles and the result of EXP-20261005-04 are unchanged; using a shared phone or mailbox as a relationship signal is left to a new experiment.
+
 ## Start on any system
 
 1. Copy/extract the **whole final-spec folder**.

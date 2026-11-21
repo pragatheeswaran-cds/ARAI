@@ -28,6 +28,8 @@ generator-config.yaml specifies numeric operational settings and explicitly iden
 
 Development/demo scenarios: five sale states; genuine and deceptive claim codes; linked/unlinked households; low-link abuse; high-fanout addresses; heavy returns; defective buyers; honest late returners; bracketers; low-volume abusers; mixed cases; nonacting group members; campaign orders and reused purchases; sub-threshold groups; one-off abusers; honest repeat claimants at high-failure addresses. Deterministic boundary fixtures supplement rare random coverage, never alter sealed worlds. No pending inspection expansion.
 
+Data contract 1.2 (AM-78): every account gets a region, an email and a phone, written to customer_master. They come from random streams of their own (world/contact and group/contact), so no order, return or order identifier of a world changes and a world generated before 1.2 is reproduced with three more columns and nothing else different. A household lives in one region and a coordination group mostly does (0.7). A household shares a phone number with probability 0.30 and a mailbox with 0.05; a coordination group with 0.60 and 0.50; each member then uses the shared one with the usage probability of its group type, as with the order identifiers. Members of a shared mailbox carry aliases of it (handle+1@, handle+2@). 0.5 percent of accounts carry the recycled number of an unrelated account. Every email is at example.com and every phone number starts with 5, which no Indian mobile number does, so none is a real one. What each group offered and each member used is the private table contact_truth.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Bundled catalog/profile/festival inputs, seed and generation config.

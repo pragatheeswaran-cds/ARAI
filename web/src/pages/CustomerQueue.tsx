@@ -17,7 +17,7 @@ const EMPTY: CustomerFilters = {
   community_id: "", tier: "all", gate: "all", state: "all", history: "all",
 };
 
-/** Escalated cases waiting for a lead to record the fraud team's outcome. */
+/** Escalated cases waiting for a lead to record the investigation team's outcome. */
 function EscalatedBand({ runId }: { runId: string }) {
   const { can } = useSession();
   const { fallback } = useWorkspace();
@@ -30,7 +30,7 @@ function EscalatedBand({ runId }: { runId: string }) {
         Escalated, awaiting an outcome: {number(items.length)}
         {band.data?.next_cursor ? "+" : ""} case(s)
       </h3>
-      <p className="small">An escalated case stays open until a lead records the fraud team's outcome and closes it.</p>
+      <p className="small">An escalated case stays open until a lead records the investigation team's outcome and closes it.</p>
       <CustomerTable runId={runId} customers={items} fallback={fallback} compact />
     </div>
   );

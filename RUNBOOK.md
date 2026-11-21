@@ -1,8 +1,10 @@
 # ARAI runbook: start, stop, validate
 
 Commands are for PowerShell, run from the repository root
-(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `year-of-snapshots`, which contains every earlier
-branch (`git fetch origin; git checkout year-of-snapshots`).
+(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `penpot-implementation`, which contains `main` and
+every earlier branch (`git fetch origin; git checkout penpot-implementation`). On it the screens follow the Penpot
+design of 21 Nov 2026 and the review workflow is Open, In Review, Escalated, Closed (decisions AM-76 to AM-78; what
+differs from the design is listed in `records\2026-11-21-penpot-coverage-checklist.md`).
 
 The application serves experiment 4 (EXP-20261005-04). Its data, bundles and local database are in
 `data\EXP-20261005-04\` (`artifacts`, `private`, `postgres`). The folders `data\artifacts`, `data\private` and
@@ -27,7 +29,7 @@ which reproduces the same worlds and the same selected model (step 3).
 ```powershell
 # 1. the branch with all the work (main does not have it yet)
 git fetch origin
-git checkout year-of-snapshots
+git checkout penpot-implementation
 
 # 2. the environment and the UI (section 1)
 uv sync
@@ -50,7 +52,7 @@ uv run arai local                                  # http://127.0.0.1:8000
 uv run --no-sync python scripts\history_demo.py --load
 ```
 
-Then open http://127.0.0.1:8000 and choose a person. The Overview should show W5401 with 5,676 customers scored
+Then open http://127.0.0.1:8000 and choose a person. The Dashboard should show W5401 with 5,676 customers scored
 and 284 in the queue. To check everything: section 5 ("Full check before a demonstration").
 
 **Who you can sign in as.** Two ways, with the same six people and roles:
@@ -109,6 +111,7 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Everything demo state holds, all worlds or one | `uv run arai db-clean --all --yes`; `--all --world W5401 --yes` | 2.4 |
 | The rehearsal's database | `uv run arai db-clean --instance rehearsal --all --yes` | 2.4 |
 | Full reset of a stopped instance | `uv run arai db-clean --reset --yes`; `--instance rehearsal --reset --yes` | 2.4 |
+| A world with region, email and phone (data contract 1.2) | `uv run arai generate --seed 5601 --customers 10000`, then register and score it | 4.2 |
 | **Sign in** | | |
 | Sign in on a laptop | the first page of http://127.0.0.1:8000: choose a person of the development login | 2.5 |
 | Other people or roles | `$env:AUTH_DEV_USERS = "Asha=reviewer,approver;Kabir=reviewer;Admin=admin"` before `uv run arai local` | 2.5 |
@@ -285,7 +288,7 @@ open: the server runs until you stop it. This one process is the database, the A
 UI. To use another port: `uv run arai local --port 8010`.
 
 On an empty database (first start on a machine, or after a clean-up in section 2.4) register and score the demonstration world
-once (section 4). Afterwards the Overview shows 5,676 eligible customers and 284 selected for world W5401.
+once (section 4). Afterwards the Dashboard shows 5,676 eligible customers and 284 selected for world W5401.
 
 **Stop**
 
@@ -415,7 +418,7 @@ touched by any of these: bundles, worlds and the experiment report stay.
 Since API contract 1.16.0 (decision AM-69, `docs/design/authentication-and-roles.md`) every page and API call needs a
 signed-in person; only `/api/v1/health` stays open. On a laptop the instance uses the **development login**: the
 first page lists the people below, and choosing one signs in. Every note and decision is recorded under that person,
-and the second-reviewer rule compares people, not typed names.
+and the cases a person has open, the notifications and the audit log all go by the signed-in person, not a typed name.
 
 | Person | Roles | May |
 |---|---|---|
@@ -643,7 +646,7 @@ curl.exe -s -b arai-cookies.txt -H "X-CSRF-Token: $($me.csrf_token)" -X POST htt
 
 A world is one population of customers; each upload of it is a **snapshot** at its cutoff, and a customer keeps the
 same identifier in every snapshot (decision AM-68). Registering W5401 again with another cutoff therefore adds a
-snapshot of the same world instead of being refused, and the queue, the case and the Overview show each customer's
+snapshot of the same world instead of being refused, and the queue, the case and the Dashboard show each customer's
 history across the snapshots. Different worlds are never linked.
 
 **On a laptop, from this branch** (everything below is regenerated, nothing is copied from another machine; rehearsed
@@ -651,7 +654,7 @@ on an empty database: same numbers, about two minutes):
 
 ```powershell
 # 0. the branch, its environment and its UI (see "Start here" at the top)
-git fetch origin; git checkout year-of-snapshots; git pull
+git fetch origin; git checkout penpot-implementation; git pull
 uv sync
 cd web; npm install; npm run build; cd ..
 
@@ -697,6 +700,36 @@ the August decision shown on it. `db-clean --all --world W5401` removes every sn
 
 ---
 
+### 4.2 The screens, the workflow and the new data columns (branch `penpot-implementation`)
+
+**Screens.** The sidebar lists Dashboard, Risk Queue, Investigations, Customers, Network Graph, Products / SKU,
+Analytics (the evaluation), Configuration (datasets and runs), Audit Log and, for an admin, People & access. The top
+bar has the notification bell, the Profile link and Sign out.
+
+**Workflow.** A case is Open, In Review, Escalated or Closed. A reviewer opens it and presses **Clear Case** or
+**Escalate Case**; a person with the approver role (the lead) presses **Close: confirmed** or **Close: not
+confirmed** on an escalated case. In the Risk Queue a reviewer can tick several cases and Open, Clear or Escalate
+them with one note. Reviews written under the earlier approve and reject workflow stay readable.
+
+**Runs scored before this branch.** Daily trends, channels, categories and the per-style aggregates are stored when a
+snapshot is scored. A run scored earlier shows the dashboard's counts and a note that the trends are missing. Score
+the snapshot again (Configuration, **Score with the active bundle**, or the `curl.exe` call of section 4) to fill
+them; the earlier run and its notes stay. Schema versions 14 and 15 are applied when the instance starts.
+
+**Region, email and phone.** `customer_master` has three optional columns since data contract 1.2 (AM-78). The worlds
+of experiment 4 on disk were written before them and stay valid; their customers show none. A world generated now
+carries them:
+
+```powershell
+uv run arai generate --seed 5601 --customers 10000     # a new world W5601N10000 (a seed no experiment uses), about 20 seconds
+uv run arai register data\EXP-20261005-04\artifacts\worlds\W5601N10000\operational
+```
+
+Score it from **Configuration**; the Customers page then shows each customer's email, phone and region, and the
+search finds a customer by any of them. Every email is at example.com and every phone number starts with 5, which no
+Indian mobile number does. None of the three is a model input. Linking accounts by a shared phone or mailbox is not
+done: it changes the features and needs a new experiment (`pendings.md`, item P1).
+
 ## 5. Validate that it is working
 
 ### Quick check (30 seconds)
@@ -722,7 +755,7 @@ Expected:
 curl.exe -s http://127.0.0.1:8000/api/v1/runs       # the latest run should be "succeeded"
 ```
 
-Then open http://127.0.0.1:8000, sign in (section 2.5, for example as Ravi): the Overview should show 5,676 eligible customers and 284 selected for world
+Then open http://127.0.0.1:8000, sign in (section 2.5, for example as Ravi): the Dashboard should show 5,676 eligible customers and 284 selected for world
 W5401 (the 9 September snapshot), and with the snapshots of section 4.1 the panel comparing it with 9 August.
 
 ### Full check before a demonstration
@@ -754,9 +787,8 @@ uv run --no-sync python tests\e2e\vm_devlogin_check.py  # "13 of 13 checks passe
 Use `uv run --no-sync` while the server is running: plain `uv run` may try to refresh the environment and fail
 with "file is being used by another process".
 
-The walkthrough writes one review note on the top-ranked customer each time it runs (as Ravi), and stages the
-second-reviewer refusal on the first case still marked New, which it opens as Ravi; so each run leaves one more case in
-review. Notes are append only, so they accumulate; that is expected. The fallback check
+The walkthrough writes one review note on the top-ranked customer each time it runs (as Ravi), and opens and escalates
+the first case still marked Open, as Ravi; so each run leaves one more case escalated. Notes are append only, so they accumulate; that is expected. The fallback check
 scores W2001 where that world exists and W5401 otherwise (or the world named on its command line).
 
 Screenshots and results from steps 3 to 5 are written to `reports\ui\<today's date>\`.
@@ -942,7 +974,7 @@ uv run --no-sync python scripts\history_demo.py --load --base-url https://arai-d
 
 The VM runs the development login (AM-74): the sign-in page lists personas and anyone picks one; there are no
 passwords at all (the shared login was removed on 21 Oct 2026, AM-75). The defaults are the six of section 2.5 (Asha, Ravi and Meera review and
-approve, Arjun reviews, Priya views, Admin administers). Other names or roles: set `AUTH_DEV_USERS` and re-run
+close escalated cases, Arjun reviews, Priya views, Admin administers). Other names or roles: set `AUTH_DEV_USERS` and re-run
 bring-up. Anyone who reaches the URL can act as any persona, including Admin; the data on the VM is synthetic (section 8.4).
 
 ```powershell

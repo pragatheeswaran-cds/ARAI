@@ -14,6 +14,8 @@ One immutable snapshot per world. Historical rescoring cannot filter final-state
 
 Optional missing evidence stays null. Learned feature imputation belongs to training, not cleaning. Behavioral outliers are documented rather than deleted to improve scores. Private labels cannot govern retention. Statistical warnings differ from structural rejections; small samples need denominators.
 
+Data contract 1.2 (AM-78): a column marked optional may be absent (no S002) and is then not read; when present it is checked like any other column (T002 for a region outside the list). An unknown column is still S001, so the three contact columns are accepted only under their contract names.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Raw source adapter outputs and world files.

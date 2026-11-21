@@ -24,6 +24,12 @@ Contract 1.17.0 (AM-70), migration 0013: oidc_logins keeps each Keycloak sign-in
 
 Contract 2.0.0 (AM-71), no migration: a sign-in replaces all of the person's roles with those of this sign-in, each with its source (dev, keycloak_group, bootstrap), and logs role_change with the roles before and after when they differ. auth_events adds user_enabled and sessions_ended; user_disabled, user_enabled and sessions_ended carry the admin (by, by_name), the number of sessions ended and the optional reason. Disabling ends the person's open sessions in the same transaction (ended_reason disabled); End sessions uses ended_reason ended_by_admin.
 
+Contract 3.0.0 (AM-76), migration 0014: reviews.kind also accepts clear, escalate and close; request_approval, approve and reject stay valid for the rows already written. The table stays append-only and the workflow state is still derived on read from the latest workflow event of a customer in a snapshot, now with the disposition of that event for the outcome of a closed case.
+
+Contract 3.1.0 (AM-77), migration 0015: users.notifications_seen_at, when a person last looked at their notifications. Notifications themselves are not stored; they are read from reviews and runs. The run's aggregates live in runs.summary (insights and style_insights) and need no migration. An export of the style list is logged in auth_events like the queue export.
+
+Contract 3.2.0 (AM-78), no migration: region, email and phone are kept in run_customers.measures with the customer's other measures.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Dataset/job/model/experiment/review events.

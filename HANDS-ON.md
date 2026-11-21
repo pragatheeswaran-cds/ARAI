@@ -19,7 +19,7 @@ viewer (5-12), see the fallback (13), clean up and check (14-15). Exercise 16 ad
 
 ```powershell
 git fetch origin
-git checkout year-of-snapshots      # the branch with all the work; main does not have it yet
+git checkout penpot-implementation  # the branch with all the work; main does not have the new screens yet
 uv sync                             # Python 3.12 and every dependency, from uv.lock
 cd web; npm install; npm run build; cd ..
 uv run arai --help                  # lists generate, snapshot, train, ... local, db-clean
@@ -158,10 +158,26 @@ what is shown, never a score or the run's selection.
    are opened at once, and **Investigations** in the sidebar lists the cases you have open.
 
 **You should see** each step in **Audit Log**, newest first. **Why:** the analyst who reads the evidence decides to
-clear or escalate; a lead records what the fraud team found. No action here suspends an account or refunds an order:
+clear or escalate; a lead records what the investigation team found. No action here suspends an account or refunds an order:
 the product records the human decision only.
 
 Click **Download case summary** on any case for a printable hand-off.
+
+## 8a. Customers, the network, the audit log and your profile
+
+1. Open **Customers**. Search **C08645** and open the customer. **You should see** Customer Intelligence: orders,
+   returns, refunds, how long after delivery this customer returns, orders and returns by month, the reasons given,
+   a comparison with the run, the categories returned and the accounts that share identifiers with this one. Email,
+   phone and region read *not in this snapshot* for W5401, which was written before those columns existed; a world
+   generated now carries them (RUNBOOK section 4.2).
+2. Click **View Network Graph** (or open **Network Graph** in the sidebar). **You should see** the ring drawn: five
+   accounts on a circle, the four in the queue filled, a line for each pair sharing identifiers and a heavier line
+   where their claims matched. The list beside it holds every group of the run, rings first.
+3. Open **Audit Log**: every open, clear, escalate and close of this snapshot, newest first, with who did it.
+4. Click the person icon in the top bar: **Profile** shows your name, role, status, when the account was created and
+   your last login. Nothing can be edited there; identity belongs to the sign-in.
+
+**Why:** the design's sidebar names these pages; each is a different cut of what the run already stored.
 
 ## 9. A year of one customer's history
 

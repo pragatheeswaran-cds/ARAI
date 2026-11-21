@@ -12,6 +12,12 @@ Prediction fields include run_id/model_id/model_kind/dataset_id/world_id/cutoff/
 
 Fallback banner states actual failed gate or selection not completed; retain valid active model unless explicitly switched. Graph failure fails job, empty graph valid. Resource limits500,000,000 upload bytes,2,000,000 rows,one worker,page<=100,poll2seconds. Measure runtime/API latency on target machine before claims.
 
+Contract 3.0.0 (AM-76): the tier gains CRITICAL, a customer selected for review who is a member of a detected ring; HIGH is every other selected customer. It is a presentation rule over stored results (the community kind of a selected customer), computed on read like the other tiers; no score, rank or selection changes.
+
+Contract 3.1.0 (AM-77): scoring stores the snapshot's own aggregates in the run summary, made once from the tables it already reads. summary.insights holds orders, return requests and refunds by day, return lines by return channel, and purchased and requested units by category; summary.style_insights holds, per style, the pooled return rate of its category, the share of its requested units from its top 1, 5 and 10 percent of returners (cumulative, at least one account) and from the others, and purchased and requested units by order month. Flagged rows are those of customers selected for review: a description of the review set, never a finding about a return. No private truth is read and no feature, score, rank or selection changes; a run scored before 3.1.0 has no aggregates and serves empty lists.
+
+Contract 3.2.0 (AM-78): scoring copies region, email and phone from customer_master beside each customer where the snapshot carries them (null otherwise). They are stored with the customer's other measures, shown on the screens and matched by the queue search; they are not in the bundle's feature order and never reach the model.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Registered complete dataset, optional eligible model, idempotency key.
