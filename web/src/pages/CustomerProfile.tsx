@@ -82,6 +82,9 @@ export function CustomerProfile() {
           <div className="grid">
             <Panel title="Customer">
               <Row name="Customer ID">{c.customer_id}</Row>
+              <Row name="Email">{c.contact.email ?? "not in this snapshot"}</Row>
+              <Row name="Phone">{c.contact.phone ?? "not in this snapshot"}</Row>
+              <Row name="Region">{c.contact.region ? label(c.contact.region) : "not in this snapshot"}</Row>
               <Row name="Case" note="a case is this customer in this run">
                 <Link to={`/runs/${runId}/customers/${c.customer_id}`}>{caseId(c.customer_id)}</Link>
               </Row>
@@ -188,8 +191,10 @@ export function CustomerProfile() {
             </Panel>
           </div>
           <Callout>
-            Region, email and phone are not in this snapshot's data; they arrive with the data contract change planned as step 5. Return history, the
-            behaviour evidence and the notes are on the <Link to={`/runs/${runId}/customers/${c.customer_id}`}>investigation page</Link>.
+            {c.contact.email === null && c.contact.phone === null && c.contact.region === null
+              ? "This snapshot was written before region, email and phone were part of the data, so none is shown. "
+              : "Email and phone are synthetic: every address is at example.com and no number belongs to a real subscriber. "}
+            Return history, the behaviour evidence and the notes are on the <Link to={`/runs/${runId}/customers/${c.customer_id}`}>investigation page</Link>.
           </Callout>
         </>
       )}
@@ -217,8 +222,8 @@ export function CustomerSearch() {
           }}
         >
           <label>
-            Search by Customer ID
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. C00219" />
+            Search by Customer ID, Email, Phone
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. C00219" size={32} />
           </label>
           <button type="submit">Search</button>
         </form>
@@ -231,6 +236,8 @@ export function CustomerSearch() {
               <thead>
                 <tr>
                   <th scope="col">Customer ID</th>
+                  <th scope="col">Email / phone</th>
+                  <th scope="col">Region</th>
                   <th scope="col">Risk Score</th>
                   <th scope="col">Risk Level</th>
                   <th scope="col">Return %</th>
@@ -246,6 +253,11 @@ export function CustomerSearch() {
                         {c.customer_id}
                       </Link>
                     </td>
+                    <td>
+                      {c.contact.email ?? <span className="muted">n/a</span>}
+                      {c.contact.phone && <small>{c.contact.phone}</small>}
+                    </td>
+                    <td>{c.contact.region ? label(c.contact.region) : <span className="muted">n/a</span>}</td>
                     <td>{c.risk_score === null ? "n/a" : c.risk_score.toFixed(1)}</td>
                     <td>
                       <TierBadge tier={c.tier} />

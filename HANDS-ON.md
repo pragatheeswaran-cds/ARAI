@@ -97,7 +97,7 @@ curl.exe -s http://127.0.0.1:8000/api/v1/health
 
 Open http://127.0.0.1:8000. The sign-in page lists six people (the development login, RUNBOOK 2.5). Choose **Admin**.
 
-1. Go to **Datasets & runs**. Under **Register a snapshot**, choose the eight files of
+1. Go to **Configuration** (the Datasets & runs page). Under **Register a snapshot**, choose the eight files of
    `data\EXP-20261005-04\artifacts\worlds\W5401.as-of-2026-06-09\operational` (the manifest and the seven CSVs) and
    click **Validate and register**.
 2. In **Registered datasets**, click **Score with the active bundle** on the new row. Watch the run's stages (Ingest,
@@ -115,44 +115,51 @@ uv run --no-sync python scripts\history_demo.py --load      # about 10 minutes; 
 printed reads `Since the previous snapshot (2026-08-09): 249 in both queues, 35 new, 22 left, 2 decided before`.
 **Why:** an admin registers and scores; an admin does not review cases (open any case: no note or decision controls).
 
-## 6. As Ravi: read the Overview
+## 6. As Ravi: read the Dashboard
 
-**Sign out** (top right) and choose **Ravi** (reviewer and approver).
+**Sign out** (top right) and choose **Ravi** (reviewer and approver, the lead in this exercise).
 
-**You should see** W5401 with 5,676 customers scored and 284 in the queue. There is a comparison of the model with the
-return-rate rule, and a panel **Since the previous snapshot of W5401 (09 Aug 2026)**: 249 also in the previous queue,
-35 new, 22 left, 2 decided on an earlier snapshot. **Why:** the queue is 5% of the customers who can be ranked, so a
+**You should see** the **Overview Dashboard** of W5401 with 5,676 customers scored and 284 in the queue: total returns
+and the suspected return rate for the chosen period, the suspected loss trend, the risk levels (Critical, High, Medium,
+Low), the observed patterns and the returns by channel. Change **Period** and the totals and the trend follow; the risk
+levels do not, because they are as of the snapshot. Below it are the comparison of the model with the return-rate rule
+and a panel **Since the previous snapshot of W5401 (09 Aug 2026)**: 249 also in the previous queue, 35 new, 22 left,
+2 closed on an earlier snapshot. **Why:** the queue is 5% of the customers who can be ranked, so a
 team of reviewers can work through it. The rule would flag mostly honest heavy returners.
 
-## 7. The customer queue
+## 7. The Risk Queue
 
-Open **Customer queue**.
+Open **Risk Queue**. The four tiles count the cases: all of them, Critical and High, Medium, Low. Critical is a
+customer selected for review who is also in a detected ring.
 
 1. **Model and return-rate rule** → *Selected by the rule, not by the model*: customers a plain return-rate rule would
    have sent, mostly honest heavy returners and buyers of defective products.
-2. Back to *All*. **History** → *Decided on an earlier snapshot*: W5401-C08645 (rejected on the August snapshot by Ravi)
-   and W5401-C07084 (approved by Asha), each back in the September queue as a new case.
+2. Back to *All*. **History** → *Decided on an earlier snapshot*: W5401-C08645 (confirmed after escalation on the
+   August snapshot by Ravi) and W5401-C07084 (cleared by Meera), each back in the September queue as a new case.
 3. **Show** → *Cleared heavy returners*: people with high return rates the model left out, each with the reason.
 4. Clear the filters, search **W5401-C08645**, then click **Export this view as CSV**.
 
 **You should see** the CSV open with one row per customer in the current view and no note text. **Why:** filters change
 what is shown, never a score or the run's selection.
 
-## 8. A case, start to finish: the two-person rule
+## 8. A case, start to finish: clear, or escalate and close
 
-1. Still as **Ravi**, filter **Status** → *New*, open any case, and read the tabs: **evidence** (expected against actual
+1. Still as **Ravi**, filter **Status** → *Open*, open any case, and read the tabs: **evidence** (expected against actual
    returns and why the score is high), **returns** (every return line with its reason code), **linked accounts**
    (shared addresses, cards or devices), **history** (every monthly snapshot this customer appears in) and **notes**.
 2. Note the case id, sign out, and sign in as **Arjun** (reviewer only). Open the same case. Choose a reading
-   (*Needs investigation*), write a note and click **Open case**. Then write another note and click **Request
-   approval**. There is no Approve button: *Approving or rejecting needs the approver role.*
-3. Sign out and sign in as **Ravi**. The queue shows a band **Awaiting your approval: 1 case(s) another reviewer
-   opened** with Arjun's case. Open it, write a note and click **Approve**. The decision is recorded under Ravi's name.
-4. Now, as Ravi, open a different *New* case yourself (**Open case**, with a note), and try **Approve** on it.
+   (*Needs investigation*), write a note and click **Open case**. Then write another note and click **Escalate
+   Case**. The status becomes *Escalated*. Arjun is not offered the outcome: *Closing an escalated case needs the
+   approver (lead) role.* On a second case, open it and click **Clear Case**: it closes as cleared, with no second person.
+3. Sign out and sign in as **Ravi**. The bell in the top bar shows the escalation, and the queue shows a band
+   **Escalated, awaiting an outcome** with Arjun's case. Open it, write a note and click **Close: confirmed** (or
+   **Close: not confirmed**). The outcome is recorded under Ravi's name, and Arjun's bell tells him his case was closed.
+4. In the **Risk Queue**, tick three *Open* cases, write one note in the bar that appears and click **Open**: all three
+   are opened at once, and **Investigations** in the sidebar lists the cases you have open.
 
-**You should see** the refusal *You opened this case. A different reviewer must approve or reject it.* **Why:** the
-server compares signed-in people, not typed names, so nobody can approve their own case. No action here suspends an
-account or refunds an order: the product records the human decision only.
+**You should see** each step in **Audit Log**, newest first. **Why:** the analyst who reads the evidence decides to
+clear or escalate; a lead records what the fraud team found. No action here suspends an account or refunds an order:
+the product records the human decision only.
 
 Click **Download case summary** on any case for a printable hand-off.
 
@@ -161,22 +168,26 @@ Click **Download case summary** on any case for a printable hand-off.
 Search **W5401-C08645** and open the **history** tab.
 
 **You should see** twelve rows from 9 Oct 2025 to 9 Sep 2026: not ranked in October (one month of history is not enough),
-rank 255 in November, selected for review in nine months, rejected on the August snapshot by Ravi. **Why:** each month is
+rank 255 in November, selected for review in nine months, closed as confirmed on the August snapshot by Ravi. **Why:** each month is
 scored on its own; the review restarts each month, with earlier decisions shown, not carried over.
 
-Then open the October snapshot's queue (**Datasets & runs** → the 9 Oct 2025 run → **View results**). It is empty and
+Then open the October snapshot's queue (**Configuration** → the 9 Oct 2025 run → **View results**). It is empty and
 says why: nobody has the three settled purchase lines the model needs yet.
 
-## 10. Style investigation
+## 10. Products / SKU
 
-Open **Style investigation**, filter by a state such as *targeting*, and open a style.
+Open **Products / SKU**. The page counts the styles, the high-risk ones and the overall return rate, and lists every
+style with its risk level, its return rate and the rate of its category. Filter **Verdict** by a state such as
+*Abuse target* and open a style.
 
-**You should see** the style's linked claimants and its SKU drill-down. **Why:** coordinated groups target particular
+**You should see** a rule-based reading of the style with its supporting and contradictory signals, how concentrated
+its returns are among a few returners, its return rate by month against the category, its linked claimants and its
+SKU drill-down. **Export** downloads the list as CSV. **Why:** coordinated groups target particular
 styles; this view finds them from the product side rather than the customer side.
 
-## 11. Evaluation
+## 11. Analytics (the evaluation)
 
-Open **Evaluation**.
+Open **Analytics**.
 
 **You should see** the result on five untouched simulated test worlds. Of the customers the model sends for review at
 the 5% budget, 76.6% are abusers, against 21.8% for the return-rate rule. The page also shows the gate's protected
@@ -244,7 +255,7 @@ uv run arai local
 
 Open http://127.0.0.1:8000 (not `localhost`) and click **Sign in with Keycloak**. Sign in as `asha` with password
 `arai-dev` and check that her roles are reviewer and approver. Then remove her from the `arai-approvers` group in the
-Keycloak admin console (http://127.0.0.1:8081/admin, `kcadmin` / `kcadmin-dev`), sign out and in again. **Approve** is
-gone: roles are read at every sign-in. Finish with `docker compose --profile sso down`.
+Keycloak admin console (http://127.0.0.1:8081/admin, `kcadmin` / `kcadmin-dev`), sign out and in again. On an escalated case
+**Close: confirmed** is gone: roles are read at every sign-in. Finish with `docker compose --profile sso down`.
 
 This is the first time this setup meets a real Keycloak; if something differs, note the error message.

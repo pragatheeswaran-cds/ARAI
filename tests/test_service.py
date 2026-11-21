@@ -2531,3 +2531,24 @@ def test_bulk_actions_communities_decisions_notifications_and_my_cases(client, e
     members = {m["customer_id"] for g in groups["items"] for m in g["members"]}
     assert members == {c["customer_id"] for c in all_pages(client, f"{url}/customers", {"review_only": "false"}) if c["community"]}
     assert all(g["size"] == len(g["members"]) for g in groups["items"])
+
+
+def test_contact_details_are_served_searched_and_absent_for_an_older_snapshot(client, env, written, world):
+    """Contract 3.2.0 (AM-78): region, email and phone ride with the customer; the search finds a customer by any of the three
+    texts it can match; a run on a snapshot without the columns serves nulls."""
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    master = world.tables["customer_master"].set_index("customer_id")
+    everyone = all_pages(client, url, {"review_only": "false"})
+    for customer in everyone[:50]:
+        conforms("Customer", customer)
+        row = master.loc[customer["customer_id"]]
+        assert customer["contact"] == {"region": row["region"], "email": row["email"], "phone": row["phone"]}
+    target = everyone[0]
+    by_email = all_pages(client, url, {"review_only": "false", "search": target["contact"]["email"]})
+    assert [c["customer_id"] for c in by_email] == [target["customer_id"]]
+    by_phone = {c["customer_id"] for c in all_pages(client, url, {"review_only": "false", "search": target["contact"]["phone"]})}
+    assert by_phone == set(master.index[master["phone"] == target["contact"]["phone"]])
+    # the model never sees them: no contact column is a model input
+    from arai.service.scoring import CONTACT_COLUMNS
+    assert not set(CONTACT_COLUMNS) & set(client.get(f"{API}/runs/{run['run_id']}").json().get("feature_order") or [])

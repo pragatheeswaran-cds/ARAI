@@ -25,6 +25,8 @@ def read_csv_table(path: Path, columns: dict) -> pd.DataFrame:
     raw = pd.read_csv(path, dtype=str, keep_default_na=False, encoding="utf-8")
     out = {}
     for name, rules in columns.items():
+        if rules.get("optional") and name not in raw.columns:       # an optional column the snapshot does not carry (AM-78)
+            continue
         text, kind = raw[name], rules["type"]
         empty = text == ""
         if kind == "date":

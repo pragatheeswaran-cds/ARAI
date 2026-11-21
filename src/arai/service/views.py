@@ -274,6 +274,8 @@ def customer_item(row: dict, latest_disposition: str | None, summary: dict | Non
         "community": community_summary(row), "tier": tier(row), "gate_outcome": gate_outcome(row, summary),
         "primary_signals": primary_signals(row), "workflow": workflow(row, summary),
         "customer_id": row["customer_id"], "eligibility_status": row["eligibility_status"],
+        # contract 3.2.0 (AM-78): the account's region, email and phone; each null where the snapshot does not carry it
+        "contact": {name: (row.get("measures") or {}).get(name) for name in scoring.CONTACT_COLUMNS},
         "raw_score": _number(row["raw_score"]), "risk_score": _number(row["risk_score"]), "rank": _integer(row["rank"]),
         "selected_for_review": bool(row["selected_for_review"]), "baseline_rank": _integer(row["baseline_rank"]),
         "baseline_selected": bool(row["baseline_selected"]),

@@ -861,6 +861,7 @@ export function CustomerCase() {
             <Panel title="Case Summary" aside={<StateBadge customer={c} compact />}>
               <Row name="Case ID">{caseId(c.customer_id)}</Row>
               <Row name="Customer ID">{c.customer_id}</Row>
+              <Row name="Region">{c.contact.region ? label(c.contact.region) : "not in this snapshot"}</Row>
               <Row name="Risk Score" note="a percentile against the training scores, not a probability">
                 {c.risk_score === null ? "n/a" : `${c.risk_score.toFixed(0)} / 100`} <TierBadge tier={c.tier} />
               </Row>

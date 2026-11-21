@@ -116,7 +116,7 @@ add `--no-sync` after `uv run` while an instance is running (section 5).
 | Sign in through Keycloak (single sign-on), rehearse it with the development Keycloak | `AUTH_MODE=oidc` and the `OIDC_*` settings; `docker compose --profile sso up -d keycloak` | 2.6 |
 | See who has signed in, disable a person, end their sessions, read the sign-in log (admin) | **People & access** in the navigation | 2.7 |
 | **Load data** | | |
-| Register and score W5401 in the browser | Datasets & runs: choose the eight files, Validate and register, Score with the active bundle | 4 |
+| Register and score W5401 in the browser | Configuration (Datasets & runs): choose the eight files, Validate and register, Score with the active bundle | 4 |
 | The same from the terminal | the two `curl.exe` calls in section 4; or `uv run arai register data\EXP-20261005-04\artifacts\worlds\W5401\operational` | 4 |
 | W5401 month by month for a year (the same customers on eleven earlier cutoffs) | `uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09` | 4.1 |
 | Only some months (any dates after 10 Sep 2025 and before 9 Sep 2026) | `uv run arai snapshot W5401 --as-of 2026-07-09 2026-08-09` | 4.1 |
@@ -311,7 +311,7 @@ Stop, then start. Runs, their results and review notes are kept in the database 
 registered snapshots and model bundles are kept as files in `data\EXP-20261005-04\artifacts`.
 
 If a scoring run was in progress when the server stopped, it shows as **interrupted** after the restart and
-publishes nothing. Use **Retry** on the Datasets & runs page. A run you cancelled yourself shows as **cancelled**
+publishes nothing. Use **Retry** on the Datasets & runs page (**Configuration** in the sidebar). A run you cancelled yourself shows as **cancelled**
 and offers no retry.
 
 ### 2.2 The baseline rehearsal instance (port 8011)
@@ -419,8 +419,8 @@ and the second-reviewer rule compares people, not typed names.
 
 | Person | Roles | May |
 |---|---|---|
-| Asha, Ravi, Meera | reviewer, approver | read, export, write notes, open cases, request approval, approve or reject cases they did not open |
-| Arjun | reviewer | read, export, write notes, open cases, request approval |
+| Asha, Ravi, Meera | reviewer, approver (lead) | read, export, write notes, open, clear and escalate cases, close an escalated case with its outcome |
+| Arjun | reviewer | read, export, write notes, open, clear and escalate cases |
 | Priya | viewer | read every screen |
 | Admin | admin | read, export, register and delete snapshots, start and cancel runs (no reviewing) |
 
@@ -614,7 +614,7 @@ Supabase; `arai db-clean` works against it through the same `DATABASE_URL`.
 
 Only needed on an empty database of the product instance; the baseline rehearsal registers and scores the world by itself.
 
-**In the browser:** open **Datasets & runs**, choose the eight files in
+**In the browser:** open **Configuration** (the Datasets & runs page), choose the eight files in
 `data\EXP-20261005-04\artifacts\worlds\W5401\operational` (`manifest.json` and the seven `.csv` files), press
 **Validate and register**, then **Score with the active bundle**. Scoring 10,000 customers takes about 12
 seconds; the page updates by itself. Smaller snapshots for trying the flow by hand, including a snapshot pair and a
@@ -788,7 +788,7 @@ The numbers are frozen records, not something to re-run:
   `final_test_status`.
 - `data\EXP-20261005-04\artifacts\experiments\EXP-20261005-04\reports\`: `dry_run.json`, `validation.json`,
   `test.json`, `ablation.json` and `stress.json`.
-- The same figures are on the **Evaluation** page and in `records\2026-10-05-experiment-4.md`.
+- The same figures are on the **Analytics** (Evaluation) page and in `records\2026-10-05-experiment-4.md`.
 - The records of experiments 1 to 3 are closed and stay in `data\artifacts\experiments\`; the offline steps
   refuse to run for an experiment of an earlier contract.
 

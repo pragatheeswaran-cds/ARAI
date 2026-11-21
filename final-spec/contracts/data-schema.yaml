@@ -1,7 +1,9 @@
-spec_version: '1.1'
+spec_version: '1.2'
 status: IMPLEMENTATION BASELINE
 amendment: 1.1 (2026-10-02) changes private truth only; the seven operational tables
-  and manifest schema_version remain 1.0
+  and manifest schema_version remain 1.0. 1.2 (2026-11-22, AM-78) adds three optional
+  columns to customer_master (region, email, phone) and the private table contact_truth;
+  a snapshot without the columns stays valid and manifest schema_version remains 1.0
 conventions:
   timezone: Asia/Kolkata
   date_format: ISO-8601 date (YYYY-MM-DD), local Asia/Kolkata date
@@ -58,6 +60,36 @@ tables:
         - affiliate
         - unknown
         model_input: false
+      region:
+        type: string
+        nullable: true
+        optional: true
+        enum:
+        - north
+        - south
+        - west
+        - east
+        - central
+        - northeast
+        model_input: false
+        note: Amendment 1.2 (AM-78). The account's region of India. Optional - a snapshot written before 1.2 has no such
+          column and stays valid. Shown on the screens; not a model input.
+      email:
+        type: string
+        nullable: true
+        optional: true
+        model_input: false
+        note: Amendment 1.2 (AM-78). The account's email address; in generated worlds always at example.com. Optional.
+          Shown on the screens. The text is never a model input; accounts whose addresses are aliases of one mailbox
+          (the same address apart from a +tag) can be linked by it.
+      phone:
+        type: string
+        nullable: true
+        optional: true
+        model_input: false
+        note: Amendment 1.2 (AM-78). The account's phone number; in generated worlds a number no real subscriber has
+          (it starts with 5). Optional. Shown on the screens. The text is never a model input; accounts carrying the
+          same number can be linked by it.
   sku_master:
     grain: sellable SKU
     primary_key:

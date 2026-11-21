@@ -689,8 +689,9 @@ class Store:
             values.append(filters["eligibility"])
         if filters["search"]:
             escaped = filters["search"].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            clauses.append("c.customer_id ILIKE %s")
-            values.append(f"%{escaped}%")
+            # the identifier, or the account's email or phone where the snapshot carries them (contract 3.2.0)
+            clauses.append("(c.customer_id ILIKE %s OR c.measures->>'email' ILIKE %s OR c.measures->>'phone' ILIKE %s)")
+            values += [f"%{escaped}%"] * 3
         if filters["evidence"]:
             clauses.append("%s = ANY (c.evidence_tags)")
             values.append(filters["evidence"])

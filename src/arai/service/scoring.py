@@ -33,6 +33,7 @@ CLEARED_REASONS = (("size_bracketing", lambda c: c["bracketing_share"] >= 0.5),
                    ("below_threshold", lambda c: pd.Series(True, index=c.index)))
 LOUVAIN_FROM = 13                # a connected component with this many members or more is split by Louvain (fixed seed); smaller ones stand
 STYLE_REASON_COLUMNS = ["style_id", "reason_code", "reason_group", "lines", "units"]
+CONTACT_COLUMNS = ("region", "email", "phone")    # optional customer_master columns of data contract 1.2
 LAST_DAYS = 5                    # "late in the window" for a style: a request in the last five days of the return window
 ATTRIBUTION_COLUMNS = ["customer_id", "family", "raw_score_without", "score_without", "delta_points", "in_queue_without"]
 COMMUNITY_COLUMNS = ["community_id", "kind", "method", "size", "selected_count", "requested_units", "purchased_units",
@@ -384,6 +385,9 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
     for name in F.WARDROBING_SUPPORT:
         if name not in customers:
             customers[name] = customers["customer_id"].map(wardrobing[name])
+    master = tables["customer_master"].set_index("customer_id")
+    for name in CONTACT_COLUMNS:                                # shown on the screens, never a model input (AM-78)
+        customers[name] = customers["customer_id"].map(master[name]) if name in master else None
     customers["evidence_tags"] = _tags(customers)
     basket = _basket(result, pd.Index(customers["customer_id"]))
     for name in basket.columns:

@@ -2977,7 +2977,19 @@ components:
       - gate_outcome
       - primary_signals
       - workflow
+      - contact
       properties:
+        contact:
+          type: object
+          additionalProperties: false
+          required: [region, email, phone]
+          description: Contract 3.2.0 (AM-78). The account's region, email and phone from customer_master (data contract 1.2),
+            shown on the screens and never a model input. Each is null where the snapshot does not carry the column, as in
+            every snapshot written before data contract 1.2.
+          properties:
+            region: {type: string, nullable: true}
+            email: {type: string, nullable: true}
+            phone: {type: string, nullable: true}
         customer_id: *id001
         eligibility_status:
           type: string

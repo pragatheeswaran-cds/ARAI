@@ -55,6 +55,24 @@ tables:
     - household
     - coordination
     - shared_location
+  contact_truth:
+    note: Amendment 1.2 (AM-78). Which group offered which shared phone number or mailbox to which member, and whether the
+      member's account carries it. Private; the operational data sees only customer_master.region, email and phone.
+    grain:
+    - world_id
+    - group_id
+    - customer_id
+    - identifier_type
+    fields:
+    - group_type
+    - shared_value
+    - used_shared_value
+    identifier_type:
+    - phone
+    - email
+    group_type:
+    - household
+    - coordination
   unit_allocation:
     key:
     - world_id

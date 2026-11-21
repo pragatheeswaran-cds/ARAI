@@ -1,5 +1,22 @@
 # Demo script: the ARAI workbench on world W5401
 
+> **Read this first (22 Nov 2026).** This script was written for the screens and the two-person approval workflow of
+> October 2026. The screens were redrawn from the Penpot design on the branch `penpot-implementation` (decisions
+> AM-76 to AM-78), and the script has not been rewritten yet. What differs when you follow it:
+>
+> - Navigation: Overview is **Dashboard**, Customer queue is **Risk Queue**, Style investigation is **Products / SKU**,
+>   Evaluation is **Analytics**, Datasets & runs is **Configuration**. New: Investigations, Customers, Network Graph,
+>   Audit Log, Profile and the notification bell.
+> - Workflow: there is no approval by a second person. An analyst opens a case and **clears** it or **escalates** it;
+>   a lead (the approver role) **closes** an escalated case as confirmed or not confirmed. The statuses are Open,
+>   In Review, Escalated, Closed. Every passage about "a second reviewer", Request approval, Approve, Reject and the
+>   refusal "A different reviewer must approve or reject it" no longer matches the product.
+> - Levels: Critical is new, a customer selected for review who is in a detected ring.
+> - The August outcomes that `scripts\history_demo.py` writes are now: W5401-C08645 escalated and closed as confirmed
+>   by Ravi, W5401-C07084 cleared by Meera, W5401-C05428 escalated and not yet closed.
+>
+> `HANDS-ON.md` is up to date and walks through the new screens.
+
 A story and a click-by-click flow for a 20 to 25 minute demonstration of the return-abuse workbench. The slide deck
 built from it is in `docs/demo-deck/`. Every number
 below is what the screens show for the demonstration world W5401 scored on experiment 4, on its latest run

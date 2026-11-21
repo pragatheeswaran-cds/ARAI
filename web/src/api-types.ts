@@ -829,6 +829,12 @@ export interface components {
             source_refs: string[];
         };
         Customer: {
+            /** @description Contract 3.2.0 (AM-78). The account's region, email and phone from customer_master (data contract 1.2), shown on the screens and never a model input. Each is null where the snapshot does not carry the column, as in every snapshot written before data contract 1.2. */
+            contact: {
+                region: string | null;
+                email: string | null;
+                phone: string | null;
+            };
             customer_id: string;
             /** @enum {string} */
             eligibility_status: "eligible" | "insufficient_history";
