@@ -197,6 +197,29 @@ class Store:
         return row
 
     # ------------------------------------------------------------------ refunds paid, from the stored timeline (contract 1.14.0)
+    def queue_counts(self, run_id: str, world_id: str, dataset_id: str, medium_from: float) -> dict:
+        """Live counts over one run's customers (AM-77): by tier, by workflow state among the customers selected for review,
+        and by evidence tag, ring membership and elevated wardrobing indicator among them. Counted on read, because the
+        workflow moves after the run was scored."""
+        tiers = ", ".join(f"count(*) FILTER (WHERE {rule}) AS tier_{name.lower()}" for name, rule in TIER_SQL.items())
+        states = ", ".join(f"count(*) FILTER (WHERE c.selected_for_review AND {rule}) AS state_{name}" for name, rule in STATE_SQL.items())
+        with self.transaction() as db:
+            row = db.execute(f"""SELECT {tiers}, {states},
+                                        count(*) FILTER (WHERE c.selected_for_review AND coalesce(k.kind, '') = 'ring') AS in_ring,
+                                        count(*) FILTER (WHERE c.selected_for_review AND c.wardrobing_status = 'elevated') AS wardrobing
+                                 FROM run_customers c
+                                 LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
+                                 {WORKFLOW_JOINS.replace("%s", "%(world_id)s", 1).replace("%s", "%(dataset_id)s", 1)
+                                                .replace("%s", "%(world_id)s", 1).replace("%s", "%(dataset_id)s", 1)}
+                                 WHERE c.run_id = %(run_id)s""",
+                             {"run_id": run_id, "world_id": world_id, "dataset_id": dataset_id, "medium_from": medium_from}).fetchone()
+            tags = db.execute("""SELECT tag, count(*) AS customers FROM run_customers c, unnest(c.evidence_tags) AS tag
+                                 WHERE c.run_id = %s AND c.selected_for_review GROUP BY tag""", (run_id,)).fetchall()
+        return {"tiers": {name: int(row[f"tier_{name.lower()}"]) for name in TIER_SQL},
+                "states": {name: int(row[f"state_{name}"]) for name in STATE_SQL},
+                "in_ring": int(row["in_ring"]), "wardrobing_elevated": int(row["wardrobing"]),
+                "tags": {r["tag"]: int(r["customers"]) for r in tags}}
+
     def refund_totals(self, run_id: str, customer_ids: list) -> dict:
         """customer_id -> {refunded, claim_refunded, known}: refunds paid on the customer's return lines with status refunded,
         and the part paid on transaction-claim lines. `known` is false for a run scored before line statuses were stored.
@@ -638,6 +661,9 @@ class Store:
         rules = rules or {}
         if filters.get("state", "all") != "all":
             clauses.append(STATE_SQL[filters["state"]])
+        if filters.get("mine_user_id"):                         # the cases the signed-in user has open (AM-77)
+            clauses.append(f"opened.author_user_id = %s AND (wf.kind = 'open' OR wf.kind IN {_ESCALATED_IN})")
+            values.append(filters["mine_user_id"])
         if filters.get("exclude_user_id"):                      # the cases the signed-in user did not open (AM-69)
             clauses.append("coalesce(opened.author_user_id, '') <> %s")
             values.append(filters["exclude_user_id"])
@@ -757,6 +783,62 @@ class Store:
                                            FROM run_customers WHERE run_id = %s AND community_id = %s ORDER BY queue_position""",
                                         (run_id, community_id)).fetchall()
         return row
+
+    def run_communities(self, run_id: str) -> list:
+        """Every community of a run with its members' own results (AM-77), largest first; rings before households of one size."""
+        with self.transaction() as db:
+            rows = db.execute("""SELECT * FROM run_communities WHERE run_id = %s
+                                 ORDER BY (kind = 'ring') DESC, size DESC, community_id""", (run_id,)).fetchall()
+            members = db.execute("""SELECT community_id, customer_id, risk_score, rank, selected_for_review, eligibility_status,
+                                           mature_requested_units, mature_purchased_units, evidence_tags
+                                    FROM run_customers WHERE run_id = %s AND community_id IS NOT NULL ORDER BY queue_position""",
+                                 (run_id,)).fetchall()
+        by_community = {}
+        for member in members:
+            by_community.setdefault(member["community_id"], []).append(member)
+        for row in rows:
+            row["members"] = by_community.get(row["community_id"], [])
+        return rows
+
+    def run_decisions(self, world_id: str, dataset_id: str, after: tuple | None, limit: int) -> list:
+        """The workflow events of one snapshot (opens, clears, escalations, closings), newest first (AM-77)."""
+        values = [world_id, dataset_id, list(WORKFLOW_KINDS)]
+        extra = ""
+        if after:
+            extra = " AND (v.created_at, v.id) < (%s, %s)"
+            values += list(after)
+        with self.transaction() as db:
+            return db.execute(f"""SELECT v.*, d.cutoff AS snapshot_cutoff FROM reviews v JOIN datasets d ON d.id = v.dataset_id
+                                  WHERE v.world_id = %s AND v.dataset_id = %s AND v.kind = ANY(%s){extra}
+                                  ORDER BY v.created_at DESC, v.id DESC LIMIT %s""", (*values, limit)).fetchall()
+
+    def notifications(self, user_id: str, can_decide: bool, days: int = 30) -> dict:
+        """What happened for one person in the last `days` days (AM-77), newest first, with when they last looked:
+        a case they opened was closed by someone else; a case was escalated by someone else (for a lead); a run was scored."""
+        with self.transaction() as db:
+            seen = db.execute("SELECT notifications_seen_at FROM users WHERE id = %s", (user_id,)).fetchone()
+            closed = db.execute(f"""SELECT v.id, v.kind, v.disposition, v.reviewer_name, v.created_at, v.run_id, v.customer_id
+                                    FROM reviews v
+                                    WHERE v.created_at > now() - make_interval(days => %s) AND v.kind IN {_CLOSED_IN}
+                                      AND coalesce(v.author_user_id, '') <> %s
+                                      AND (SELECT o.author_user_id FROM reviews o
+                                           WHERE o.world_id = v.world_id AND o.dataset_id = v.dataset_id AND o.customer_id = v.customer_id
+                                             AND o.kind = 'open' AND (o.created_at, o.id) <= (v.created_at, v.id)
+                                           ORDER BY o.created_at DESC, o.id DESC LIMIT 1) = %s
+                                    ORDER BY v.created_at DESC LIMIT 50""", (days, user_id, user_id)).fetchall()
+            escalated = db.execute(f"""SELECT v.id, v.kind, v.disposition, v.reviewer_name, v.created_at, v.run_id, v.customer_id
+                                       FROM reviews v
+                                       WHERE v.created_at > now() - make_interval(days => %s) AND v.kind IN {_ESCALATED_IN}
+                                         AND coalesce(v.author_user_id, '') <> %s
+                                       ORDER BY v.created_at DESC LIMIT 50""", (days, user_id)).fetchall() if can_decide else []
+            runs = db.execute("""SELECT r.id, d.world_id, d.cutoff, r.completed_at FROM runs r JOIN datasets d ON d.id = r.dataset_id
+                                 WHERE r.status = 'succeeded' AND r.completed_at > now() - make_interval(days => %s)
+                                 ORDER BY r.completed_at DESC LIMIT 10""", (days,)).fetchall()
+        return {"seen_at": seen["notifications_seen_at"] if seen else None, "closed": closed, "escalated": escalated, "runs": runs}
+
+    def mark_notifications_seen(self, user_id: str) -> None:
+        with self.transaction() as db:
+            db.execute("UPDATE users SET notifications_seen_at = now() WHERE id = %s", (user_id,))
 
     def run_timeline(self, run_id: str, customer_id: str) -> list:
         with self.transaction() as db:

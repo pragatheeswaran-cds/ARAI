@@ -2410,3 +2410,119 @@ def test_keycloak_role_changes_are_logged_and_a_disabled_person_cannot_sign_in(s
     browser.cookies.clear()
     refused = _sign_in(browser, fake)
     assert refused.headers["location"] == "/?signin_error=user_disabled" and "set-cookie" not in refused.headers
+
+# ------------------------------------------------------------------ dashboard, product screen and workspace extras (contract 3.1.0, AM-77)
+def test_run_insights_add_up_to_the_snapshot_and_count_the_queue_live(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}"
+    insights = client.get(f"{url}/insights").json()
+    conforms("RunInsights", insights)
+    assert insights["available"] and insights["daily"] == sorted(insights["daily"], key=lambda d: d["date"])
+    everyone = all_pages(client, f"{url}/customers", {"review_only": "false"})
+    queue = [c for c in everyone if c["selected_for_review"]]
+    counts = insights["counts"]
+    for tier in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+        assert counts["tiers"][tier] == sum(c["tier"] == tier for c in everyone), tier
+    assert counts["states"]["new"] == len(queue) and counts["states"]["in_review"] == 0
+    assert counts["in_ring"] == sum(c["tier"] == "CRITICAL" for c in everyone)
+    for tag, value in counts["tags"].items():
+        assert value == sum(tag in c["evidence_tags"] for c in queue), tag
+    # flagged is a part of the whole on every day and in every channel; the channels cover the same return lines as the days
+    assert all(d["flagged_return_lines"] <= d["return_lines"] and d["flagged_refunded_inr"] <= d["refunded_inr"] + 0.01 for d in insights["daily"])
+    assert sum(c["return_lines"] for c in insights["channels"]) == sum(d["return_lines"] for d in insights["daily"]) > 0
+    assert abs(sum(c["refunded_inr"] for c in insights["channels"]) - sum(d["refunded_inr"] for d in insights["daily"])) < 1
+    assert all(c["return_rate"] is None or 0 <= c["return_rate"] for c in insights["categories"]) and insights["categories"]
+    # the counts move with the workflow, without a new run
+    first = queue[0]["customer_id"]
+    opened = client.post(f"{url}/customers/{first}/reviews", json={"kind": "open", "disposition": "unresolved", "note": "n", "idempotency_key": "i1"})
+    assert opened.status_code == 201
+    assert client.get(f"{url}/insights").json()["counts"]["states"]["in_review"] == 1
+
+
+def test_styles_carry_the_product_aggregates_a_rule_based_reading_and_an_export(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/styles"
+    styles = all_pages(client, url)
+    categories = {c["category"]: c["return_rate"] for c in client.get(f"{API}/runs/{run['run_id']}/insights").json()["categories"]}
+    assert styles
+    for style in styles:
+        conforms("Style", style)
+        assert style["risk_level"] == style["assessment"]["risk_level"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW")
+        assert (style["risk_level"] in ("CRITICAL", "HIGH")) == (style["state"] in ("targeting", "mixed_or_uncertain"))
+        assert style["assessment"]["summary"] and isinstance(style["assessment"]["supporting"], list)
+        if style["category_return_rate"] is not None:
+            assert abs(style["category_return_rate"] - categories[style["category"]]) < 1e-9
+            assert abs(style["deviation"] - (style["shrunk_return_rate"] - style["category_return_rate"])) < 1e-9
+        if style["concentration"] is not None and style["requested_units"]:
+            bands = {b["band"]: b for b in style["concentration"]}
+            assert bands["top_1"]["share"] <= bands["top_5"]["share"] <= bands["top_10"]["share"] <= 1 + 1e-9
+            assert abs(bands["top_10"]["share"] + bands["others"]["share"] - 1) < 1e-9
+            assert bands["top_10"]["returners"] + bands["others"]["returners"] == style["unique_returners"]
+        if style["monthly"] is not None:
+            assert sum(m["purchased_units"] for m in style["monthly"]) == style["purchased_units"]
+            assert sum(m["requested_units"] for m in style["monthly"]) == style["requested_units"]
+    assert any(style["monthly"] for style in styles)
+    import csv
+    import io
+    text = client.get(f"{url}/export").text
+    rows = list(csv.reader(io.StringIO(text)))
+    assert rows[0][:4] == ["style_id", "name", "category", "risk_level"] and len(rows) == len(styles) + 1
+    assert client.as_user("Viewer").get(f"{url}/export").status_code == 403
+
+
+def test_bulk_actions_communities_decisions_notifications_and_my_cases(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}"
+    queue = all_pages(client, f"{url}/customers")
+    outside = next(c["customer_id"] for c in all_pages(client, f"{url}/customers", {"review_only": "false"})
+                   if c["eligibility_status"] == "eligible" and not c["selected_for_review"])
+    asha, ravi = client.as_user("Asha"), client.as_user("Ravi")
+    ids = [c["customer_id"] for c in queue[:3]]
+    bulk = lambda who, key, kind, customers, reading="needs_investigation": who.post(f"{url}/customers/bulk-reviews", json={
+        "customer_ids": customers, "kind": kind, "disposition": reading, "note": "bulk", "idempotency_key": key})
+    opened = bulk(asha, "b1", "open", [*ids, outside, "no-such-customer"])
+    assert opened.status_code == 200, opened.text
+    conforms("BulkReviewResult", opened.json())
+    by_customer = {r["customer_id"]: r for r in opened.json()["results"]}
+    assert opened.json()["recorded"] == 3 and all(by_customer[c]["status"] == "recorded" for c in ids)
+    assert by_customer[outside]["error_code"] == "out_of_scope" and by_customer["no-such-customer"]["error_code"] == "not_found"
+    again = bulk(asha, "b1", "open", ids)                                       # the same key: nothing is written twice
+    assert again.json()["recorded"] == 3 and [r["review_id"] for r in again.json()["results"]] == [by_customer[c]["review_id"] for c in ids]
+    refused = bulk(asha, "b2", "open", ids)                                     # a new key: the cases are already open
+    assert refused.json()["recorded"] == 0 and {r["error_code"] for r in refused.json()["results"]} == {"case_already_open"}
+    assert bulk(asha, "b3", "escalate", ids, "unresolved").status_code == 422
+    assert bulk(client.as_user("Viewer"), "b4", "open", ids).status_code == 403
+    assert bulk(asha, "b5", "escalate", ids[:2]).json()["recorded"] == 2
+    # my cases: opened by me and still in review or escalated
+    mine = [c["customer_id"] for c in all_pages(asha, f"{url}/customers", {"mine": "true"})]
+    assert sorted(mine) == sorted(ids) and all_pages(ravi, f"{url}/customers", {"mine": "true"}) == []
+    # the decisions log: the workflow events of the snapshot, newest first
+    decisions = all_pages(client, f"{url}/decisions")
+    assert sorted(d["kind"] for d in decisions) == ["escalate", "escalate", "open", "open", "open"]
+    assert [d["created_at"] for d in decisions] == sorted((d["created_at"] for d in decisions), reverse=True)
+    for decision in decisions:
+        conforms("Review", decision)
+    # notifications: a lead sees the escalations of others; the opener sees a closing by someone else; marking seen clears the count
+    for_ravi = ravi.get(f"{API}/notifications").json()
+    conforms("NotificationList", for_ravi)
+    assert sum(n["kind"] == "case_escalated" for n in for_ravi["items"]) == 2 and for_ravi["unread"] == len(for_ravi["items"])
+    assert any(n["kind"] == "run_scored" for n in for_ravi["items"])
+    closed = ravi.post(f"{url}/customers/{ids[0]}/reviews", json={"kind": "close", "disposition": "needs_investigation", "note": "n",
+                                                                    "idempotency_key": "c1"})
+    assert closed.status_code == 201
+    for_asha = asha.get(f"{API}/notifications").json()
+    mine_closed = [n for n in for_asha["items"] if n["kind"] == "case_closed"]
+    assert len(mine_closed) == 1 and mine_closed[0]["customer_id"] == ids[0] and "confirmed" in mine_closed[0]["text"] and mine_closed[0]["unread"]
+    assert not any(n["kind"] == "case_escalated" for n in for_asha["items"])    # her own escalations are not news to her
+    assert asha.post(f"{API}/notifications/seen").status_code == 204
+    after = asha.get(f"{API}/notifications").json()
+    assert after["unread"] == 0 and after["seen_at"] and len(after["items"]) == len(for_asha["items"])
+    # the profile fields, and the groups of linked accounts
+    me = asha.get(f"{API}/me").json()
+    conforms("Me", me)
+    assert me["status"] == "active" and me["created_at"] and me["last_sign_in_at"]
+    groups = client.get(f"{url}/communities").json()
+    conforms("CommunityList", groups)
+    members = {m["customer_id"] for g in groups["items"] for m in g["members"]}
+    assert members == {c["customer_id"] for c in all_pages(client, f"{url}/customers", {"review_only": "false"}) if c["community"]}
+    assert all(g["size"] == len(g["members"]) for g in groups["items"])

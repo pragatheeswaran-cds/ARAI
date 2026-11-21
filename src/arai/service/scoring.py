@@ -17,7 +17,7 @@ import pandas as pd
 from arai import bundles, contract, ranking
 from arai import features as F
 from arai.operational import cutoff_date
-from arai.service import attribution
+from arai.service import attribution, insights
 
 SMALL_POPULATION = 500           # below this many eligible customers peer aggregates move noticeably (feature review)
 DRIFT_MIN_ELIGIBLE = 200         # below this the shares are too noisy to compare with training
@@ -450,6 +450,9 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         # how the score breakdown was made: whose medians stood in for a family, and the raw score at the queue's edge
         "attribution": {"typical_from": typical_from, "threshold_raw_score": threshold_raw},
         "score_label": bundle.manifest["score_label"], "feature_order": bundle.feature_order,
+        # orders, returns and refunds by day, by channel and by category, and each style's own aggregates (AM-77)
+        "insights": insights.run_insights(tables, result.lines, result.requests, customers),
+        "style_insights": insights.style_insights(result.lines, result.requests),
     }
     return RunOutput(summary=summary, customers=customers, styles=styles, skus=skus, neighbors=neighbors,
                      timeline=_timeline(tables, result), customer_styles=customer_styles, communities=communities,
