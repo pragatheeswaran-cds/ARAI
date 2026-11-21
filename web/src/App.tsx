@@ -146,12 +146,49 @@ function RunStrip({ run, dataset }: { run: Run; dataset: Dataset | null }) {
   );
 }
 
-/** Who is signed in, their roles and Sign out, above the run strip. */
+/** The sidebar and top-bar icons: plain line drawings, hidden from assistive technology (the link text names the page). */
+const ICONS: Record<string, ReactNode> = {
+  home: <path d="M3 11l9-8 9 8M5 10v10h14V10" />,
+  queue: <path d="M4 5h16v14H4zM8 9h8M8 13h8" />,
+  box: <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9" />,
+  chart: <path d="M5 20V10M12 20V4M19 20v-7" />,
+  gear: (
+    <>
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" />
+    </>
+  ),
+  people: (
+    <>
+      <circle cx="9.5" cy="8" r="3.5" />
+      <path d="M3 20v-1a4 4 0 0 1 4-4h5a4 4 0 0 1 4 4v1M21 20v-1a4 4 0 0 0-3-3.9M15.5 4.6a3.5 3.5 0 0 1 0 6.8" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </>
+  ),
+};
+
+function Icon({ name }: { name: keyof typeof ICONS }) {
+  return (
+    <svg className="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICONS[name]}
+    </svg>
+  );
+}
+
+/** Who is signed in, their roles and Sign out, at the right of the top bar. */
 function SignedIn() {
   const { me, signOut } = useSession();
   return (
     <div className="signedin small" aria-label="Signed in">
-      Signed in as <strong>{me.display_name}</strong> <span className="muted">({me.roles.join(", ")})</span>{" "}
+      <Icon name="user" />
+      <span>
+        Signed in as <strong>{me.display_name}</strong> <span className="muted">({me.roles.join(", ")})</span>
+      </span>
       <button type="button" className="quiet" onClick={signOut}>
         Sign out
       </button>
@@ -184,21 +221,42 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="strip">SYNTHETIC DATA ONLY / Simulated customers and returns / No real person or production accuracy claim</div>
+      <div className="topbar">
+        <div className="topbar-brand">
+          <Icon name="box" />
+          Adaptive Return Abuse Intelligence
+        </div>
+        <SignedIn />
+      </div>
       <div className="shell">
         <aside>
-          <div className="brand">ARAI.</div>
-          <div className="tag">
-            ADAPTIVE RETURN ABUSE
-            <br />
-            INTELLIGENCE
-          </div>
           <nav aria-label="Main">
-            <NavLink to="/overview">Overview</NavLink>
-            <NavLink to="/datasets">Datasets &amp; runs</NavLink>
-            <NavLink to={runLink("customers")}>Customer queue</NavLink>
-            <NavLink to={runLink("styles")}>Style investigation</NavLink>
-            <NavLink to={experiment ? `/experiments/${experiment.experiment_id}` : "/experiments/none"}>Evaluation</NavLink>
-            {can("administer") && <NavLink to="/admin/people">People &amp; access</NavLink>}
+            <NavLink to="/overview">
+              <Icon name="home" />
+              Dashboard
+            </NavLink>
+            <NavLink to={runLink("customers")}>
+              <Icon name="queue" />
+              Risk Queue
+            </NavLink>
+            <NavLink to={runLink("styles")}>
+              <Icon name="box" />
+              Products / SKU
+            </NavLink>
+            <NavLink to={experiment ? `/experiments/${experiment.experiment_id}` : "/experiments/none"}>
+              <Icon name="chart" />
+              Analytics
+            </NavLink>
+            <NavLink to="/datasets">
+              <Icon name="gear" />
+              Configuration
+            </NavLink>
+            {can("administer") && (
+              <NavLink to="/admin/people">
+                <Icon name="people" />
+                People &amp; access
+              </NavLink>
+            )}
           </nav>
           <div className="footnote">
             Indian apparel / INR
@@ -228,7 +286,6 @@ function Shell({ children }: { children: ReactNode }) {
               )}
             </div>
           </header>
-          <SignedIn />
           {run && <RunStrip run={run} dataset={dataset} />}
           {reason && (
             <div className="banner" role="status">

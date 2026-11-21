@@ -159,3 +159,19 @@ navigation or are dropped.
 4. Profile, notification bell, bulk actions.
 5. Email, phone and region in the data and the model, with a new experiment. The contact fields appear on the
    screens at this step.
+
+## Differences from the Penpot boards (log for the designer)
+
+Kept up to date as each step is built (decision 14).
+
+### Step 1: shell and navigation
+
+- The sidebar lists only pages that exist: Dashboard, Risk Queue, Products / SKU, Analytics, Configuration, and
+  People & access for administrators. Investigations, Customers, Network Graph, Audit Log and Profile are added in
+  the step that builds them.
+- Analytics opens the existing Evaluation page; Configuration opens the existing Datasets & runs page.
+- The top bar shows "Signed in as <name> (<roles>)" with a Sign out button instead of the "Analyst" dropdown. The
+  dropdown arrives with the Profile page (step 4), and the notification bell with it.
+- Kept from the existing app, not drawn in Penpot: the "synthetic data only" strip above the top bar, the run
+  context header and run strip above each page, the fallback banner, and the footer disclaimer.
+- Page contents (cards, tables, badges) still use the earlier green styling until their screen is restyled.

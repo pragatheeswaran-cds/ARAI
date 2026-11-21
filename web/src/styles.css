@@ -233,3 +233,33 @@ td.row-actions button { margin: 0 6px 6px 0; padding: 6px 10px; }
 form.confirm { border: 1px solid var(--line); border-radius: 7px; padding: 14px 18px; margin: 14px 0 0; background: #f8faf6; }
 form.confirm label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 form.confirm input { display: block; width: min(100%, 460px); margin-top: 4px; padding: 7px 9px; border: 1px solid #cbd9cf; border-radius: 6px; }
+
+/* Penpot shell (step 1, 21 Nov 2026): a dark slate top bar across the page and a light sidebar with icon links.
+   These rules come last so they replace the green shell above; the page contents are restyled screen by screen. */
+:root { --ink: #1f2937; --ink-2: #4b5563; --muted: #6b7280; --line: #e2e5ea; --page: #f5f6f8; --topbar: #3d4756; --side: #eef0f3; }
+.strip { background: #e9ebef; color: var(--ink-2); }
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 24px; background: var(--topbar); color: #fff; }
+.topbar-brand { display: flex; align-items: center; gap: 12px; font-size: 17px; font-weight: 600; }
+.topbar-brand .icon { width: 24px; height: 24px; }
+.topbar .signedin { padding: 0; color: #e5e7eb; }
+.topbar .signedin .muted { color: #c3c8d0; }
+.topbar .signedin strong { color: #fff; }
+.topbar button.quiet { color: #fff; border-color: #7b8494; padding: 6px 10px; }
+.topbar button.quiet:hover { background: #4d596b; }
+.icon { flex: none; vertical-align: middle; }
+.shell { grid-template-columns: 220px 1fr; min-height: calc(100vh - 82px); }
+aside { background: var(--side); color: var(--ink); padding: 16px 12px; border-right: 1px solid var(--line); }
+nav a { display: flex; align-items: center; gap: 12px; color: var(--ink); padding: 10px 12px; margin-bottom: 4px; }
+nav a.active, nav a:hover { background: #dfe3e9; color: var(--ink); }
+nav a.active { font-weight: 600; }
+.footnote { color: var(--muted); margin-top: 48px; padding: 0 12px; }
+header { border-bottom-color: var(--line); }
+.runstrip { background: #fafbfc; border-bottom-color: var(--line); }
+@media (max-width: 1000px) { .shell { grid-template-columns: 180px 1fr; } aside { padding: 12px 8px; } }
+@media (max-width: 640px) {
+  .topbar { padding: 10px 15px; }
+  .topbar-brand { font-size: 15px; }
+  aside { padding: 8px; border-right: none; border-bottom: 1px solid var(--line); }
+  nav a { margin-bottom: 0; }
+}
+@media print { .topbar { display: none; } }

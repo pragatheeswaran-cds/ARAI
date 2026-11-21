@@ -95,7 +95,7 @@ with sync_playwright() as pw:
     shot(page, "01-overview")
 
     # ---- datasets and runs
-    page.get_by_role("link", name="Datasets & runs").click()
+    page.get_by_role("link", name="Configuration").click()
     settle(page)
     text = main_text(page)
     check("datasets page lists the dataset, its hash and the run", DEMO_WORLD in text and "succeeded" in text and "Manifest hash" in text)
@@ -114,7 +114,7 @@ with sync_playwright() as pw:
           and page.get_by_role("button", name="Score with the active bundle").count() == 0)
 
     # ---- customer queue, by keyboard: the workspace's queue is the newest run of the latest snapshot (AM-68)
-    page.get_by_role("link", name="Customer queue", exact=True).click()
+    page.get_by_role("link", name="Risk Queue", exact=True).click()
     settle(page)
     check("queue route carries the run", "/runs/run-" in page.url and page.url.endswith("/customers"), page.url)
     rows = page.locator("main table tbody tr").count()
@@ -203,7 +203,7 @@ with sync_playwright() as pw:
     check("the overview compares the queue with the previous snapshot of the same world",
           "Since the previous snapshot of W5401 (09 Aug 2026)" in text and "Also in the previous queue" in text and "New to the queue" in text)
     shot(page, "15-overview-history")
-    queue_href = page.get_by_role("link", name="Customer queue", exact=True).get_attribute("href")
+    queue_href = page.get_by_role("link", name="Risk Queue", exact=True).get_attribute("href")
     page.goto(BASE + queue_href + "?history=decided_before")
     settle(page)
     text = main_text(page)
@@ -232,7 +232,7 @@ with sync_playwright() as pw:
     settle(page)
 
     # ---- styles
-    page.get_by_role("link", name="Style investigation").click()
+    page.get_by_role("link", name="Products / SKU").click()
     settle(page)
     styles = page.locator("main table tbody tr").count()
     check("style queue lists every style with a verdict", styles == 37 and "Flagged returners" in main_text(page) and "Suggested owner" in main_text(page), styles)
