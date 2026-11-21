@@ -2437,6 +2437,11 @@ def test_run_insights_add_up_to_the_snapshot_and_count_the_queue_live(client, en
     opened = client.post(f"{url}/customers/{first}/reviews", json={"kind": "open", "disposition": "unresolved", "note": "n", "idempotency_key": "i1"})
     assert opened.status_code == 201
     assert client.get(f"{url}/insights").json()["counts"]["states"]["in_review"] == 1
+    cleared = client.post(f"{url}/customers/{first}/reviews", json={"kind": "clear", "disposition": "likely_legitimate", "note": "n",
+                                                                     "idempotency_key": "i2"})
+    assert cleared.status_code == 201
+    counts = client.get(f"{url}/insights").json()["counts"]
+    assert counts["outcomes"] == {"cleared": 1, "confirmed": 0, "not_confirmed": 0} and counts["states"]["closed"] == 1
 
 
 def test_styles_carry_the_product_aggregates_a_rule_based_reading_and_an_export(client, env, written):

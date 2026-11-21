@@ -193,3 +193,36 @@ Kept up to date as each step is built (decision 14).
   panel and threshold slider follow in the earlier layout. The Actions menu is not built; Clear Case and Escalate
   Case are in the Decision panel, with a required note.
 - Customer Intelligence is not built yet: the customer link in the queue opens the case page.
+
+### Steps 3 and 4: Dashboard, Products, Customer Intelligence, workspace pages (AM-77, contract 3.1.0)
+
+- Overview Dashboard: the period picker (30, 90, 180, 365 days, whole history) filters the totals and the trend; risk
+  levels and the queue are always as of the snapshot. "Return Fraud Rate" is shown as "Suspected Return Rate" (return
+  lines of customers selected for review) and "Fraud Loss Trend" as "Suspected Loss Trend" (refunds paid to them),
+  because a selected customer is not a confirmed case. "False Positive Rate" is cleared or not-confirmed cases over
+  closed cases, and reads n/a until a case is closed. A separate panel shows the true abuse rate and true false
+  positive rate when the snapshot's world has published synthetic truth (decision 10).
+- Abuse Pattern Distribution uses the app's own observed patterns (claims, linked claims, late returns, returns above
+  expectation, shared identifiers, ring, wardrobing indicator), not the board's five labels.
+- Channels are the return channels in the data (courier pickup, drop-off point, post), not Online / In-store / Mobile.
+- All money is in rupees, with lakh and crore short forms.
+- The earlier Overview panels (next customers, workspace context, previous snapshot, refunds, model against the rule)
+  stay below the dashboard.
+- Risk Queue: count tiles are Total Cases, Critical / High, Medium, Low. Bulk actions are Open, Clear and Escalate with
+  one required note; closing an escalated case stays a single-case action for a lead.
+- Product / SKU Intelligence: rows are styles. The board's tabs (SKU List, Product Analysis, Abuse vs Defect Analysis,
+  Linked Customers, Trends) are sections of the list page and the style page instead. "Expected Rate" is the category's
+  return rate, with the deviation in percentage points. The assessment is rule-based text, labelled as such. No
+  forecast. Export is a CSV of the style list.
+- Customer Intelligence: a new page under Customers. Tabs are not built: Overview content is on the page, and Return
+  History, Behaviour, Network and Notes link to the investigation page and the Network Graph. Peer Comparison shows
+  return rate, units against the basket expectation and the run's heavy-returner line. Linked Instruments shows the
+  accounts sharing identifiers by type, not the customer's own device, address and payment counts. Email, phone and
+  region wait for step 5.
+- Investigations lists the cases the signed-in person has open. Network Graph draws one group of linked accounts at a
+  time, with the list of groups beside it. Audit Log lists case workflow events; sign-in events stay under People &
+  access for administrators. Analytics is the Evaluation page; Configuration is Datasets & runs.
+- Profile is read-only: name, role, email, status, account created, last login, session end. No photo, employee ID,
+  department, phone, Security or Preferences tab.
+- Notifications cover three events of the last thirty days: a case you opened was closed by someone else, a case was
+  escalated (for a lead), a run was scored.

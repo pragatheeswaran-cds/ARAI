@@ -2,8 +2,19 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useWorkspace } from "../App";
 import { CustomerTable } from "../components/CustomerTable";
+import { useState } from "react";
+import { BLUE, Donut, LineChart, SLATE, VBars } from "../components/charts";
+import { tagLabel } from "../components/CustomerTable";
 import { Callout, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, useLoad } from "../components/ui";
-import { inrLakh, snapshotDate } from "../derive";
+import { TIER_LABEL, change, inrLakh, inrShort, periods, snapshotDate } from "../derive";
+
+const RANGES: [number, string][] = [
+  [30, "Last 30 days"],
+  [90, "Last 90 days"],
+  [180, "Last 180 days"],
+  [365, "Last 365 days"],
+  [0, "Whole history"],
+];
 
 export function Overview() {
   const { run, runs, experiment, fallback, health } = useWorkspace();
@@ -17,11 +28,21 @@ export function Overview() {
     return { next: next.items, modelOnly: modelOnly?.items ?? [], baselineOnly: baselineOnly?.items ?? [] };
   }, [run?.run_id, run?.status, fallback]);
 
+  const [range, setRange] = useState(30);
+  const dashboard = useLoad(async () => {
+    if (!run || run.status !== "succeeded") return null;
+    const [insights, curves] = await Promise.all([
+      api.insights(run.run_id),
+      experiment ? api.curves(experiment.experiment_id, run.run_id, 2000).catch(() => null) : null,
+    ]);
+    return { insights, curves };
+  }, [run?.run_id, run?.status, experiment?.experiment_id]);
+
   if (!run) {
     const waiting = runs.filter((r) => r.status === "queued" || r.status === "running").length;
     return (
       <>
-        <PageTitle title="Overview">No scored run is available yet.</PageTitle>
+        <PageTitle title="Overview Dashboard">No scored run is available yet.</PageTitle>
         <Panel>
           <div className="empty">
             {waiting ? `${waiting} run(s) are still being scored.` : "Register a dataset and score it to see customers, styles and evidence."}
@@ -42,11 +63,135 @@ export function Overview() {
   const evaluation = !experiment
     ? "No experiment published"
     : `${label(experiment.selection_status)} / final test ${label(experiment.final_test_status)}`;
+  const insights = dashboard.data?.insights ?? null;
+  const curves = dashboard.data?.curves ?? null;
+  const end = (insights?.daily.at(-1)?.date ?? run.cutoff.slice(0, 10)) as string;
+  const period = insights ? periods(insights.daily, end, range) : null;
+  const rate = (p: { return_lines: number; flagged_return_lines: number } | null) => (p && p.return_lines ? p.flagged_return_lines / p.return_lines : null);
+  const points = (delta: number | null) => (delta === null ? null : (delta >= 0 ? "+" : "") + (delta * 100).toFixed(1) + " pp");
+  const currentRate = rate(period?.current ?? null);
+  const previousRate = rate(period?.previous ?? null);
+  const outcomes = insights?.counts.outcomes;
+  const closed = outcomes ? outcomes.cleared + outcomes.confirmed + outcomes.not_confirmed : 0;
+  const atBudget = curves && curves.review_budget ? [...curves.points].filter((p) => p.k <= (curves.review_budget as number)).at(-1) ?? null : null;
+  const versus = range ? `vs. previous ${range} days` : "";
+  const short = (date: string) => new Date(date + "T00:00:00Z").toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
   return (
     <>
-      <PageTitle title="Overview">
-        One scored snapshot of world {run.world_id}. Counts describe this run; they are not accuracy figures.
+      <PageTitle title="Overview Dashboard">
+        Key numbers on return patterns, risk levels and the review queue for world {run.world_id}. Counts describe this snapshot; they are
+        not accuracy figures.
       </PageTitle>
+      <LoadState state={dashboard} />
+      {insights && (
+        <>
+          <div className="filters">
+            <label>
+              Period
+              <select value={range} onChange={(e) => setRange(Number(e.target.value))}>
+                {RANGES.map(([days, text]) => (
+                  <option key={days} value={days}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="small">
+              Up to {ist(end + "T12:00:00Z", false)}, the snapshot's last day. Risk levels and the queue are as of the snapshot, whatever the period.
+            </span>
+          </div>
+          {!insights.available && (
+            <Callout>This run was scored before daily figures were stored. Score the snapshot again (Configuration) to see trends, channels and categories.</Callout>
+          )}
+          <div className="stats">
+            <Stat
+              name="Total Returns"
+              value={number(period?.current.return_lines ?? 0)}
+              note={[change(period?.current.return_lines ?? 0, period?.previous?.return_lines), versus].filter(Boolean).join(" ") || "return lines requested"}
+            />
+            <Stat
+              name="Suspected Return Rate"
+              value={percent(currentRate)}
+              note={
+                currentRate !== null && previousRate !== null
+                  ? `${points(currentRate - previousRate)} ${versus}`
+                  : "share of return lines from customers selected for review"
+              }
+            />
+            <Stat name="Suspected Customers" value={number(selected)} note="selected for review in this snapshot" />
+            <Stat
+              name="False Positive Rate"
+              value={closed ? percent((outcomes!.cleared + outcomes!.not_confirmed) / closed) : "n/a"}
+              note={closed ? `${number(outcomes!.cleared + outcomes!.not_confirmed)} of ${number(closed)} closed cases were cleared or not confirmed` : "no case has been closed yet"}
+            />
+          </div>
+          <Panel title="Suspected Loss Trend" aside={<span className="small muted">refunds paid to customers selected for review, by day</span>}>
+            {period && (
+              <LineChart
+                label="Refunds paid to customers selected for review, by day"
+                format={inrShort}
+                series={[
+                  { name: "Current period", color: BLUE[0], points: period.current.days.map((d) => ({ x: short(d.date), y: d.flagged_refunded_inr })) },
+                  ...(period.previous
+                    ? [{ name: "Previous period", color: SLATE[2], dashed: true, points: period.previous.days.map((d) => ({ x: short(d.date), y: d.flagged_refunded_inr })) }]
+                    : []),
+                ]}
+              />
+            )}
+            <p className="small muted">
+              {inrShort(period?.current.flagged_refunded_inr ?? 0)} of {inrShort(period?.current.refunded_inr ?? 0)} refunded in the period went to
+              customers selected for review. A refund to a selected customer is not a confirmed loss.
+            </p>
+          </Panel>
+          <div className="three">
+            <Panel title="Risk Level Distribution">
+              <Donut
+                center={number(insights.counts.tiers.CRITICAL + insights.counts.tiers.HIGH)}
+                sub="in the queue"
+                format={(value) => number(value)}
+                slices={(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const).map((tier, index) => ({ name: TIER_LABEL[tier], value: insights.counts.tiers[tier] ?? 0, color: SLATE[index] }))}
+              />
+            </Panel>
+            <Panel title="Pattern Distribution">
+              <VBars
+                label="Share of the customers selected for review with each observed pattern"
+                format={(value) => percent(selected ? value / selected : null, 0)}
+                bars={[
+                  ...Object.entries(insights.counts.tags)
+                    .sort((x, y) => y[1] - x[1])
+                    .map(([tag, value]) => ({ name: tagLabel(tag), value })),
+                  { name: "in a ring", value: insights.counts.in_ring },
+                  { name: "wardrobing indicator elevated", value: insights.counts.wardrobing_elevated },
+                ]}
+              />
+              <p className="small muted">Share of the {number(selected)} customers selected for review; a customer can show several patterns.</p>
+            </Panel>
+            <Panel title="Suspected Returns by Channel">
+              <Donut
+                center={number(insights.channels.reduce((sum, c) => sum + c.flagged_return_lines, 0))}
+                sub="return lines"
+                format={(value) => number(value)}
+                slices={insights.channels.map((c, index) => ({ name: label(c.channel), value: c.flagged_return_lines, color: BLUE[Math.min(index, BLUE.length - 1)] }))}
+              />
+              <p className="small muted">Return lines of customers selected for review, whole history, by the channel of the return.</p>
+            </Panel>
+          </div>
+          {curves && atBudget && (
+            <Panel title="Measured against the synthetic truth of this world" aside={<span className="small muted">simulated data only</span>}>
+              <div className="stats">
+                <Stat name="True abuse rate" value={percent(curves.eligible_count ? curves.abusers / curves.eligible_count : null)} note={`${number(curves.abusers)} of ${number(curves.eligible_count)} ranked customers`} />
+                <Stat name="Abusers in the queue" value={number(atBudget.model_abusers_caught)} note={`of the first ${number(atBudget.k)} customers by rank`} />
+                <Stat name="True false positive rate" value={percent(atBudget.k ? 1 - atBudget.model_abusers_caught / atBudget.k : null)} note="queued customers who are not abusers in the truth" />
+                <Stat name="Return-rate rule, same budget" value={number(atBudget.baseline_abusers_caught)} note="abusers the rule's queue would hold" />
+              </div>
+              <Callout>
+                These four numbers exist only because this world is simulated and its truth was published with the experiment. A real snapshot has no
+                truth; the numbers above this panel are what a live deployment would show.
+              </Callout>
+            </Panel>
+          )}
+        </>
+      )}
       <div className="stats">
         <Stat name="Eligible customers" value={number(eligible)} note="At least 3 mature sale lines" />
         <Stat

@@ -1,12 +1,69 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { allPages, api, type Returner, type Style } from "../api";
-import { useWorkspace } from "../App";
+import { allPages, api, stylesExportUrl, type Returner, type Style } from "../api";
+import { useSession, useWorkspace } from "../App";
+import { BLUE, Donut, HBars, LineChart, SLATE, VBars } from "../components/charts";
 import { TierBadge } from "../components/CustomerTable";
 import { Badge, Callout, LoadState, PageTitle, Panel, Row, Stat, label, number, percent, rupees, useLoad } from "../components/ui";
 import { VERDICT, headlinePair, lowVolume } from "../derive";
 
 const STATES = ["all", "quality", "targeting", "mixed_or_uncertain", "no_elevated_signal", "insufficient_support", "no_return_evidence"] as const;
 const tone = (state: Style["state"]) => (state === "targeting" || state === "mixed_or_uncertain" ? "amber" : state === "quality" ? "green" : "gray");
+
+const RISK = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low" } as const;
+const RISK_HELP =
+  "A stated rule over the style's own signals, not a model output: Critical is an abuse-target verdict with returners in a detected ring; High is an abuse-target or a mixed verdict; Medium is a quality verdict; Low is every other style.";
+
+export function RiskBadge({ level }: { level: Style["risk_level"] }) {
+  return <Badge text={RISK[level]} className={`tier-${level}`} title={RISK_HELP} />;
+}
+
+/** The numbers above the list: how many styles, how many at the two top levels, the pooled return rate, and how much of the
+ *  returned units came from the top tenth of each style's returners. */
+function ProductSummary({ styles }: { styles: Style[] }) {
+  const purchased = styles.reduce((sum, s) => sum + s.purchased_units, 0);
+  const requested = styles.reduce((sum, s) => sum + s.requested_units, 0);
+  const risky = styles.filter((s) => s.risk_level === "CRITICAL" || s.risk_level === "HIGH").length;
+  const top = styles.reduce((sum, s) => sum + (s.concentration?.find((b) => b.band === "top_10")?.share ?? 0) * s.requested_units, 0);
+  const withBands = styles.reduce((sum, s) => sum + (s.concentration ? s.requested_units : 0), 0);
+  const byCategory = new Map<string, { purchased: number; requested: number }>();
+  for (const s of styles) {
+    const entry = byCategory.get(s.category) ?? { purchased: 0, requested: 0 };
+    entry.purchased += s.purchased_units;
+    entry.requested += s.requested_units;
+    byCategory.set(s.category, entry);
+  }
+  const categories = [...byCategory.entries()]
+    .map(([name, v]) => ({ name, value: v.purchased ? v.requested / v.purchased : 0 }))
+    .sort((x, y) => y.value - x.value)
+    .slice(0, 7);
+  return (
+    <>
+      <div className="stats">
+        <Stat name="Total Styles" value={number(styles.length)} note="styles with sale lines in this snapshot" />
+        <Stat name="High-Risk Styles" value={number(risky)} note="Critical or High by the stated rule" />
+        <Stat name="Overall Return Rate" value={percent(purchased ? requested / purchased : null)} note={`${number(requested)} of ${number(purchased)} units on mature lines`} />
+        <Stat name="Returns from Top 10% Returners" value={withBands ? percent(top / withBands, 0) : "n/a"} note="share of returned units, across styles" />
+      </div>
+      <div className="grid even">
+        <Panel title="Top Categories by Return Rate">
+          <HBars bars={categories} format={(value) => percent(value, 0)} />
+        </Panel>
+        <Panel title="Style Risk Distribution">
+          <Donut
+            center={number(styles.length)}
+            sub="styles"
+            format={(value) => number(value)}
+            slices={(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const).map((level, index) => ({
+              name: RISK[level],
+              value: styles.filter((s) => s.risk_level === level).length,
+              color: SLATE[index],
+            }))}
+          />
+        </Panel>
+      </div>
+    </>
+  );
+}
 
 export function Verdict({ state }: { state: Style["state"] }) {
   return <Badge text={VERDICT[state].label} tone={tone(state)} title={VERDICT[state].sentence} />;
@@ -60,9 +117,14 @@ export function StyleQueue() {
   const styles = useLoad(() => allPages<Style>((cursor) => api.styles(runId, state, cursor)), [runId, state]);
   const all = useLoad(() => (state === "all" ? Promise.resolve(null) : allPages<Style>((cursor) => api.styles(runId, "all", cursor))), [runId, state]);
   const forPair = state === "all" ? styles.data : all.data;
+  const canExport = useSession().can("export");
   return (
     <>
-      <PageTitle title="SKU intelligence">Style-level evidence with SKU drill-down. A verdict describes the product evidence, never a customer.</PageTitle>
+      <PageTitle title="Product / SKU Intelligence">
+        Understand product return behaviour and tell genuine product issues from styles that returns are aimed at. Rows are styles, with their
+        SKUs inside; a verdict describes the product evidence, never a customer.
+      </PageTitle>
+      {forPair && <ProductSummary styles={forPair} />}
       {forPair && <Headline styles={forPair} runId={runId} />}
       <Panel>
         <div className="filters">
@@ -78,6 +140,11 @@ export function StyleQueue() {
             </select>
           </label>
           {state !== "all" && <span className="small">{VERDICT[state as Style["state"]].sentence}</span>}
+          {canExport && (
+            <a className="button" href={stylesExportUrl(runId, state)} download>
+              Export
+            </a>
+          )}
         </div>
         <LoadState state={styles} empty={!!styles.data && styles.data.length === 0}>
           No style has this verdict in this run.
@@ -88,10 +155,13 @@ export function StyleQueue() {
               <thead>
                 <tr>
                   <th scope="col">Style</th>
+                  <th scope="col" title={RISK_HELP}>
+                    Risk Level
+                  </th>
                   <th scope="col">Verdict</th>
                   <th scope="col">Return rate</th>
-                  <th scope="col" title="Return rate shrunk towards the category rate; the expected rate for a style with this volume">
-                    Expected rate
+                  <th scope="col" title="The pooled return rate of the style's category, and how far the style's own (shrunk) rate is from it">
+                    Category rate / deviation
                   </th>
                   <th scope="col" title="Returners selected for review, over all customers who returned this style">
                     Flagged returners
@@ -113,6 +183,9 @@ export function StyleQueue() {
                       </small>
                     </td>
                     <td>
+                      <RiskBadge level={s.risk_level} />
+                    </td>
+                    <td>
                       <Verdict state={s.state} />
                     </td>
                     <td>
@@ -121,7 +194,12 @@ export function StyleQueue() {
                         {number(s.requested_units)} / {number(s.purchased_units)} units / {number(s.mature_sale_lines)} lines
                       </small>
                     </td>
-                    <td>{percent(s.shrunk_return_rate)}</td>
+                    <td>
+                      {percent(s.category_return_rate)}
+                      <small>
+                        {s.deviation === null ? "expected " + percent(s.shrunk_return_rate) : `${s.deviation >= 0 ? "+" : ""}${(s.deviation * 100).toFixed(1)} pp against it`}
+                      </small>
+                    </td>
                     <td>
                       {percent(s.flagged_returner_share?.share, 0)}
                       <small>
@@ -198,7 +276,7 @@ export function StyleDetailPage() {
   return (
     <>
       <Link className="button back" to={`/runs/${runId}/styles`}>
-        Back to SKU intelligence
+        Back to Product / SKU Intelligence
       </Link>
       <PageTitle title={s ? s.name : `Style ${styleId}`}>
         {s ? (
@@ -223,6 +301,60 @@ export function StyleDetailPage() {
             <Stat name="Linked-claim share" value={percent(s.linked_claim_share)} note={`${s.linked_claimers} linked claimant(s) / signal at 3 claimants and 7.5%`} />
           </div>
           <div className="grid even">
+            <Panel title="Product vs. abuse reading" aside={<RiskBadge level={s.risk_level} />}>
+              <p>{s.assessment.summary}</p>
+              <div className="grid even">
+                <div>
+                  <h3>Supporting signals</h3>
+                  <ul className="checklist one">
+                    {s.assessment.supporting.length ? s.assessment.supporting.map((text) => <li key={text} className="present">{text}</li>) : <li className="missing">none</li>}
+                  </ul>
+                </div>
+                <div>
+                  <h3>Contradictory signals</h3>
+                  <ul className="checklist one">
+                    {s.assessment.contradicting.length ? s.assessment.contradicting.map((text) => <li key={text} className="missing">{text}</li>) : <li className="missing">none</li>}
+                  </ul>
+                </div>
+              </div>
+              <p className="small muted">Written by fixed rules from the numbers on this page; no model writes it.</p>
+            </Panel>
+            <Panel title="Customer concentration">
+              {s.concentration ? (
+                <>
+                  <VBars
+                    label="Share of this style's returned units from its top returners"
+                    format={(value) => percent(value, 0)}
+                    bars={s.concentration.map((band) => ({
+                      name: { top_1: "Top 1%", top_5: "Top 5%", top_10: "Top 10%", others: "Others" }[band.band],
+                      value: band.share ?? 0,
+                    }))}
+                  />
+                  <p className="small muted">
+                    Share of returned units from the style's heaviest returners (cumulative; at least one account), and from everyone outside the top
+                    10%. A high share from few accounts can mean returns aimed at the style.
+                  </p>
+                </>
+              ) : (
+                <p className="muted">Not stored for this run; score the snapshot again to see it.</p>
+              )}
+            </Panel>
+            <Panel title="Return rate by month">
+              {s.monthly && s.monthly.length > 1 ? (
+                <LineChart
+                  label="Return rate of this style and of its category, by order month"
+                  format={(value) => percent(value, 0)}
+                  series={[
+                    { name: "Style return rate", color: BLUE[0], points: s.monthly.map((m) => ({ x: m.month.slice(2), y: m.purchased_units ? m.requested_units / m.purchased_units : 0 })) },
+                    ...(s.category_return_rate !== null
+                      ? [{ name: "Category average", color: SLATE[2], dashed: true, points: s.monthly.map((m) => ({ x: m.month.slice(2), y: s.category_return_rate as number })) }]
+                      : []),
+                  ]}
+                />
+              ) : (
+                <p className="muted">{s.monthly ? "One month of mature sale lines: no trend to draw." : "Not stored for this run; score the snapshot again to see it."}</p>
+              )}
+            </Panel>
             <Panel title="Who is returning it">
               <Row name="Returners selected for review" note="A share of returners, not a statement about the product">
                 {flagged ? `${flagged.numerator} of ${flagged.denominator} (${percent(flagged.share, 0)})` : "n/a"}

@@ -206,7 +206,12 @@ class Store:
         with self.transaction() as db:
             row = db.execute(f"""SELECT {tiers}, {states},
                                         count(*) FILTER (WHERE c.selected_for_review AND coalesce(k.kind, '') = 'ring') AS in_ring,
-                                        count(*) FILTER (WHERE c.selected_for_review AND c.wardrobing_status = 'elevated') AS wardrobing
+                                        count(*) FILTER (WHERE c.selected_for_review AND c.wardrobing_status = 'elevated') AS wardrobing,
+                                        count(*) FILTER (WHERE wf.kind = 'clear') AS cleared,
+                                        count(*) FILTER (WHERE wf.kind IN ('close', 'approve', 'reject')
+                                                           AND wf.disposition = 'needs_investigation') AS confirmed,
+                                        count(*) FILTER (WHERE wf.kind IN ('close', 'approve', 'reject')
+                                                           AND wf.disposition <> 'needs_investigation') AS not_confirmed
                                  FROM run_customers c
                                  LEFT JOIN run_communities k ON k.run_id = c.run_id AND k.community_id = c.community_id
                                  {WORKFLOW_JOINS.replace("%s", "%(world_id)s", 1).replace("%s", "%(dataset_id)s", 1)
@@ -218,6 +223,7 @@ class Store:
         return {"tiers": {name: int(row[f"tier_{name.lower()}"]) for name in TIER_SQL},
                 "states": {name: int(row[f"state_{name}"]) for name in STATE_SQL},
                 "in_ring": int(row["in_ring"]), "wardrobing_elevated": int(row["wardrobing"]),
+                "outcomes": {name: int(row[name]) for name in ("cleared", "confirmed", "not_confirmed")},
                 "tags": {r["tag"]: int(r["customers"]) for r in tags}}
 
     def refund_totals(self, run_id: str, customer_ids: list) -> dict:

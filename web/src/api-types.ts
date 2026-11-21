@@ -451,6 +451,135 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). Orders, returns and refunds by day, by channel and by category, as scoring stored them, with the live counts of the queue. */
+        get: operations["getRunInsights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/communities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). Every linked-account group of the run with its members and edges, rings first. */
+        get: operations["listCommunities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). The workflow events of the run's snapshot (open, clear, escalate, close), newest first. */
+        get: operations["listDecisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/customers/bulk-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 3.1.0 (AM-77). One workflow action (open, clear or escalate) on up to 100 customers of the run. Each customer is handled under the rules of the single review and in its own transaction; the answer says what happened to each, and a refusal for one customer does not undo the others. */
+        post: operations["appendBulkReviews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/styles/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). The style list as CSV (text/csv), every style of the chosen verdict; needs the export permission. */
+        get: operations["exportStyles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). What happened for the signed-in person in the last thirty days, newest first - a case they opened was closed by someone else, a case was escalated (for a lead), a run was scored. Read from the reviews and the runs; nothing is stored but when the person last looked. */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 3.1.0 (AM-77). Records that the signed-in person looked at their notifications now. */
+        post: operations["markNotificationsSeen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -472,6 +601,15 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Me: {
+            /**
+             * @description Contract 3.1.0 (AM-77), for the Profile page.
+             * @enum {string}
+             */
+            status: "active" | "disabled";
+            /** Format: date-time */
+            created_at: string | null;
+            /** Format: date-time */
+            last_sign_in_at: string | null;
             user_id: string;
             display_name: string;
             email: string | null;
@@ -900,6 +1038,36 @@ export interface components {
             limitation: string;
         };
         Style: {
+            /** @description Contract 3.1.0 (AM-77). Requested over purchased units on the mature sale lines of the style's category. Null for runs scored before 3.1.0. */
+            category_return_rate: number | null;
+            /** @description shrunk_return_rate minus category_return_rate; null when either is. */
+            deviation: number | null;
+            /** @description The share of the style's requested units that came from its top 1%, 5% and 10% of returners (cumulative, at least one account) and from the returners outside the top 10%. Null for runs scored before 3.1.0. */
+            concentration: {
+                /** @enum {string} */
+                band: "top_1" | "top_5" | "top_10" | "others";
+                returners: number;
+                share: number | null;
+            }[] | null;
+            /** @description Purchased and requested units on mature sale lines by the month of the order. Null for runs scored before 3.1.0. */
+            monthly: {
+                month: string;
+                purchased_units: number;
+                requested_units: number;
+            }[] | null;
+            /**
+             * @description A stated rule over the style's own signals, not a model output - CRITICAL is a targeting verdict with returners in a detected ring; HIGH a targeting or a mixed verdict; MEDIUM a quality verdict; LOW every other style.
+             * @enum {string}
+             */
+            risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+            /** @description A rule-based reading in sentences made from the style's stored signals; no model writes it. */
+            assessment: {
+                /** @enum {string} */
+                risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+                summary: string;
+                supporting: string[];
+                contradicting: string[];
+            };
             style_id: string;
             category: string;
             /** @description "{brand} {category}" from sku_master, which has no name column, with the style id appended when that pair is not unique in the run; the style id alone for runs scored before contract 1.9.0. */
@@ -1223,6 +1391,118 @@ export interface components {
             /** @enum {integer} */
             y_abuse: 0 | 1;
             action_types: string[];
+        };
+        /** @description One calendar day of the snapshot. Orders by order date; return requests (not withdrawn) by request date; refunds are the amounts of return lines with status refunded. Flagged means the rows of customers the run selected for review - a description of the review set, not a finding about a return. */
+        DailyActivity: {
+            /** Format: date */
+            date: string;
+            order_lines: number;
+            ordered_units: number;
+            order_value_inr: number;
+            return_lines: number;
+            returned_units: number;
+            refunded_inr: number;
+            flagged_return_lines: number;
+            flagged_refunded_inr: number;
+        };
+        ChannelActivity: {
+            channel: string;
+            return_lines: number;
+            flagged_return_lines: number;
+            refunded_inr: number;
+            flagged_refunded_inr: number;
+        };
+        CategoryActivity: {
+            category: string;
+            purchased_units: number;
+            requested_units: number;
+            return_rate: number | null;
+        };
+        /** @description Counted on read. tiers is every customer of the run by tier; states, in_ring, wardrobing_elevated and tags count the customers selected for review; outcomes counts the closed cases by how they ended. */
+        QueueCounts: {
+            outcomes: {
+                cleared: number;
+                confirmed: number;
+                not_confirmed: number;
+            };
+            tiers: {
+                [key: string]: number;
+            };
+            states: {
+                [key: string]: number;
+            };
+            in_ring: number;
+            wardrobing_elevated: number;
+            tags: {
+                [key: string]: number;
+            };
+        };
+        RunInsights: {
+            run_id: string;
+            /** Format: date-time */
+            cutoff: string;
+            /** @description False for a run scored before contract 3.1.0 - daily, channels and categories are then empty; counts are served. */
+            available: boolean;
+            daily: components["schemas"]["DailyActivity"][];
+            channels: components["schemas"]["ChannelActivity"][];
+            categories: components["schemas"]["CategoryActivity"][];
+            counts: components["schemas"]["QueueCounts"];
+        };
+        CommunityGroup: {
+            id: string;
+            /** @enum {string} */
+            kind: "ring" | "household";
+            method: string;
+            size: number;
+            selected_count: number;
+            requested_units: number;
+            purchased_units: number;
+            coordinated_claim_matches: number;
+            members: components["schemas"]["CommunityMember"][];
+            edges: components["schemas"]["CommunityEdge"][];
+        };
+        CommunityList: {
+            run_id: string;
+            items: components["schemas"]["CommunityGroup"][];
+        };
+        BulkReviewRequest: {
+            customer_ids: string[];
+            /** @enum {string} */
+            kind: "open" | "clear" | "escalate";
+            /** @enum {string} */
+            disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
+            note: string;
+            idempotency_key: string;
+        };
+        BulkReviewResult: {
+            run_id: string;
+            kind: string;
+            recorded: number;
+            results: {
+                customer_id: string;
+                /** @enum {string} */
+                status: "recorded" | "refused";
+                review_id: string | null;
+                error_code: string | null;
+                message: string | null;
+            }[];
+        };
+        Notification: {
+            id: string;
+            /** @enum {string} */
+            kind: "case_closed" | "case_escalated" | "run_scored";
+            /** Format: date-time */
+            at: string;
+            run_id: string;
+            customer_id: string | null;
+            text: string;
+            unread: boolean;
+        };
+        NotificationList: {
+            items: components["schemas"]["Notification"][];
+            unread: number;
+            /** Format: date-time */
+            seen_at: string | null;
         };
         Health: {
             alive: boolean;
@@ -2484,6 +2764,8 @@ export interface operations {
                 state?: "all" | "new" | "in_review" | "escalated" | "closed" | "auto_logged";
                 /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
                 exclude_mine?: boolean;
+                /** @description Contract 3.1.0 (AM-77). Only the cases the signed-in user has open - opened by them and in review or escalated - by user id. */
+                mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
                 /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
@@ -2594,6 +2876,8 @@ export interface operations {
                 state?: "all" | "new" | "in_review" | "escalated" | "closed" | "auto_logged";
                 /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
                 exclude_mine?: boolean;
+                /** @description Contract 3.1.0 (AM-77). Only the cases the signed-in user has open - opened by them and in review or escalated - by user id. */
+                mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
                 /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
@@ -3546,6 +3830,424 @@ export interface operations {
             };
             /** @description Internal failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRunInsights: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunInsights"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCommunities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunityList"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listDecisions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewPage"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    appendBulkReviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Handled; see results for each customer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkReviewResult"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportStyles: {
+        parameters: {
+            query?: {
+                state?: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    markNotificationsSeen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

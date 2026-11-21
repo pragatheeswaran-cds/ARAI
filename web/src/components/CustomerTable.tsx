@@ -70,17 +70,26 @@ export function reviewBadge(customer: Customer) {
   return customer.selected_for_review ? <Badge text="selected for review" tone="amber" /> : <Badge text="not selected" tone="gray" />;
 }
 
-type Props = { runId: string; customers: Customer[]; fallback: boolean; compact?: boolean; run?: Run | null; grouped?: boolean };
+/** Row selection for bulk actions: the chosen customers and how to change them. */
+export type Selection = { chosen: Set<string>; toggle: (customerId: string) => void; setAll: (customerIds: string[], on: boolean) => void };
+type Props = { runId: string; customers: Customer[]; fallback: boolean; compact?: boolean; run?: Run | null; grouped?: boolean; selection?: Selection };
 
 /** The queue table. Under baseline fallback the model and the rule are the same ranking, so the comparison column is hidden.
  *  With `grouped`, members of one community sit under their first member so a ring reads as one block. */
-export function CustomerTable({ runId, customers, fallback, compact = false, run = null, grouped = false }: Props) {
+export function CustomerTable({ runId, customers, fallback, compact = false, run = null, grouped = false, selection }: Props) {
+  const selectable = customers.filter((c) => c.selected_for_review).map((c) => c.customer_id);
+  const allChosen = !!selection && selectable.length > 0 && selectable.every((id) => selection.chosen.has(id));
   const rows = grouped ? groupByCommunity(customers).flatMap((g) => [{ c: g.lead, member: false }, ...g.members.map((c) => ({ c, member: true }))]) : customers.map((c) => ({ c, member: false }));
   return (
     <div className="tablewrap">
       <table>
         <thead>
           <tr>
+            {selection && (
+              <th scope="col">
+                <input type="checkbox" aria-label="Select every case shown" checked={allChosen} onChange={(e) => selection.setAll(selectable, e.target.checked)} />
+              </th>
+            )}
             <th scope="col" title="A case is one customer in this run; the number is the customer's own">
               Case ID
             </th>
@@ -128,8 +137,15 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
             const cleared = run ? clearedHeavyReturner(c, run) : false;
             return (
               <tr key={c.customer_id} className={member ? "member" : undefined}>
+                {selection && (
+                  <td>
+                    {c.selected_for_review && (
+                      <input type="checkbox" aria-label={`Select ${caseId(c.customer_id)}`} checked={selection.chosen.has(c.customer_id)} onChange={() => selection.toggle(c.customer_id)} />
+                    )}
+                  </td>
+                )}
                 <td>
-                  <strong>{caseId(c.customer_id)}</strong>
+                  <strong className="nowrap">{caseId(c.customer_id)}</strong>
                   {c.rank ? <small>rank {number(c.rank)}</small> : <small>Not ranked: fewer than 3 mature sale lines</small>}
                 </td>
                 <td>

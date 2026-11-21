@@ -4688,10 +4688,18 @@ components:
     QueueCounts:
       type: object
       additionalProperties: false
-      required: [tiers, states, in_ring, wardrobing_elevated, tags]
+      required: [tiers, states, in_ring, wardrobing_elevated, tags, outcomes]
       description: Counted on read. tiers is every customer of the run by tier; states, in_ring, wardrobing_elevated and tags
-        count the customers selected for review.
+        count the customers selected for review; outcomes counts the closed cases by how they ended.
       properties:
+        outcomes:
+          type: object
+          additionalProperties: false
+          required: [cleared, confirmed, not_confirmed]
+          properties:
+            cleared: {type: integer, minimum: 0}
+            confirmed: {type: integer, minimum: 0}
+            not_confirmed: {type: integer, minimum: 0}
         tiers:
           type: object
           additionalProperties: {type: integer, minimum: 0}
