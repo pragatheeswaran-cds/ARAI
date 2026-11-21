@@ -263,3 +263,9 @@ header { border-bottom-color: var(--line); }
   nav a { margin-bottom: 0; }
 }
 @media print { .topbar { display: none; } }
+
+/* Risk Queue (Penpot step 2): the design's four filters lead; the app's other filters follow on their own row */
+.filters-more { flex-basis: 100%; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+
+/* queue identifiers stay on one line */
+table td:first-child strong, table td a.link { white-space: nowrap; }

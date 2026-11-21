@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Customer, PrimarySignal, Run } from "../api";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, OUTCOME_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, clearedHeavyReturner, earlierDecisionNote, groupByCommunity, historyNote, notObserved, rawRate } from "../derive";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, OUTCOME_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, caseId, clearedHeavyReturner, earlierDecisionNote, groupByCommunity, historyNote, notObserved, rawRate } from "../derive";
 import { Badge, CopyId, label, number, percent, rupees } from "./ui";
 
 export const SCORE_HELP =
@@ -81,29 +81,41 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
       <table>
         <thead>
           <tr>
-            <th scope="col">Rank / customer</th>
+            <th scope="col" title="A case is one customer in this run; the number is the customer's own">
+              Case ID
+            </th>
+            <th scope="col">Customer ID</th>
             <th scope="col" title={SCORE_HELP}>
-              {fallback ? "Return-rate percentile" : "Score"} <span aria-hidden="true">(?)</span>
+              {fallback ? "Return-rate percentile" : "Risk Score"} <span aria-hidden="true">(?)</span>
             </th>
             <th scope="col" title={TIER_HELP}>
-              Tier
+              Risk Level
             </th>
+            <th scope="col">Pattern(s)</th>
+            {!compact && (
+              <th scope="col" title="Refunds paid on refunded return lines, and the part of it on transaction claims">
+                Refunded
+              </th>
+            )}
+            <th scope="col" title="Units requested for return on mature sale lines (rejected requests count, withdrawn ones do not) over the units bought on them">
+              Return %
+            </th>
+            {!compact && (
+              <th scope="col" title="Accounts in this customer's linked-account group, the customer included">
+                Accounts
+              </th>
+            )}
+            {!compact && (
+              <th scope="col" title="Where the review stands in this snapshot, and where the customer stood in earlier snapshots of the same world">
+                Status
+              </th>
+            )}
             <th scope="col" title={GATE_HELP}>
               Recommendation
             </th>
-            <th scope="col">Primary signals</th>
-            {!compact && <th scope="col">Linked accounts</th>}
             {!fallback && !compact && (
               <th scope="col" title="Rank of the same customer when customers are ordered by raw return rate alone">
                 Return-rate rule
-              </th>
-            )}
-            <th scope="col" title="Units requested for return on mature sale lines (rejected requests count, withdrawn ones do not), and refunds paid">
-              Requested / mature units
-            </th>
-            {!compact && (
-              <th scope="col" title="Where the review stands in this snapshot, and where the customer stood in earlier snapshots of the same world">
-                Status / history
               </th>
             )}
             {!compact && <th scope="col">Latest note</th>}
@@ -117,12 +129,15 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
             return (
               <tr key={c.customer_id} className={member ? "member" : undefined}>
                 <td>
-                  {c.rank ? <strong>{number(c.rank)}</strong> : <Badge text="insufficient history" tone="gray" />}{" "}
+                  <strong>{caseId(c.customer_id)}</strong>
+                  {c.rank ? <small>rank {number(c.rank)}</small> : <small>Not ranked: fewer than 3 mature sale lines</small>}
+                </td>
+                <td>
                   <Link className="link" to={`/runs/${runId}/customers/${c.customer_id}`}>
                     {c.customer_id}
                   </Link>
                   <CopyId id={c.customer_id} showId={false} />
-                  {!c.rank && <small>Not ranked: fewer than 3 mature sale lines</small>}
+                  {!c.rank && <Badge text="insufficient history" tone="gray" />}
                   {c.cleared_reason && (
                     <small>
                       {cleared ? "cleared heavy returner · " : ""}
@@ -136,45 +151,44 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
                   <TierBadge tier={c.tier} />
                 </td>
                 <td>
-                  <GateBadge gate={c.gate_outcome} />
-                </td>
-                <td>
                   <Chips signals={c.primary_signals} />
+                </td>
+                {!compact && (
+                  <td>
+                    {c.refunded_inr !== null && c.refunded_inr !== undefined ? rupees(c.refunded_inr) : <span className="muted">n/a</span>}
+                    {c.claim_refunded_inr ? <small>{rupees(c.claim_refunded_inr)} on claims</small> : null}
+                  </td>
+                )}
+                <td>
+                  {rate !== null ? percent(rate, 0) : <span className="muted">n/a</span>}
+                  <small>
+                    {s.mature_requested_units} / {s.mature_purchased_units} units, {s.mature_sale_lines} lines
+                  </small>
                 </td>
                 {!compact && (
                   <td>
                     {c.community ? (
                       <>
+                        <Link to={`/runs/${runId}/customers?show=all&community_id=${encodeURIComponent(c.community.id)}`}>{c.community.size}</Link>{" "}
                         <Badge text={c.community.kind} tone={c.community.kind === "ring" ? "amber" : "gray"} />
-                        <small>
-                          <Link to={`/runs/${runId}/customers?show=all&community_id=${encodeURIComponent(c.community.id)}`}>{c.community.size} accounts</Link>
-                        </small>
                       </>
                     ) : (
-                      <span className="muted">none</span>
+                      "1"
                     )}
                   </td>
                 )}
+                {!compact && (
+                  <td>
+                    <StateBadge customer={c} />
+                  </td>
+                )}
+                <td>
+                  <GateBadge gate={c.gate_outcome} />
+                </td>
                 {!fallback && !compact && (
                   <td>
                     {c.baseline_rank ? `Rank ${number(c.baseline_rank)}` : "n/a"}
                     <small>{c.baseline_rank ? (c.baseline_selected ? "selected by the rule" : "not selected by the rule") : ""}</small>
-                  </td>
-                )}
-                <td>
-                  {s.mature_requested_units} / {s.mature_purchased_units}
-                  <small>
-                    {rate !== null ? percent(rate, 0) + " of mature units" : "no mature units"} / {s.mature_sale_lines} lines
-                  </small>
-                  {!compact && c.refunded_inr !== null && c.refunded_inr !== undefined && (
-                    <small>
-                      {rupees(c.refunded_inr)} refunded{c.claim_refunded_inr ? `, ${rupees(c.claim_refunded_inr)} on claims` : ""}
-                    </small>
-                  )}
-                </td>
-                {!compact && (
-                  <td>
-                    <StateBadge customer={c} />
                   </td>
                 )}
                 {!compact && (

@@ -62,6 +62,13 @@ export const CLEARED_REASON: Record<NonNullable<Customer["cleared_reason"]>, str
   below_threshold: "below the review threshold",
 };
 
+/** The case of a customer in a run, as the screens name it: a case is one customer in one run, so the identifier is the
+ *  customer's own number (Penpot decision 1). "W5401-C03245" reads "CASE-03245". */
+export function caseId(customerId: string): string {
+  const tail = customerId.split("-").pop() ?? customerId;
+  return "CASE-" + tail.replace(/^C/i, "");
+}
+
 export const TIER_LABEL: Record<Tier, string> = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
 export const TIER_HELP =
   "Anchored to the queue, not to fixed bands: a customer selected for review is Critical as a member of a detected ring and High otherwise; Medium scores 90 or above and is not selected; Low is every other ranked customer.";

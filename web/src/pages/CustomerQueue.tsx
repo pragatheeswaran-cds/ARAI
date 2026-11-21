@@ -112,7 +112,9 @@ export function CustomerQueue() {
 
   return (
     <>
-      <PageTitle title="Case queue">Filters change what is shown. They never change a score or the run's review selection.</PageTitle>
+      <PageTitle title="Risk Queue">
+        Investigate high-risk customers and take action. Filters change what is shown; they never change a score or the run's review selection.
+      </PageTitle>
       <EscalatedBand runId={runId} />
       <Panel>
         <form
@@ -127,18 +129,8 @@ export function CustomerQueue() {
             <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="e.g. C00219" />
           </label>
           <button type="submit">Search</button>
-          <label>
-            Show
-            <select value={view} onChange={(e) => set("show", e.target.value)}>
-              <option value="review">Selected for review</option>
-              <option value="cleared">Cleared heavy returners</option>
-              <option value="all">All customers</option>
-              <option value="eligible">Eligible (ranked)</option>
-              <option value="insufficient">Insufficient history</option>
-            </select>
-          </label>
           <label title={TIER_HELP}>
-            Tier
+            Risk Level
             <select value={filters.tier} onChange={(e) => set("tier", e.target.value)}>
               <option value="all">Any</option>
               {(Object.keys(TIER_LABEL) as (keyof typeof TIER_LABEL)[]).map((tier) => (
@@ -148,24 +140,15 @@ export function CustomerQueue() {
               ))}
             </select>
           </label>
-          <label title={GATE_HELP}>
-            Recommendation
-            <select value={filters.gate} onChange={(e) => set("gate", e.target.value)}>
-              <option value="all">Any</option>
-              {(Object.keys(GATE_LABEL) as (keyof typeof GATE_LABEL)[]).map((gate) => (
-                <option key={gate} value={gate}>
-                  {GATE_LABEL[gate]}
+          <label>
+            Pattern
+            <select value={filters.evidence} onChange={(e) => set("evidence", e.target.value)}>
+              <option value="">Any</option>
+              {TAGS.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tagLabel(tag)}
                 </option>
               ))}
-            </select>
-          </label>
-          <label>
-            Linked accounts
-            <select value={filters.community} onChange={(e) => set("community", e.target.value)}>
-              <option value="all">Any</option>
-              <option value="ring">In a ring</option>
-              <option value="household">In a household</option>
-              <option value="none">No supported link</option>
             </select>
           </label>
           <label>
@@ -202,15 +185,35 @@ export function CustomerQueue() {
               <option value="incomplete">Incomplete</option>
             </select>
           </label>
+          <span className="filters-more">More filters</span>
           <label>
-            Measured evidence
-            <select value={filters.evidence} onChange={(e) => set("evidence", e.target.value)}>
-              <option value="">Any</option>
-              {TAGS.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tagLabel(tag)}
+            Show
+            <select value={view} onChange={(e) => set("show", e.target.value)}>
+              <option value="review">Selected for review</option>
+              <option value="cleared">Cleared heavy returners</option>
+              <option value="all">All customers</option>
+              <option value="eligible">Eligible (ranked)</option>
+              <option value="insufficient">Insufficient history</option>
+            </select>
+          </label>
+          <label title={GATE_HELP}>
+            Recommendation
+            <select value={filters.gate} onChange={(e) => set("gate", e.target.value)}>
+              <option value="all">Any</option>
+              {(Object.keys(GATE_LABEL) as (keyof typeof GATE_LABEL)[]).map((gate) => (
+                <option key={gate} value={gate}>
+                  {GATE_LABEL[gate]}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            Linked accounts
+            <select value={filters.community} onChange={(e) => set("community", e.target.value)}>
+              <option value="all">Any</option>
+              <option value="ring">In a ring</option>
+              <option value="household">In a household</option>
+              <option value="none">No supported link</option>
             </select>
           </label>
           <label>
