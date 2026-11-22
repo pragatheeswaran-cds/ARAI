@@ -227,3 +227,18 @@ Kept up to date as each step is built (decision 14).
   department, phone, Security or Preferences tab.
 - Notifications cover three events of the last thirty days: a case you opened was closed by someone else, a case was
   escalated (for a lead), a run was scored.
+
+## Decisions for experiment 5 (2026-11-22, by the project owner)
+
+Asked one at a time after steps 1 to 5a were built. They complete decision 2 (email and phone as ring signals).
+
+| # | Topic | Decision |
+|---|---|---|
+| E1 | Run it | Yes: run experiment 5, with new sealed worlds and one run of the final test. |
+| E2 | Link rule | Phone and mailbox are identifier types beside address, device and payment method. Two accounts are linked when they share any two of the five, as before; every link that exists today stays valid, and new links and rings can form through phone or email. |
+| E3 | ID, seeds, folder | EXP-20261122-05; seeds 6101-6110 train, 6201-6205 validation, 6301-6305 test, 6401 demo, 6501-6511 stress; everything under `data/EXP-20261122-05`. Experiment 4's worlds, model and database stay untouched. |
+| E4 | Gate | The five legs of experiment 4 plus a sixth: honest household members who share a phone or a mailbox are not reviewed more often by the model than by the return-rate rule. |
+| E5 | Simulator | Keep the contact-sharing settings of AM-78 for training, validation and test (ring: phone 0.60, mailbox 0.50; household: phone 0.30, mailbox 0.05; recycled numbers 0.5 percent). Add stress worlds where rings share less (0.30, 0.25) and households share more (0.50, 0.15). |
+| E6 | On a pass | Publish experiment 5 in its own folder and serve it, with its own demo world (W6401) and database. On a fail, experiment 4 stays active. |
+| E7 | Who closes an escalated case | Leads only (the approver role), as built. This replaces "lead or admin" in decision 7. |
+| E8 | Merge to `main` | After experiment 5 has its result: the whole of `penpot-implementation` is merged and pushed. |

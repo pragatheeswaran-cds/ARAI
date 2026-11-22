@@ -8,11 +8,11 @@
 >
 > | # | Item | Waits on |
 > |---|---|---|
-> | P1 | Email and phone as ring signals: a shared phone or mailbox as a link in the relationship graph. It changes the features, so it needs a new experiment on new sealed worlds (experiment id, seeds, stated expectation, gate) | The owner's decision on the experiment |
+> | P1 | Email and phone as ring signals: a shared phone or mailbox as a link in the relationship graph. It changes the features, so it needs a new experiment on new sealed worlds (experiment id, seeds, stated expectation, gate) | Decided 22 Nov (decisions E1 to E8 in `records/2026-11-21-penpot-coverage-checklist.md`): experiment EXP-20261122-05, to be run |
 > | P2 | Rewrite `docs/demo-script.md` passages that tell the two-person approval story, if the demonstration is given again | The owner |
 > | P3 | Rerun `tests\e2e\walkthrough.py` against a loaded instance (twelve snapshots, `scripts\history_demo.py --load`) | A rehearsal |
-> | P4 | Whether an admin may close an escalated case (today only the approver role, the lead, may) | The owner |
-> | P5 | Merge `penpot-implementation` into `main` | The owner |
+> | P4 | Decided 22 Nov: only the approver role (the lead) closes an escalated case | Done |
+> | P5 | Merge `penpot-implementation` into `main` | Decided 22 Nov: after experiment 5 has its result |
 >
 > The rest of this file is the list of 17 Oct 2026, kept as written.
 
