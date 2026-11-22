@@ -38,6 +38,9 @@ A case goes Open, In Review, Escalated, Closed: an analyst clears it or escalate
 case as confirmed or not confirmed (decision AM-76). Where the product differs from the Penpot boards, and why, is in
 [records/2026-11-21-penpot-coverage-checklist.md](records/2026-11-21-penpot-coverage-checklist.md).
 
+**New to the project and about to present it?** [docs/implementation-hands-on.md](docs/implementation-hands-on.md) walks
+through how it is built, step by step, with a small lab to run at each step and the questions you will be asked.
+
 **Want to try it end to end?** [HANDS-ON.md](HANDS-ON.md) is a guided two-hour lab, from generating the data to every
 screen as each role, with what you should see at each step.
 

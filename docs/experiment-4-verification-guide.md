@@ -66,6 +66,13 @@ uv run --no-sync python scripts\verify_experiment.py
 ```
 
 It reads only, takes about half a minute, and should end with `ALL CHECKS PASSED`. It ran clean on 2026-10-05.
+
+**Update, 22 Nov 2026.** The generator was extended after the experiment (it now also writes the contact details of
+data contract 1.2, AM-78), so the script no longer compares the worlds with the generator of the working tree. Check 10
+compares them with the generator of the commit the experiment was run from, and a new check after check 11 regenerates
+the demonstration world with today's generator and requires every stored file to come out byte for byte the same (the
+added columns are left out of the comparison). There are therefore 23 checks, the script takes about three minutes,
+and it ran clean on 2026-11-22. The numbering below is that of 5 October.
 What each line establishes:
 
 | # | Check | What it rules out |

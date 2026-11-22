@@ -1,7 +1,8 @@
 # ARAI hands-on: from a fresh clone to every screen, end to end
 
 A guided lab to do once, at your own pace, on your laptop. Each exercise says what to do, what you should see, and why
-it matters. It uses only commands from `RUNBOOK.md`, which stays the reference (section numbers are given as RUNBOOK
+it matters. This guide is about using the product; how it is built, step by step with a lab at each step, is in
+`docs/implementation-hands-on.md`. It uses only commands from `RUNBOOK.md`, which stays the reference (section numbers are given as RUNBOOK
 x.y). Commands are for PowerShell from the repository root; on macOS or Linux use forward slashes.
 
 | | |

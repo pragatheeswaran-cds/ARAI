@@ -59,6 +59,49 @@ def written(path: Path) -> datetime:
     return datetime.fromtimestamp(path.stat().st_mtime, UTC)
 
 
+def generator_code_at(commit: str) -> str:
+    """The generator's code hash as `arai.generator.world._code_sha256` computes it, over the files of a commit: the
+    generator package, the catalog adapter, the settings and the random streams. A world's manifest records this hash,
+    so the commit an experiment was run from can be checked against its worlds after the generator has moved on."""
+    listed = git("ls-tree", "-r", "--name-only", commit, "src/arai/generator").decode().split()
+    files = sorted([name for name in listed if name.endswith(".py")] + ["src/arai/catalog.py", "src/arai/settings.py", "src/arai/rng.py"],
+                   key=lambda name: Path(name))
+    h = hashlib.sha256()
+    for name in files:
+        h.update(name.encode() + b"\0" + git("show", f"{commit}:{name}") + b"\0")
+    return h.hexdigest()
+
+
+def regenerated_differences(world_id: str, artifacts: Path) -> list:
+    """The tables the repository's generator writes differently from a stored world. Each table is regenerated, cut to
+    the columns the stored file has, written as the generator writes a CSV and compared by hash with the stored file's
+    recorded hash, so an empty list means byte for byte the same. A column added since (the contact details of data
+    contract 1.2) is not in the stored file and is left out of the comparison."""
+    import io
+
+    import yaml
+
+    from arai.generator import generate_world
+    from arai.generator.world import format_for_csv
+    base = artifacts / "worlds" / world_id / "operational"
+    recorded = json.loads((base / "manifest.json").read_text(encoding="utf-8"))["files"]
+    schema = yaml.safe_load((paths.SPEC_ROOT / "contracts" / "data-schema.yaml").read_text(encoding="utf-8"))["tables"]
+    world = generate_world(int(world_id[1:]))
+    found = []
+    for name, table in world.tables.items():
+        with (base / f"{name}.csv").open(encoding="utf-8") as stored:
+            columns = stored.readline().rstrip("\n").split(",")
+        if any(column not in table.columns for column in columns):
+            found.append(f"{name}: a stored column is no longer generated")
+            continue
+        text = io.StringIO()
+        format_for_csv(table[columns], {column: schema[name]["columns"][column] for column in columns}) \
+            .to_csv(text, index=False, lineterminator="\n")
+        if hashlib.sha256(text.getvalue().encode("utf-8")).hexdigest() != recorded[name]["sha256"]:
+            found.append(f"{name}: regenerated rows differ from the stored file")
+    return found
+
+
 def world_problem(world_id: str, artifacts: Path, private: Path) -> str | None:
     """Why a stored world does not match the hashes written with it, or None when it does."""
     base = artifacts / "worlds" / world_id / "operational"
@@ -126,10 +169,20 @@ def main() -> int:
     generators = {w: json.loads(manifest(w[1:]).read_text(encoding="utf-8"))["generator"] for w in sealed + stress}
     same = {(generators[w]["code_sha256"], generators[w]["config_sha256"]) for w in sealed}
     check("training, validation, test and demonstration worlds come from one generator and one configuration", len(same) == 1)
-    check("that generator is the code in the repository and that configuration is the contract's",
-          same == {(generator_code_sha256(), settings.config_sha256())})
+    # the worlds name the generator that wrote them. That is the code of the commit the experiment was run from; the
+    # repository's generator may have been amended since (the contact details of data contract 1.2, AM-78), and then it
+    # must still regenerate a stored world exactly for the columns that world carries
+    recorded_code = generator_code_at(commit)
+    check("that generator is the code of the commit the experiment was run from, and that configuration is the contract's",
+          same == {(recorded_code, settings.config_sha256())}, commit[:7])
     check("each stress world records a configuration of its own",
-          len({generators[w]["config_sha256"] for w in stress}) == len(stress) and all(generators[w]["code_sha256"] == generator_code_sha256() for w in stress))
+          len({generators[w]["config_sha256"] for w in stress}) == len(stress) and all(generators[w]["code_sha256"] == recorded_code for w in stress))
+    amended = generator_code_sha256() != recorded_code
+    if not args.no_recompute:
+        demo = f"W{e['demo_seeds'][0]}"
+        differences = regenerated_differences(demo, artifacts)
+        check(f"the repository's generator regenerates {demo} exactly" + (", apart from columns added since" if amended else ""),
+              not differences, "; ".join(differences)[:200] or ("generator amended since the experiment" if amended else "same generator"))
 
     # ---- the selection and the recorded figures
     chosen = selection["selected_model_id"]
