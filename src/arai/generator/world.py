@@ -229,6 +229,8 @@ def _schema(spec_root: Path) -> dict:
 
 def format_for_csv(table: pd.DataFrame, columns: dict) -> pd.DataFrame:
     """Canonical text form: ISO dates, timestamps with the +05:30 offset, two-decimal money, empty cell for null."""
+    # an optional column the table does not carry is left out, as in a snapshot written before data contract 1.2
+    columns = {name: spec for name, spec in columns.items() if name in table.columns or not spec.get("optional")}
     if list(table.columns) != list(columns):
         raise ValueError(f"table columns {list(table.columns)} do not match the contract {list(columns)}")
     out = {}

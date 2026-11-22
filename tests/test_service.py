@@ -1529,8 +1529,12 @@ def test_the_clean_up_removes_notes_runs_and_datasets_in_the_right_order_and_kee
     assert store.wipe(notes=True)["reviews"] == 1 and store.counts()["reviews"] == 0
     assert client.post(f"{url}/{first}/reviews", json={"reviewer_name": "Asha", "disposition": "unresolved", "note": "n",
                                                       "idempotency_key": "clean-1"}).status_code == 201   # the key is free again
+    # one world only: another world's name removes nothing, this world's name is the same as no name here
+    assert store.wipe(notes=True, runs=True, datasets=True, world_id="W-other") == {
+        "reviews": 0, "runs": 0, "result_rows": 0, "memos": 0, "datasets": [], "idempotency": 0}
+    assert store.counts()["runs"] == before["runs"] and store.counts()["reviews"] == 1
     # runs take their results, memos and notes; the dataset, models and experiments stay
-    removed = store.wipe(runs=True)
+    removed = store.wipe(runs=True, world_id=run["world_id"])
     assert removed["runs"] == before["runs"] and removed["result_rows"] == before["result_rows"] and removed["reviews"] == 1
     after = store.counts()
     assert after["runs"] == 0 and after["result_rows"] == 0 and after["reviews"] == 0 and after["run_memos"] == 0

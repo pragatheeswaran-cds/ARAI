@@ -125,6 +125,19 @@ def build_earlier(world_id: str, as_of: date) -> World:
     return settle(builder, _settled_at(builder, as_of))
 
 
+def as_the_world_carries(world: World, later: dict) -> World:
+    """The earlier snapshot with the columns its world's own snapshot carries. A world written before data contract 1.2
+    has no region, email or phone (and no private contact record); an earlier snapshot of it written today must not have
+    them either, or the same customers would show contact details in August and none in September."""
+    master, own = world.tables["customer_master"], later["customer_master"]
+    extra = [column for column in master.columns if column not in own.columns]
+    if not extra:
+        return world
+    tables = dict(world.tables, customer_master=master.drop(columns=extra))
+    truth = {name: table for name, table in world.truth.items() if name != "contact_truth"}
+    return dataclasses.replace(world, tables=tables, truth=truth)
+
+
 def prefix_differences(earlier: dict, later: dict) -> dict:
     """What would break the prefix property, table by table: rows of the earlier snapshot missing from the later one,
     and fields that differ although they do not move with time. Empty lists everywhere mean the earlier snapshot is a
@@ -141,7 +154,7 @@ def prefix_differences(earlier: dict, later: dict) -> dict:
         merged = a.merge(b, on=keys, how="left", suffixes=("", "_later"), indicator=True)
         problems = [f"{int((merged['_merge'] == 'left_only').sum())} rows missing later"] if (merged["_merge"] == "left_only").any() else []
         for column in a.columns:
-            if column in keys or column in moving.get(name, set()):
+            if column in keys or column in moving.get(name, set()) or column not in b.columns:
                 continue
             left, right = merged[column], merged[column + "_later"]
             differs = ~((left == right) | (left.isna() & right.isna())) & (merged["_merge"] == "both")

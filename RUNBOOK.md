@@ -1036,3 +1036,56 @@ Deleting the stack keeps the bucket (Retain) and snapshots the data volume (Snap
 with the same parameters and a bring-up restores the dump and syncs the artifacts back. Tear down for good:
 `aws cloudformation delete-stack --stack-name arai-demo`, then empty and delete the bucket by hand and delete the
 `/arai` parameters.
+
+### 8.10 Update the VM to the screens of November 2026 (not yet done)
+
+The VM was brought up in October and still serves the earlier screens and the two-person approval workflow. `main`
+now holds the screens of the Penpot design, the workflow Open, In Review, Escalated, Closed, and API contract 3.3.0
+(decisions AM-76 to AM-79). Updating the VM is a new release and a bring-up, then a reload of the demonstration data
+so that the dashboard has its trends. These steps were written from sections 8.3 to 8.6 and the deployment files; they
+have **not** been run against the VM. Run them from the repository root on `main`, with your AWS access.
+
+```powershell
+# 0. what will be released: the committed tree of main
+git checkout main; git pull; git status --short        # nothing to commit, apart from untracked files
+
+# 1. the release (as 8.3, step 2)
+git archive --format=tar.gz -o $env:TEMP\arai.tar.gz HEAD
+aws s3 cp $env:TEMP\arai.tar.gz s3://arai-819717422656-ap-south-1/release/arai.tar.gz
+
+# 2. bring-up (as 8.3, step 3): rebuilds the images with the new UI and restarts the stack. The API applies schema
+#    versions 14 and 15 when it starts; both only add (two more review kinds, one column), so nothing is lost.
+$id = aws cloudformation describe-stacks --stack-name arai-demo --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text
+aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai bringup" --parameters file://deploy\aws\bringup-command.json --query Command.CommandId --output text
+aws ssm start-session --target $id                      # then: sudo tail -f /var/log/arai-bringup.log
+
+# 3. check before touching any data
+curl.exe -s https://arai-demo.duckdns.org/api/v1/health                      # alive, scoring_ready, promoted_model_ready true
+curl.exe -s https://arai-demo.duckdns.org/api/v1/openapi.json | Select-String '"version": ?"3.3.0"'
+```
+
+Open https://arai-demo.duckdns.org: the dark top bar and the sidebar with Dashboard, Risk Queue, Investigations and
+the rest should show. The runs scored in October are still there and still readable, with two limits: their
+Dashboard says the trends are missing (they were scored before the daily figures were stored), and their reviews are
+those of the earlier workflow, shown as Escalated or Closed.
+
+To give the VM the full demonstration (trends, the product aggregates, and the August outcomes written under the new
+workflow), clear the demonstration state and load it again. This removes the notes, runs and datasets on the VM;
+models, people and sessions stay (section 8.6). Look first with `--dry-run`.
+
+```bash
+# on the VM (SSM shell)
+cd /opt/arai/app
+sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml exec -T api uv run --no-sync python - --all --dry-run < scripts/db_clear.py
+sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml exec -T api uv run --no-sync python - --all --yes < scripts/db_clear.py
+```
+
+```powershell
+# from the laptop: the twelve snapshots of W5401 must exist locally (section 4.1, step 1); then register and score them
+# through the VM's API and write the three August outcomes. On a t3.small allow a minute or more per snapshot.
+uv run --no-sync python scripts\history_demo.py --load --base-url https://arai-demo.duckdns.org
+```
+
+Afterwards the Dashboard should show W5401 with 5,676 customers scored, 284 in the queue (86 Critical, 198 High) and
+the panel "Since the previous snapshot of W5401 (09 Aug 2026)". If the bring-up fails, the previous release is not
+kept on the VM: publish the earlier commit again as the release (`git archive ... 2edaa4e`) and repeat step 2.

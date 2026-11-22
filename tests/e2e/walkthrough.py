@@ -117,23 +117,23 @@ with sync_playwright() as pw:
     page.get_by_role("link", name="Risk Queue", exact=True).click()
     settle(page)
     check("queue route carries the run", "/runs/run-" in page.url and page.url.endswith("/customers"), page.url)
-    rows = page.locator("main table tbody tr").count()
+    rows = page.locator("main .panel table tbody tr").count()
     check("queue opens on the review set", rows == 50 and "Load more" in main_text(page), rows)
-    check("queue shows the return-rate rule rank beside the model rank", "Return-rate rule" in page.locator("main table thead").inner_text())
+    check("queue shows the return-rate rule rank beside the model rank", "Return-rate rule" in page.locator("main .panel table thead").inner_text())
     page.get_by_label("Show").focus()
     page.keyboard.type("All")                              # keyboard: type-ahead to "All customers"
     settle(page)
     check("keyboard filter change updates the address", "show=all" in page.url, page.url)
     page.get_by_label("Model and return-rate rule").select_option("baseline_only")
     settle(page)
-    body = page.locator("main table tbody").inner_text()
+    body = page.locator("main .panel table tbody").inner_text()
     check("comparison filter lists rule-only selections",
           "comparison=baseline_only" in page.url and "selected by the rule" in body and "Escalate" not in body and "Hold" not in body, body[:120])
     shot(page, "03-queue-rule-only")
     page.get_by_label("Model and return-rate rule").select_option("all")
     page.get_by_label("Show").select_option("review")
     settle(page)
-    first_customer = page.locator("main table tbody tr a.link").first.inner_text()
+    first_customer = page.locator("main .panel table tbody tr a.link").first.inner_text()
     page.get_by_label("Search customer ID").fill(first_customer[-5:])
     page.keyboard.press("Enter")
     settle(page)
@@ -142,7 +142,7 @@ with sync_playwright() as pw:
     shot(page, "04-queue-search")
 
     # ---- case: open with the keyboard, walk the tabs, append a note
-    page.locator("main table tbody tr a.link").first.focus()
+    page.locator("main .panel table tbody tr a.link").first.focus()
     page.keyboard.press("Enter")
     settle(page)
     check("case opens from the keyboard", page.url.endswith("/customers/" + first_customer), page.url)
@@ -183,7 +183,7 @@ with sync_playwright() as pw:
     run_path = page.url.split("/customers/")[0]
     page.goto(run_path + "/customers?state=new&history=new_in_queue")
     settle(page)
-    page.locator("main table tbody tr a.link").last.click()
+    page.locator("main .panel table tbody tr a.link").last.click()
     settle(page)
     refusal_case = page.url.rsplit("/", 1)[-1]
     page.get_by_label("Note (required with every action)").fill(f"Walkthrough open {stamp}.")
@@ -215,11 +215,11 @@ with sync_playwright() as pw:
     settle(page)
     text = main_text(page)
     check("a case decided last month comes back as this month's own case, with the decision shown on it",
-          "Rejected on the 09 Aug 2026 snapshot by Ravi" in text and "this snapshot's review starts on" in text)
+          "Confirmed after escalation on the 09 Aug 2026 snapshot by Ravi" in text and "this snapshot's review starts on" in text)
     check("the history tab shows the customer in every snapshot of the world",
-          all(d in text for d in ("09 Jul 2026", "09 Aug 2026", "09 Sept 2026")) and "History across snapshots" in text and "Rejected" in text)
+          all(d in text for d in ("09 Jul 2026", "09 Aug 2026", "09 Sept 2026")) and "History across snapshots" in text and "Closed" in text)
     shot(page, "17-case-history")
-    page.get_by_role("tab", name="notes (2)").click()
+    page.get_by_role("tab", name="notes (3)").click()
     settle(page)
     check("notes follow the customer and say which snapshot they were written on", "written on the 09 Aug 2026 snapshot" in main_text(page))
     page.get_by_role("tab", name="history").click()
@@ -234,15 +234,15 @@ with sync_playwright() as pw:
     # ---- styles
     page.get_by_role("link", name="Products / SKU").click()
     settle(page)
-    styles = page.locator("main table tbody tr").count()
+    styles = page.locator("main .panel table tbody tr").count()
     check("style queue lists every style with a verdict", styles == 37 and "Flagged returners" in main_text(page) and "Suggested owner" in main_text(page), styles)
     check("the headline pair sets a quality style beside an abuse target", "different stories" in main_text(page))
     page.get_by_label("Verdict").select_option("targeting")
     settle(page)
-    targeting = page.locator("main table tbody tr").count()
+    targeting = page.locator("main .panel table tbody tr").count()
     check("state filter narrows the style queue", 0 < targeting < 37, targeting)
     shot(page, "08-styles-targeting")
-    page.locator("main table tbody tr a.link").first.click()
+    page.locator("main .panel table tbody tr a.link").first.click()
     settle(page)
     text = main_text(page)
     check("style detail has the four drawers and the SKU drill-down",
@@ -314,7 +314,7 @@ with sync_playwright() as pw:
     check("People & access lists the people with their roles and where they come from",
           all(name in people for name in ("Ravi", "Arjun", "Admin")) and "development list" in people and "Roles are not edited in ARAI" in people)
     check("the sign-in log shows the sign-ins", "Sign-in log" in people and "sign in" in people)
-    arjun_row = page.locator("main table tbody tr", has_text="Arjun").first
+    arjun_row = page.locator("main .panel table tbody tr", has_text="Arjun").first
     arjun_row.get_by_role("button", name="Disable").click()
     check("disabling asks first and says what it does", "Ends every session now" in main_text(page))
     page.get_by_role("button", name="Cancel").click()

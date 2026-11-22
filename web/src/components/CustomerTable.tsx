@@ -87,7 +87,7 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
           <tr>
             {selection && (
               <th scope="col">
-                <input type="checkbox" aria-label="Select every case shown" checked={allChosen} onChange={(e) => selection.setAll(selectable, e.target.checked)} />
+                <input type="checkbox" aria-label="Select all listed cases" checked={allChosen} onChange={(e) => selection.setAll(selectable, e.target.checked)} />
               </th>
             )}
             <th scope="col" title="A case is one customer in this run; the number is the customer's own">

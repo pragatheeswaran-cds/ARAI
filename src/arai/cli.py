@@ -65,6 +65,8 @@ def _snapshot(args) -> int:
         started = time.time()
         as_of = date.fromisoformat(text)
         world = snapshots.build_earlier(args.world, as_of)
+        if later is not None:                                    # a snapshot carries the columns its world carries (AM-78)
+            world = snapshots.as_the_world_carries(world, later.tables)
         out = snapshots.write_earlier(world, as_of, args.artifact_root, args.private_root)
         report = validate_world(out["operational"])
         print(f"{args.world} as of {as_of}: {len(world.tables['customer_master'])} customers, {world.summary['sales_order']} orders, "

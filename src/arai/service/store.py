@@ -287,7 +287,9 @@ class Store:
             if notes:
                 removed["reviews"] += db.execute(f"DELETE FROM reviews{scope}", values).rowcount
             if runs:
-                gone = [r["id"] for r in db.execute(f"SELECT id FROM runs{scope}", values).fetchall()]
+                # a run belongs to a world through its dataset: runs carry no world of their own since AM-68
+                gone = [r["id"] for r in db.execute("SELECT r.id FROM runs r JOIN datasets d ON d.id = r.dataset_id"
+                                                    + (" WHERE d.world_id = %s" if world_id else ""), values).fetchall()]
                 if gone:
                     removed["reviews"] += db.execute("DELETE FROM reviews WHERE run_id = ANY(%s)", (gone,)).rowcount
                     removed["memos"] += db.execute("DELETE FROM run_memos WHERE run_id = ANY(%s)", (gone,)).rowcount

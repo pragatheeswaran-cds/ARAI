@@ -94,3 +94,21 @@ def test_writing_the_same_snapshot_again_keeps_its_manifest(world, tmp_path):
     again = snapshots.write_earlier(built, as_of, tmp_path / "artifacts", tmp_path / "private")
     assert again["unchanged"] and path.read_bytes() == kept and again["manifest"]["generator"]["code_sha256"] == "0" * 64
     assert validate_world(again["operational"]).accepted
+
+
+def test_an_earlier_snapshot_of_a_world_without_contact_columns_has_none_either(world):
+    """Data contract 1.2 (AM-78): a world written before the contact columns stays without them in its earlier snapshots,
+    and the prefix check compares the columns both snapshots have."""
+    from datetime import timedelta
+
+    from arai import snapshots
+    built = snapshots.build_earlier(world.world_id, world.snapshot_date - timedelta(days=30))
+    assert {"region", "email", "phone"} <= set(built.tables["customer_master"].columns) and "contact_truth" in built.truth
+    older = dict(world.tables, customer_master=world.tables["customer_master"].drop(columns=["region", "email", "phone"]))
+    matched = snapshots.as_the_world_carries(built, older)
+    assert list(matched.tables["customer_master"].columns) == list(older["customer_master"].columns)
+    assert "contact_truth" not in matched.truth and len(matched.tables["customer_master"]) == len(built.tables["customer_master"])
+    assert not any(snapshots.prefix_differences(matched.tables, older).values())
+    assert not any(snapshots.prefix_differences(built.tables, older).values())       # extra columns are not a difference
+    assert snapshots.as_the_world_carries(built, world.tables) is built              # a world that carries them keeps them
+    assert not any(snapshots.prefix_differences(built.tables, world.tables).values())

@@ -9,10 +9,16 @@
 > | # | Item | Waits on |
 > |---|---|---|
 > | P1 | Email and phone as ring signals: a shared phone or mailbox as a link in the relationship graph. It changes the features, so it needs a new experiment on new sealed worlds (experiment id, seeds, stated expectation, gate) | Closed 22 Nov (decision E9): an independent review showed the experiment could not test its own question, so the links are shown to analysts as evidence and the model is unchanged (AM-79). Left open: a paired control run, and new model features built on contact links, which would need an exploration and an experiment of their own |
-> | P2 | Rewrite `docs/demo-script.md` passages that tell the two-person approval story, if the demonstration is given again | The owner |
+> | P2 | `docs/demo-script.md` | Done 22 Nov: rewritten scene by scene for the new screens and workflow |
 > | P3 | Rerun `tests\e2e\walkthrough.py` against a loaded instance (twelve snapshots, `scripts\history_demo.py --load`) | A rehearsal |
 > | P4 | Decided 22 Nov: only the approver role (the lead) closes an escalated case | Done |
 > | P5 | Merge `penpot-implementation` into `main` | Done 22 Nov: `main` holds all of it |
+> | P6 | Making the model itself use contact links (a paired control run, or new features built on them) | Decided 22 Nov: left as it is. The links stay evidence for the analyst |
+> | P7 | Which world the demonstration uses | Decided 22 Nov: W5401 stays. It predates the contact columns, so it shows none; a world generated now shows them (RUNBOOK 4.2) |
+> | P8 | Slide deck in `docs/demo-deck/` still shows the earlier screens and the two-person approval story | Decided 22 Nov: left until a presentation is scheduled |
+> | P9 | Update the demonstration VM to the new screens | Decided 22 Nov: the steps are written (RUNBOOK 8.10) and not yet run; the owner runs them |
+> | P10 | Branches on GitHub whose work `main` contains | Decided 22 Nov: all kept as markers; `main` is the one to use |
+> | P11 | Owner sign-off on the acceptance register, and SEL-AC-05 (items 2.3 and 2.4 below) | The owner |
 >
 > The rest of this file is the list of 17 Oct 2026, kept as written.
 
