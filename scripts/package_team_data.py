@@ -61,9 +61,10 @@ RULES (docs/implementation-hands-on.md, step 0)
   - src/arai/features.py, dataset.py, modeling.py, bundles.py and ranking.py are locked to the published model.
 """
 DATABASE = """  data\\{experiment}\\postgres    {database_files} files
-      the local demo database as it stood when this was packaged: W5401 with its twelve monthly snapshots scored and
-      a few review notes written during rehearsals. It was written by PostgreSQL on Windows and opens on Windows with
-      the versions in uv.lock. On macOS or Linux, or if the product does not start, delete this folder: arai local then
+      the local demo database as it stood when this was packaged. Prepared for a demonstration it holds W5401 with
+      its twelve monthly snapshots scored, every case of the latest snapshot still Open, and the three August review
+      outcomes the demonstration tells (written by scripts\history_demo.py). It was written by PostgreSQL on Windows
+      and opens on Windows with the versions in uv.lock. On macOS or Linux, or if the product does not start, delete this folder: arai local then
       creates an empty database, and
           uv run --no-sync python scripts\\history_demo.py --load
       loads the twelve snapshots again in about fifteen minutes (RUNBOOK.md, section 4.1).
