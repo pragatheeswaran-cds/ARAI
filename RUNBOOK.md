@@ -1,8 +1,8 @@
 # ARAI runbook: start, stop, validate
 
 Commands are for PowerShell, run from the repository root
-(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `penpot-implementation`, which contains `main` and
-every earlier branch (`git fetch origin; git checkout penpot-implementation`). On it the screens follow the Penpot
+(`F:\projects\Adaptive_Return_Abuser_Intelliengence`), on branch `main`, which contains every earlier branch
+(`git fetch origin; git checkout main`). On it the screens follow the Penpot
 design of 21 Nov 2026 and the review workflow is Open, In Review, Escalated, Closed (decisions AM-76 to AM-78; what
 differs from the design is listed in `records\2026-11-21-penpot-coverage-checklist.md`).
 
@@ -29,7 +29,7 @@ which reproduces the same worlds and the same selected model (step 3).
 ```powershell
 # 1. the branch with all the work (main does not have it yet)
 git fetch origin
-git checkout penpot-implementation
+git checkout main
 
 # 2. the environment and the UI (section 1)
 uv sync
@@ -654,7 +654,7 @@ on an empty database: same numbers, about two minutes):
 
 ```powershell
 # 0. the branch, its environment and its UI (see "Start here" at the top)
-git fetch origin; git checkout penpot-implementation; git pull
+git fetch origin; git checkout main; git pull
 uv sync
 cd web; npm install; npm run build; cd ..
 
@@ -700,7 +700,7 @@ the August decision shown on it. `db-clean --all --world W5401` removes every sn
 
 ---
 
-### 4.2 The screens, the workflow and the new data columns (branch `penpot-implementation`)
+### 4.2 The screens, the workflow and the new data columns
 
 **Screens.** The sidebar lists Dashboard, Risk Queue, Investigations, Customers, Network Graph, Products / SKU,
 Analytics (the evaluation), Configuration (datasets and runs), Audit Log and, for an admin, People & access. The top
