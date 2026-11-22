@@ -18,8 +18,8 @@ Existing code/synthetic-data assets remain preserved; the final package bundles 
 
 ## Code
 
-The latest work is on branch `penpot-implementation` (`git checkout penpot-implementation`). It contains `main`, which
-since 21 Nov 2026 holds everything up to the deployment work, and adds the screens of the Penpot design:
+The latest work is on `main` (merged from `penpot-implementation` on 22 Nov 2026). It holds everything up to the
+deployment work and the screens of the Penpot design:
 
 | Screen | What it is for |
 |---|---|

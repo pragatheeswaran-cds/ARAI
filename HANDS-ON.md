@@ -19,7 +19,7 @@ viewer (5-12), see the fallback (13), clean up and check (14-15). Exercise 16 ad
 
 ```powershell
 git fetch origin
-git checkout penpot-implementation  # the branch with all the work; main does not have the new screens yet
+git checkout main                   # the branch with all the work
 uv sync                             # Python 3.12 and every dependency, from uv.lock
 cd web; npm install; npm run build; cd ..
 uv run arai --help                  # lists generate, snapshot, train, ... local, db-clean

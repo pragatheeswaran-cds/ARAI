@@ -2,9 +2,9 @@
 
 > **Update, 22 Nov 2026.** `main` now contains everything listed below as waiting for a merge (item 2.1 is done:
 > `deploy-and-snapshots`, which held `year-of-snapshots` and every other branch, was merged into `main` on 21 Nov).
-> The latest work is on branch `penpot-implementation`: the screens of the Penpot design, the workflow Open, In Review,
-> Escalated, Closed, and region, email and phone in the data (AM-76 to AM-78). 247 Python tests and 30 frontend tests
-> pass there; the browser walkthrough was updated and has not been rerun. New open items:
+> The latest work, now on `main`: the screens of the Penpot design, the workflow Open, In Review,
+> Escalated, Closed, region, email and phone in the data, and links through a phone or a mailbox as evidence (AM-76 to AM-79). 253 Python tests and 30 frontend tests
+> pass; the browser walkthrough was updated and has not been rerun. New open items:
 >
 > | # | Item | Waits on |
 > |---|---|---|
@@ -12,7 +12,7 @@
 > | P2 | Rewrite `docs/demo-script.md` passages that tell the two-person approval story, if the demonstration is given again | The owner |
 > | P3 | Rerun `tests\e2e\walkthrough.py` against a loaded instance (twelve snapshots, `scripts\history_demo.py --load`) | A rehearsal |
 > | P4 | Decided 22 Nov: only the approver role (the lead) closes an escalated case | Done |
-> | P5 | Merge `penpot-implementation` into `main` | Decided 22 Nov: after the contact-links work |
+> | P5 | Merge `penpot-implementation` into `main` | Done 22 Nov: `main` holds all of it |
 >
 > The rest of this file is the list of 17 Oct 2026, kept as written.
 
