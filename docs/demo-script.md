@@ -2,9 +2,9 @@
 
 > **Revised 22 Nov 2026** for the screens of the Penpot design and the workflow Open, In Review, Escalated, Closed
 > (branch `penpot-implementation`, decisions AM-76 to AM-78). The numbers are those of W5401 re-scored on that branch;
-> scores, ranks and the selection are the ones of October. The screenshots in `reports/ui/2026-10-16/` show the
-> earlier layout: the same content under the earlier page names, without the dashboard charts, the Critical level,
-> the new pages and the new decision buttons. The slide deck in `docs/demo-deck/` has not been revised.
+> scores, ranks and the selection are the ones of October. Screenshots of the new screens, taken by the browser
+> walkthrough on 22 Nov 2026, are in `reports/ui/2026-11-22/` under the same file names; the ones in
+> `reports/ui/2026-10-16/` show the earlier layout. The slide deck in `docs/demo-deck/` has not been revised.
 
 A story and a click-by-click flow for a 20 to 25 minute demonstration of the return-abuse workbench. The slide deck
 built from it is in `docs/demo-deck/`. Every number
