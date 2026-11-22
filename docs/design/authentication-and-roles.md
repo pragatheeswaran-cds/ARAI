@@ -7,6 +7,13 @@ tokens for scripts, a development realm and a Compose profile, contract 1.17.0 (
 admins (roles read-only, disable, enable, end sessions, the sign-in log) and the removal of typed reviewer names from
 requests, contract 2.0.0 (AM-71). Branches `auth-design` (steps 1 and 2) and `auth-admin` (later steps).
 
+**Update, 22 Nov 2026 (contract 3.0.0, AM-76).** The second-reviewer rule described in this note no longer exists. The
+review workflow is Open, In Review, Escalated, Closed: a reviewer opens a case and clears it or escalates it, and a
+person with the approver role (the lead) closes an escalated case with the fraud team's outcome. Who opened a case
+does not limit who decides it. Everything else here stands: verified identity, roles on every route, CSRF, sessions
+and the audit of sign-ins. The table in section 3.1 and section 3.4 below are updated; sections 1 and 2 are left as
+the reasoning of October 2026.
+
 ## 1. Why
 
 The workbench decides nothing on its own, so its controls are the human ones: a case is opened by one reviewer and
@@ -104,8 +111,9 @@ Four roles, cumulative from left to right except admin, which is separate:
 |---|---|---|---|---|
 | Read datasets, runs, queue, cases, styles, evaluation | yes | yes | yes | yes |
 | Export the queue as CSV, download a case summary | no | yes | yes | yes |
-| Add a note or feedback; open a case; request approval | no | yes | yes | no |
-| Approve or reject a case (never one they opened) | no | no | yes | no |
+| Add a note or feedback; open, clear or escalate a case, one at a time or several at once | no | yes | yes | no |
+| Close an escalated case with its outcome (confirmed or not confirmed) | no | no | yes | no |
+| See their own notifications and profile | yes | yes | yes | yes |
 | Register or delete a dataset; start or cancel a run | no | no | no | yes |
 | See people and the sign-in log; disable, enable, end sessions (roles change in Keycloak) | no | no | no | yes |
 
@@ -119,7 +127,13 @@ Four roles, cumulative from left to right except admin, which is separate:
 - Every route declares the permission it needs in one table in code; a test walks every route of the contract and
   fails if one has no declared permission (the same pattern as today's "every route is in the contract" test).
 
-### 3.4 The second-reviewer rule and the review record
+### 3.4 The review record (and the second-reviewer rule it replaced)
+
+Since contract 3.0.0 (AM-76) there is no second-reviewer rule: the bullets below about 409 `second_reviewer_required`
+and the approval band describe contracts 1.16.0 to 2.0.0. What remains is the verified author of every review
+(`author_user_id`, the server-filled `reviewer_name`, the "unverified name" marker for rows written before sign-in),
+the permission `decide` for closing an escalated case, and the queue filters by user id (`exclude_mine`, and `mine`
+for the cases a person has open, contract 3.1.0).
 
 - `reviews` gains `author_user_id` (the signed-in user). `reviewer_name` stays, filled by the **server** from the
   user's display name at the time of writing, so the record still reads naturally and survives a later rename.

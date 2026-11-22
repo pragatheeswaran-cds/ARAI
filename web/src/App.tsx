@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
-import { API, ApiError, SIGNED_OUT_EVENT, allPages, api, setCsrfToken, type Dataset, type ExperimentSummary, type Health, type Me, type Run } from "./api";
+import { API, ApiError, SIGNED_OUT_EVENT, allPages, api, setCsrfToken, type Dataset, type ExperimentSummary, type Health, type Me, type NotificationList, type Run } from "./api";
 import { ErrorBox, PageTitle, ist, number, shortId, useLoad } from "./components/ui";
 import { datasetName, latestSnapshotRun } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
+import { CustomerProfile, CustomerSearch } from "./pages/CustomerProfile";
+import { AuditLog, Investigations, NetworkGraph, Profile } from "./pages/Workspace";
 import { CustomerQueue } from "./pages/CustomerQueue";
 import { Datasets } from "./pages/Datasets";
 import { Evaluation } from "./pages/Evaluation";
@@ -146,12 +148,117 @@ function RunStrip({ run, dataset }: { run: Run; dataset: Dataset | null }) {
   );
 }
 
-/** Who is signed in, their roles and Sign out, above the run strip. */
+/** The sidebar and top-bar icons: plain line drawings, hidden from assistive technology (the link text names the page). */
+const ICONS: Record<string, ReactNode> = {
+  home: <path d="M3 11l9-8 9 8M5 10v10h14V10" />,
+  queue: <path d="M4 5h16v14H4zM8 9h8M8 13h8" />,
+  box: <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9" />,
+  chart: <path d="M5 20V10M12 20V4M19 20v-7" />,
+  gear: (
+    <>
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" />
+    </>
+  ),
+  people: (
+    <>
+      <circle cx="9.5" cy="8" r="3.5" />
+      <path d="M3 20v-1a4 4 0 0 1 4-4h5a4 4 0 0 1 4 4v1M21 20v-1a4 4 0 0 0-3-3.9M15.5 4.6a3.5 3.5 0 0 1 0 6.8" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l5 5" />
+    </>
+  ),
+  network: (
+    <>
+      <circle cx="12" cy="5" r="2.5" />
+      <circle cx="5" cy="18" r="2.5" />
+      <circle cx="19" cy="18" r="2.5" />
+      <path d="M11 7.2L6.2 15.8M13 7.2l4.8 8.6M7.5 18h9" />
+    </>
+  ),
+  file: <path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6" />,
+  bell: <path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0" />,
+};
+
+function Icon({ name }: { name: keyof typeof ICONS }) {
+  return (
+    <svg className="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICONS[name]}
+    </svg>
+  );
+}
+
+/** The bell: what happened for the signed-in person in the last thirty days. Opening it records that they looked. */
+function Notifications() {
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<NotificationList | null>(null);
+  const location = useLocation();
+  useEffect(() => {
+    let live = true;
+    api.notifications().then(
+      (found) => live && setList(found),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [location.pathname]);
+  useEffect(() => setOpen(false), [location.pathname]);
+  const unread = list?.unread ?? 0;
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && unread) api.notificationsSeen().then(() => setList((current) => (current ? { ...current, unread: 0 } : current)), () => undefined);
+  };
+  return (
+    <div className="bell">
+      <button type="button" className="quiet" aria-expanded={open} aria-label={`Notifications: ${unread} new`} onClick={toggle}>
+        <Icon name="bell" />
+        {unread > 0 && <span className="bell-count">{unread}</span>}
+      </button>
+      {open && (
+        <div className="bell-panel" role="region" aria-label="Notifications">
+          <strong>Notifications</strong>
+          {!list || list.items.length === 0 ? (
+            <p className="muted">Nothing in the last thirty days.</p>
+          ) : (
+            <ul>
+              {list.items.slice(0, 12).map((item) => (
+                <li key={item.kind + item.id} className={item.unread ? "unread" : undefined}>
+                  <NavLink to={item.customer_id ? `/runs/${item.run_id}/customers/${item.customer_id}` : `/runs/${item.run_id}/customers`}>{item.text}</NavLink>
+                  <small>{ist(item.at)}</small>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Who is signed in, their roles and Sign out, at the right of the top bar. */
 function SignedIn() {
   const { me, signOut } = useSession();
   return (
     <div className="signedin small" aria-label="Signed in">
-      Signed in as <strong>{me.display_name}</strong> <span className="muted">({me.roles.join(", ")})</span>{" "}
+      <Notifications />
+      <NavLink to="/profile" className="profile-link" aria-label="Profile">
+        <Icon name="user" />
+      </NavLink>
+      <span>
+        Signed in as <strong>{me.display_name}</strong> <span className="muted">({me.roles.join(", ")})</span>
+      </span>
       <button type="button" className="quiet" onClick={signOut}>
         Sign out
       </button>
@@ -184,21 +291,58 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="strip">SYNTHETIC DATA ONLY / Simulated customers and returns / No real person or production accuracy claim</div>
+      <div className="topbar">
+        <div className="topbar-brand">
+          <Icon name="box" />
+          Adaptive Return Abuse Intelligence
+        </div>
+        <SignedIn />
+      </div>
       <div className="shell">
         <aside>
-          <div className="brand">ARAI.</div>
-          <div className="tag">
-            ADAPTIVE RETURN ABUSE
-            <br />
-            INTELLIGENCE
-          </div>
           <nav aria-label="Main">
-            <NavLink to="/overview">Overview</NavLink>
-            <NavLink to="/datasets">Datasets &amp; runs</NavLink>
-            <NavLink to={runLink("customers")}>Customer queue</NavLink>
-            <NavLink to={runLink("styles")}>Style investigation</NavLink>
-            <NavLink to={experiment ? `/experiments/${experiment.experiment_id}` : "/experiments/none"}>Evaluation</NavLink>
-            {can("administer") && <NavLink to="/admin/people">People &amp; access</NavLink>}
+            <NavLink to="/overview">
+              <Icon name="home" />
+              Dashboard
+            </NavLink>
+            <NavLink to={runLink("customers")}>
+              <Icon name="queue" />
+              Risk Queue
+            </NavLink>
+            <NavLink to={runLink("investigations")}>
+              <Icon name="search" />
+              Investigations
+            </NavLink>
+            <NavLink to={runLink("profiles")}>
+              <Icon name="people" />
+              Customers
+            </NavLink>
+            <NavLink to={runLink("network")}>
+              <Icon name="network" />
+              Network Graph
+            </NavLink>
+            <NavLink to={runLink("styles")}>
+              <Icon name="box" />
+              Products / SKU
+            </NavLink>
+            <NavLink to={experiment ? `/experiments/${experiment.experiment_id}` : "/experiments/none"}>
+              <Icon name="chart" />
+              Analytics
+            </NavLink>
+            <NavLink to="/datasets">
+              <Icon name="gear" />
+              Configuration
+            </NavLink>
+            <NavLink to="/audit">
+              <Icon name="file" />
+              Audit Log
+            </NavLink>
+            {can("administer") && (
+              <NavLink to="/admin/people">
+                <Icon name="people" />
+                People &amp; access
+              </NavLink>
+            )}
           </nav>
           <div className="footnote">
             Indian apparel / INR
@@ -228,7 +372,6 @@ function Shell({ children }: { children: ReactNode }) {
               )}
             </div>
           </header>
-          <SignedIn />
           {run && <RunStrip run={run} dataset={dataset} />}
           {reason && (
             <div className="banner" role="status">
@@ -333,6 +476,12 @@ function Workbench() {
           <Route path="/datasets" element={<Datasets />} />
           <Route path="/runs/:runId/customers" element={<CustomerQueue />} />
           <Route path="/runs/:runId/customers/:customerId" element={<CustomerCase />} />
+          <Route path="/runs/:runId/investigations" element={<Investigations />} />
+          <Route path="/runs/:runId/profiles" element={<CustomerSearch />} />
+          <Route path="/runs/:runId/profiles/:customerId" element={<CustomerProfile />} />
+          <Route path="/runs/:runId/network" element={<NetworkGraph />} />
+          <Route path="/audit" element={<AuditLog />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/runs/:runId/styles" element={<StyleQueue />} />
           <Route path="/runs/:runId/styles/:styleId" element={<StyleDetailPage />} />
           <Route path="/experiments/:experimentId" element={<Evaluation />} />

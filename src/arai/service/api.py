@@ -66,11 +66,30 @@ class RunRequest(BaseModel):
 class ReviewRequest(BaseModel):
     # contract 2.0.0 (AM-71): the author is the signed-in user; reviewer_name, ignored since 1.16.0, is gone and refused (422)
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["note", "open", "request_approval", "approve", "reject", "feedback"] = "note"
+    # contract 3.0.0 (AM-76): open, clear, escalate and close replace the two-person approval workflow
+    kind: Literal["note", "open", "clear", "escalate", "close", "feedback"] = "note"
     disposition: Literal["needs_investigation", "likely_legitimate", "unresolved"]
     note: str = Field(min_length=1, max_length=4000)
     idempotency_key: str = Field(min_length=1, max_length=128)
     _clean = field_validator("note", "idempotency_key")(_no_nul)
+
+
+class BulkReviewRequest(BaseModel):
+    """Contract 3.1.0 (AM-77): one workflow action on several customers of a run, each under the single-case rules."""
+    model_config = ConfigDict(extra="forbid")
+    customer_ids: list[str] = Field(min_length=1, max_length=100)
+    kind: Literal["open", "clear", "escalate"]
+    disposition: Literal["needs_investigation", "likely_legitimate", "unresolved"]
+    note: str = Field(min_length=1, max_length=4000)
+    idempotency_key: str = Field(min_length=1, max_length=100)
+    _clean = field_validator("note", "idempotency_key")(_no_nul)
+
+    @field_validator("customer_ids")
+    @classmethod
+    def _ids(cls, value: list) -> list:
+        if any((not item) or len(item) > 200 or "\x00" in item for item in value) or len(set(value)) != len(value):
+            raise ValueError("customer_ids must be distinct, non-empty identifiers")
+        return value
 
 
 class AdminActionRequest(BaseModel):
@@ -332,7 +351,10 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         return user
 
     def me_body(user, token: str | None) -> dict:
+        known = (service.auth.users(user.id) or [{}])[0]                 # the account as People & access shows it (contract 3.1.0)
         return {"user_id": user.id, "display_name": user.display_name, "email": user.email, "roles": list(user.roles),
+                "status": known.get("status") or "active", "created_at": _iso(known.get("created_at")),
+                "last_sign_in_at": _iso(known.get("last_sign_in_at")),
                 "permissions": sorted(user.permissions), "auth_mode": config.mode, "csrf_token": auth.csrf_for(token) if token else "",
                 "session_expires_at": _iso(user.expires_at), "idle_minutes": config.session_idle_minutes,
                 # contract 1.17.0: where signing out also ends the Keycloak session (null with the development login)
@@ -580,12 +602,12 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                       wardrobing: Literal["all", "elevated", "possible", "no_elevated_signal", "insufficient_evidence", "incomplete"] = "all",
                       community: Literal["all", "ring", "household", "none"] = "all",
                       community_id: str | None = Query(None, max_length=200),
-                      tier: Literal["all", "HIGH", "MEDIUM", "LOW"] = "all",
+                      tier: Literal["all", "CRITICAL", "HIGH", "MEDIUM", "LOW"] = "all",
                       gate: Literal["all", "ESCALATE", "HOLD", "WARNING", "LOW"] = "all",
-                      state: Literal["all", "new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"] = "all",
+                      state: Literal["all", "new", "in_review", "escalated", "closed", "auto_logged"] = "all",
                       cleared_heavy: bool = False,
                       history: Literal["all", "new_in_queue", "repeat_in_queue", "decided_before"] = "all",
-                      exclude_mine: bool = False) -> dict:
+                      exclude_mine: bool = False, mine: bool = False) -> dict:
         """The queue's filters, shared by the list and its export. Filters choose what is shown, never a score or a selection."""
         if "exclude_reviewer" in request.query_params:
             # contract 2.0.0 (AM-71): a typed name is not an identity; refused rather than ignored, so no band shows the wrong cases
@@ -599,6 +621,8 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                 "community": community, "community_id": (community_id or "").strip() or None, "tier": tier, "gate": gate,
                 "state": state, "cleared_heavy": cleared_heavy,
                 "history": history,
+                # contract 3.1.0: only the cases the signed-in user has open (in review or escalated), by user id
+                "mine_user_id": getattr(request.state, "user", None).id if mine and getattr(request.state, "user", None) else None,
                 # contract 1.16.0: leave out the cases the signed-in user opened (the approval band), by user id, not by name
                 "exclude_user_id": getattr(request.state, "user", None).id if exclude_mine and getattr(request.state, "user", None) else None}
 
@@ -629,6 +653,70 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         return Response(content=buffer.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
+    @api.get("/runs/{run_id}/insights")
+    def get_run_insights(run_id: str):
+        """Orders, returns and refunds by day, by channel and by category, with the live counts of the queue (AM-77)."""
+        return views.run_insights(service.store, service.succeeded_run(run_id))
+
+    @api.get("/runs/{run_id}/communities")
+    def list_communities(run_id: str):
+        """Every linked-account group of the run with its members and edges, rings first (AM-77)."""
+        service.succeeded_run(run_id)
+        return {"run_id": run_id, "items": views.community_list(service.store, run_id)}
+
+    @api.get("/runs/{run_id}/decisions")
+    def list_decisions(run_id: str, cursor: str | None = None, limit: int = limit_query):
+        """The workflow events of the run's snapshot, newest first: who opened, cleared, escalated or closed which case (AM-77)."""
+        run = service.succeeded_run(run_id)
+        context = {"list": "decisions", "world_id": run["world_id"], "dataset_id": run["dataset_id"]}
+        after = views.decode_cursor(cursor, context, "time_id")
+        rows = service.store.run_decisions(run["world_id"], run["dataset_id"],
+                                           (datetime.fromisoformat(after[0]), after[1]) if after else None, limit + 1)
+        following = views.encode_cursor(context, [rows[limit - 1]["created_at"].isoformat(), rows[limit - 1]["id"]]) if len(rows) > limit else None
+        return {"items": [review_body(r) for r in rows[:limit]], "next_cursor": following}
+
+    @api.post("/runs/{run_id}/customers/bulk-reviews")
+    def append_bulk_reviews(request: Request, run_id: str, body: BulkReviewRequest):
+        """One action on several cases (AM-77). Each customer is handled under the single-case rules and in its own
+        transaction, so one refusal does not undo the others; the answer says what happened to each."""
+        user = request.state.user
+        run = service.succeeded_run(run_id)
+        if body.kind in ("clear", "escalate") and body.disposition == "unresolved":
+            raise ApiError(422, "invalid_request", "A decision carries a reading: clear or escalate with needs_investigation or "
+                                                   "likely_legitimate, not unresolved.",
+                           [{"rule_id": "request.decision_disposition", "table": None, "row_key": "disposition", "count": 1}])
+        if not body.note.strip():
+            raise ApiError(422, "invalid_request", "A note is required.")
+        results = []
+        for customer_id in body.customer_ids:
+            try:
+                customer = service.store.run_customer(run_id, customer_id, run["world_id"], run["dataset_id"])
+                review = {"world_id": run["world_id"], "dataset_id": run["dataset_id"], "customer_id": customer_id, "run_id": run_id,
+                          "model_id": run["model_id"], "reviewer_name": user.display_name, "author_user_id": user.id,
+                          "disposition": body.disposition, "note": body.note, "kind": body.kind}
+                row, _ = service.store.append_review(review, f"{body.idempotency_key}:{customer_id}"[:128], request_hash(
+                    {"author": user.id, "disposition": body.disposition, "note": body.note, "kind": body.kind}),
+                    in_queue=bool(customer["selected_for_review"]))
+                results.append({"customer_id": customer_id, "status": "recorded", "review_id": row["id"], "error_code": None, "message": None})
+            except NotFound:
+                results.append({"customer_id": customer_id, "status": "refused", "review_id": None, "error_code": "not_found",
+                                "message": "No such customer in this run."})
+            except Conflict as refusal:
+                results.append({"customer_id": customer_id, "status": "refused", "review_id": None, "error_code": refusal.code,
+                                "message": str(refusal)})
+        return {"run_id": run_id, "kind": body.kind, "recorded": sum(r["status"] == "recorded" for r in results), "results": results}
+
+    @api.get("/notifications")
+    def list_notifications(request: Request):
+        """What happened for the signed-in person in the last thirty days, newest first (AM-77)."""
+        user = request.state.user
+        return views.notifications(service.store, user.id, user.can("decide"))
+
+    @api.post("/notifications/seen", status_code=204)
+    def mark_notifications_seen(request: Request):
+        service.store.mark_notifications_seen(request.state.user.id)
+        return Response(status_code=204)
+
     @api.get("/runs/{run_id}/score-distribution")
     def get_score_distribution(run_id: str):
         """How the eligible customers' scores spread and how large the queue is at any threshold (counts, nothing recomputed)."""
@@ -657,13 +745,13 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     @api.post("/runs/{run_id}/customers/{customer_id}/reviews", status_code=201)
     def append_review(request: Request, run_id: str, customer_id: str, body: ReviewRequest):
         user = request.state.user
-        if body.kind in ("approve", "reject") and not user.can("decide"):
+        if body.kind == "close" and not user.can("decide"):
             service.auth.log("refused", user.id, request.state.request_id, {"status": 403, "permission": "decide"})
-            raise ApiError(403, "forbidden", "Approving or rejecting needs the approver role.")
+            raise ApiError(403, "forbidden", "Closing an escalated case with its outcome needs the approver (lead) role.")
         run, customer = _case_customer(run_id, customer_id)
-        if body.kind in ("approve", "reject") and body.disposition == "unresolved":
-            raise ApiError(422, "invalid_request", "A decision carries a reading: approve or reject with needs_investigation or "
-                                                   "likely_legitimate, not unresolved.",
+        if body.kind in ("clear", "escalate", "close") and body.disposition == "unresolved":
+            raise ApiError(422, "invalid_request", "A decision carries a reading: clear, escalate or close with "
+                                                   "needs_investigation or likely_legitimate, not unresolved.",
                            [{"rule_id": "request.decision_disposition", "table": None, "row_key": "disposition", "count": 1}])
         # the author is the signed-in user (AM-69); the stored name is the user's display name at the time of writing
         review = {"world_id": run["world_id"], "dataset_id": run["dataset_id"], "customer_id": customer_id, "run_id": run_id,
@@ -686,6 +774,24 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         after = views.decode_cursor(cursor, context, "text")
         items, following = views.style_queue(service.store, run_id, state, after, limit)
         return {"items": items, "next_cursor": views.encode_cursor(context, following) if following is not None else None}
+
+    @api.get("/runs/{run_id}/styles/export")
+    def export_styles(request: Request, run_id: str, state: str = "all"):
+        """The style list as CSV, for merchandising or the returns-policy team: every style of the chosen verdict (AM-77)."""
+        run = service.succeeded_run(run_id)
+        service.auth.log("export", request.state.user.id, request.state.request_id, {"run_id": run_id, "styles": state})
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\r\n")
+        writer.writerow(views.STYLE_EXPORT_COLUMNS)
+        after = None
+        while True:
+            items, after = views.style_queue(service.store, run_id, state, after, 500)
+            writer.writerows(views.style_export_row(item) for item in items)
+            if after is None:
+                break
+        name = f"arai-{run['world_id']}-{run_id}-styles.csv"
+        return Response(content=buffer.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @api.get("/runs/{run_id}/styles/{style_id}")
     def get_style(run_id: str, style_id: str):

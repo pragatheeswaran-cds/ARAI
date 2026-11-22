@@ -1,5 +1,21 @@
 # Pending items (17 Oct 2026)
 
+> **Update, 22 Nov 2026.** `main` now contains everything listed below as waiting for a merge (item 2.1 is done:
+> `deploy-and-snapshots`, which held `year-of-snapshots` and every other branch, was merged into `main` on 21 Nov).
+> The latest work is on branch `penpot-implementation`: the screens of the Penpot design, the workflow Open, In Review,
+> Escalated, Closed, and region, email and phone in the data (AM-76 to AM-78). 247 Python tests and 30 frontend tests
+> pass there; the browser walkthrough was updated and has not been rerun. New open items:
+>
+> | # | Item | Waits on |
+> |---|---|---|
+> | P1 | Email and phone as ring signals: a shared phone or mailbox as a link in the relationship graph. It changes the features, so it needs a new experiment on new sealed worlds (experiment id, seeds, stated expectation, gate) | Closed 22 Nov (decision E9): an independent review showed the experiment could not test its own question, so the links are shown to analysts as evidence and the model is unchanged (AM-79). Left open: a paired control run, and new model features built on contact links, which would need an exploration and an experiment of their own |
+> | P2 | Rewrite `docs/demo-script.md` passages that tell the two-person approval story, if the demonstration is given again | The owner |
+> | P3 | Rerun `tests\e2e\walkthrough.py` against a loaded instance (twelve snapshots, `scripts\history_demo.py --load`) | A rehearsal |
+> | P4 | Decided 22 Nov: only the approver role (the lead) closes an escalated case | Done |
+> | P5 | Merge `penpot-implementation` into `main` | Decided 22 Nov: after the contact-links work |
+>
+> The rest of this file is the list of 17 Oct 2026, kept as written.
+
 What is still open, who it waits on, and where it is described. The work so far is complete and pushed on branch
 `year-of-snapshots`. That branch contains every earlier branch: `ccr-488644ae-esclgi`, `gap3-customer-history`,
 `auth-design`, `auth-admin` and `lint-cleanup`. 237 Python tests pass, the browser walkthrough passes 71 of 71 and lint

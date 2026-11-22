@@ -1,12 +1,18 @@
 # Demo script: the ARAI workbench on world W5401
 
+> **Revised 22 Nov 2026** for the screens of the Penpot design and the workflow Open, In Review, Escalated, Closed
+> (branch `penpot-implementation`, decisions AM-76 to AM-78). The numbers are those of W5401 re-scored on that branch;
+> scores, ranks and the selection are the ones of October. The screenshots in `reports/ui/2026-10-16/` show the
+> earlier layout: the same content under the earlier page names, without the dashboard charts, the Critical level,
+> the new pages and the new decision buttons. The slide deck in `docs/demo-deck/` has not been revised.
+
 A story and a click-by-click flow for a 20 to 25 minute demonstration of the return-abuse workbench. The slide deck
 built from it is in `docs/demo-deck/`. Every number
 below is what the screens show for the demonstration world W5401 scored on experiment 4, on its latest run
 (`run-020e5490d88f48c28e8c`, re-scored 16 Oct 2026 under API contract 1.14.0 with the revised ring rule). The first
 run of 15 Oct (`run-ed95a0e2fd3e49a69d4d`) has the same scores, ranks and selection. Since API contract 1.15.0 the
 same world also holds its monthly snapshots from 9 October 2025 to 9 August 2026, the same customers month by month for a year, so a
-customer's history shows on the queue, the case and the Overview (RUNBOOK.md section 4.1). Screenshots are in
+customer's history shows on the queue, the case and the Dashboard (RUNBOOK.md section 4.1). Screenshots are in
 `reports/ui/2026-10-16/`.
 
 The data is simulated. Say so at the start and at the end: the application reads a synthetic world of 10,000
@@ -23,19 +29,19 @@ process: those who claim parcels never arrived, who return occasion wear after t
 linked accounts that claim on the same products within days of each other. ARAI ranks the same customers with a
 model trained on the pattern of what they return and when, keeps the return-rate rule beside it for comparison,
 and hands every case to a reviewer with the evidence, denominators and caveats on the page. Nothing on the screen
-is a finding of misconduct: it is a queue of places worth a look, with the record laid out so a second person can
-check the first.
+is a finding of misconduct: it is a queue of places worth a look, with the record laid out so that whoever takes the
+case next, the lead who closes it or the customer-service agent who answers the call, can check the reviewer's reading.
 
 Three characters carry the demo:
 
 | Character | Who they stand for | Where they appear |
 |---|---|---|
-| Priya, returns operations lead | Owns the review budget and wants to know what the queue costs in honest customers | Overview, Evaluation |
-| Arjun, first-line reviewer | Works the queue, writes notes, opens cases | Customer queue, Customer case |
-| Meera, second reviewer | Approves or rejects cases she did not open | Decision panel, second-reviewer rule |
+| Priya, returns operations lead | Owns the review budget and wants to know what the queue costs in honest customers | Dashboard, Analytics |
+| Arjun, first-line reviewer | Works the queue, writes notes, opens cases, clears them or escalates them | Risk Queue, Investigation Details, Investigations |
+| Meera, lead | Closes escalated cases with the outcome the investigation team reports | Decision panel, the escalated band, the bell |
 
 Each character is a person of the development login with the matching role (since API contract 1.16.0): Priya is a
-viewer, Arjun a reviewer, Meera a reviewer and approver; Asha and Ravi (reviewers and approvers) wrote the August
+viewer, Arjun a reviewer, Meera a reviewer and approver (the lead); Asha, Meera and Ravi wrote the August
 history, and Admin registers and scores. Sign in as the character whose part you are playing; every note and decision
 is recorded under the person signed in. `AUTH_DEV_USERS` changes the list (RUNBOOK section 2.5).
 
@@ -60,7 +66,7 @@ product at every step (section 1c), so no separate baseline demonstration is nee
   heavy-returner line, and the rule finds fewer than one in three of them. A ring spreads its claims across several
   accounts, and the rule finds one ring member in four. The number the list uses cannot see what they do.
 - *Friday, a decision nobody can defend.* Arjun escalates three people. If one of them calls to complain, the only
-  answer is "your return rate is high". No second person checked, because there was nothing to check.
+  answer is "your return rate is high". Nobody downstream can check it, because there was nothing to check.
 
 **The same Monday, the other list**
 
@@ -74,17 +80,17 @@ product at every step (section 1c), so no separate baseline demonstration is nee
   send back about 6. Four returns in thirteen went back late in the window. The rule ranked this customer 553rd.
 - *Rings appear as rings.* Rank 4 is one of five linked accounts, four of them on the list, with a claim on the same
   product within days of each other. The reviewer sees the group once, not five strangers.
-- *Friday, a decision with a record.* Arjun opens the case, writes what he saw, and the system refuses to let him
-  approve his own work. Meera approves, with both names and times kept. If the customer calls, there is an answer.
+- *Friday, a decision with a record.* Arjun opens the case, writes what he saw and escalates it. Meera closes it
+  with the outcome, confirmed or not, and both names and times are kept. If the customer calls, there is an answer.
 
 **The three lines to repeat**
 
 1. *Same budget, three times the hits.* The money is not in more reviews. It is in better ones.
 2. *Return rate measures loyalty as often as abuse.* Ranking on it sends your best customers to the fraud desk.
 3. *A queue you can argue with.* Every case shows its expectation, its denominators and the record behind each link,
-   and a second person decides.
+   and every decision carries a name, a time and a note.
 
-Say the week-one lines while the Overview and the queue are on screen, before any filter is touched; say the
+Say the week-one lines while the Dashboard and the queue are on screen, before any filter is touched; say the
 week-two lines as each scene produces its evidence; say the three lines at the close.
 
 ## 1c. Where the baseline shows inside the flow
@@ -94,13 +100,13 @@ what it replaced.
 
 | Screen | What shows the rule | Line it supports |
 |---|---|---|
-| Overview, "Model and return-rate rule compared" | 209 model only, 75 both, 209 rule only | Three quarters of the two lists differ |
-| Customer queue, column "Return-rate rule" | The rule's rank for every customer: rank 1 is the rule's 553rd, rank 5 its 2,254th | The real cases never arrive |
-| Customer queue, Comparison "Selected by the rule, not by the model" | The 209 the rule would have reviewed | The rule punishes loyalty |
-| Customer queue, Show "Cleared heavy returners" | The customers above the 40.6 percent cutoff the model left out, each with the reason it was left out and what was not observed (no claims, no late returns, no links) | The loyal customer is left alone |
+| Dashboard, "Model and return-rate rule compared" | 209 model only, 75 both, 209 rule only | Three quarters of the two lists differ |
+| Risk Queue, column "Return-rate rule" | The rule's rank for every customer: rank 1 is the rule's 553rd, rank 5 its 2,254th | The real cases never arrive |
+| Risk Queue, More filters, "Selected by the rule, not by the model" | The 209 the rule would have reviewed | The rule punishes loyalty |
+| Risk Queue, More filters, Show "Cleared heavy returners" | The customers above the 40.6 percent cutoff the model left out, each with the reason it was left out and what was not observed (no claims, no late returns, no links) | The loyal customer is left alone |
 | Customer case, "Analyst rules that would have fired" | The five legacy rules against this case | A decision nobody can defend, then one with a record |
-| Evaluation, "Abusers caught against alerts used" | First 58 alerts: 58 abusers against 19; 0 honest heavy returners against 39 | Same budget, three times the hits |
-| Evaluation, "How often each ranking is right" | Rule 22.7 percent, analyst rulebook 32.4, model 74.3 | Four of five visits find nothing |
+| Analytics, "Abusers caught against alerts used" | First 58 alerts: 58 abusers against 19; 0 honest heavy returners against 39 | Same budget, three times the hits |
+| Analytics, "How often each ranking is right" | Rule 22.7 percent, analyst rulebook 32.4, model 74.3 | Four of five visits find nothing |
 
 ## 1d. Optional cold open: the week with the rule, live
 
@@ -136,11 +142,11 @@ defaults.
    curl.exe -s http://127.0.0.1:8000/api/v1/health
    ```
    `scoring_ready` and `promoted_model_ready` must both be `true` and `model_kind` must be `supervised`.
-2. Open http://127.0.0.1:8000. The Overview must show 5,676 eligible customers and 284 selected for W5401. If it
+2. Open http://127.0.0.1:8000. The Dashboard must show 5,676 eligible customers and 284 selected for W5401. If it
    says no scored run is available, register and score W5401 (RUNBOOK.md section 4), about 15 seconds.
 2b. Load the monthly snapshots of W5401 and the three August review outcomes (RUNBOOK.md section 4.1:
    `uv run arai snapshot W5401 --as-of 2025-10-09 2025-11-09 2025-12-09 2026-01-09 2026-02-09 2026-03-09 2026-04-09 2026-05-09 2026-06-09 2026-07-09 2026-08-09` once, then with the instance up
-   `uv run --no-sync python scripts\history_demo.py --load`). The Overview must then show
+   `uv run --no-sync python scripts\history_demo.py --load`). The Dashboard must then show
    **Since the previous snapshot of W5401 (09 Aug 2026)**: 249, 35, 22 and 2.
 3. Sign in as **Arjun** on the sign-in page. Signing out and in as another character takes two clicks (**Sign out**
    at the top right).
@@ -175,7 +181,7 @@ back to 9 October 2025, so every scene of this script works there unchanged, wit
   minute answers 429 for the rest of that minute.
 
 The checks of section 2 become: open the address, `curl.exe -s https://arai-demo.duckdns.org/api/v1/health` shows
-`scoring_ready` and `promoted_model_ready` true with `model_kind` supervised, and the Overview after signing in as
+`scoring_ready` and `promoted_model_ready` true with `model_kind` supervised, and the Dashboard after signing in as
 Priya shows 5,676 eligible and 284 selected for W5401 with the **Since the previous snapshot** panel.
 
 ---
@@ -185,13 +191,13 @@ Priya shows 5,676 eligible and 284 selected for W5401 with the **Since the previ
 | Minute | Scene | Screen | Point made |
 |---|---|---|---|
 | before 0 | Cold open, optional | Baseline rehearsal instance, port 8011 | The week with the rule, seen live: a queue with nothing but a return-rate percentile |
-| 0 to 2 | Why return rate is the wrong queue | Overview | 209 customers the model selects that the rule does not, and the reverse |
-| 2 to 6 | The queue a reviewer sees | Customer queue | Tiers anchored to the budget, Escalate against Hold, rings grouped, the rule's rank beside the model's |
-| 6 to 13 | One case end to end | Customer case, W5401-C03245 | Expected against actual, why the score, reason codes, notes, the second-reviewer rule |
-| 13 to 17 | A ring, and the same ring last month | Customer case, W5401-C08645, then its History tab | Five linked accounts, one coordinated claim match; rejected on the August snapshot, back at rank 4 as September's own case |
-| 17 to 19 | Products, not people | Style investigation | Two styles with similar return rates and different stories; whose problem each is |
-| 19 to 23 | What the numbers rest on | Evaluation | Curves, precision against the rule, honest customers reviewed, final test, limits |
-| 23 to 25 | How a new month gets in | Datasets & runs, then the Overview | Eight files, validation, the stepper; the same customers next month: 249 again, 35 new, 22 left |
+| 0 to 2 | Why return rate is the wrong queue | Dashboard | The period's returns and suspected share; 209 customers the model selects that the rule does not, and the reverse |
+| 2 to 6 | The queue a reviewer sees | Risk Queue | Four levels anchored to the budget, Critical for ring members, rings grouped, the rule's rank beside the model's |
+| 6 to 13 | One case end to end | Investigation Details, W5401-C03245 | Expected against actual, why the score, reason codes, notes; clear, or escalate and close |
+| 13 to 17 | A ring, and the same ring last month | Customer case, W5401-C08645, then its History tab | Five linked accounts, one coordinated claim match; closed as confirmed on the August snapshot, back at rank 4 as September's own case |
+| 17 to 19 | Products, not people | Products / SKU | Two styles with similar return rates and different stories; whose problem each is |
+| 19 to 23 | What the numbers rest on | Analytics | Curves, precision against the rule, honest customers reviewed, final test, limits |
+| 23 to 25 | How a new month gets in | Configuration, then the Dashboard | Eight files, validation, the stepper; the same customers next month: 249 again, 35 new, 22 left |
 
 If time is short, drop the ring scene and the upload scene; the story holds without them.
 
@@ -199,12 +205,24 @@ If time is short, drop the ring scene and the upload scene; the story holds with
 
 ## 4. Scene by scene
 
-### 4.1 Overview (0 to 2 minutes)
+### 4.1 Dashboard (0 to 2 minutes)
 
-Screenshot `01-overview.png`.
+Screenshot `01-overview.png` (earlier layout).
 
-Open on the Overview. The header strip names the run, the world and the model, and the page shows three
-panels.
+Open on the **Dashboard**. The dark bar names the product and who is signed in; the strip under it names the run, the
+world and the model.
+
+The top of the page is the period view. With **Period: Last 30 days** it reads: **Total Returns 2,004** return lines,
+**Suspected Return Rate 8.1%** (the share of those lines that came from customers selected for review), **Suspected
+Customers 284**, and **False Positive Rate n/a** until a case has been closed. Under them, the **Suspected Loss
+Trend** draws the refunds paid to those customers day by day against the previous thirty days. Say: "Suspected, not
+confirmed. These are the returns and refunds of the people on the review list, nothing more."
+
+Then the three rings and bars: **Risk Level Distribution** (86 Critical, 198 High, 307 Medium, 5,085 Low),
+**Pattern Distribution** (what was observed among the 284, a customer can show several patterns) and **Suspected
+Returns by Channel**. Because this world is simulated and its truth was published, one more panel, marked *simulated
+data only*, shows what no real deployment can: the true abuse rate (6.0 percent, 341 of 5,676), **232 abusers among
+the 284**, a true false positive rate of 18.3 percent, and 75 for the return-rate rule at the same budget.
 
 Say: "Ten thousand customers, of whom 5,676 have enough mature purchase history to be ranked at all. The team's
 budget is five percent of those: 284 customers. The question is which 284."
@@ -229,33 +247,40 @@ Say: "The rule reviews more money. The model reviews more than twice the money p
 came back to inspect." Read the callout under the table: these are observed refunds, not losses, and a claim refund
 is not proof of abuse.
 
-Do not read the **Next customers to investigate** list aloud yet; click **View results** on it to move on.
+Do not read the **Next customers to investigate** list aloud yet; click **Risk Queue** in the sidebar to move on.
 
-### 4.2 Customer queue (2 to 6 minutes)
+### 4.2 Risk Queue (2 to 6 minutes)
 
-Screenshots `02-queue.png`, `03-queue-rule-only.png`, `04-queue-grouped.png`, `03-queue-cleared.png`.
+Screenshots `02-queue.png`, `03-queue-rule-only.png`, `04-queue-grouped.png`, `03-queue-cleared.png` (earlier layout).
 
-The queue opens on the review set: 50 rows and a **Load more** button, 284 in total.
+The four tiles count the cases: **284** in all, **86 Critical and 198 High**, 307 Medium, 5,085 Low. The queue opens
+on the review set: 50 rows and a **Load more** button, 284 in total.
 
 Walk the columns left to right:
 
-- **Rank and score.** The score is a percentile against the training worlds, not a probability. The threshold for
-  this run is 95.5; the queue is everyone at or above it.
-- **Tier.** Every selected customer is **High**; the tiers are anchored to the budget, not to fixed bands, so High
-  always means "in this period's queue". Hover the (?) for the one-sentence rule.
-- **Gate outcome.** A presentation rule over the results, not a model output: **Escalate** (98 customers) is
+- **Case ID and Customer ID.** A case is one customer in this run, so the case carries the customer's own number
+  (CASE-03245 for W5401-C03245) with the rank under it.
+- **Risk Score.** A percentile against the training worlds, not a probability. The threshold for this run is 95.5;
+  the queue is everyone at or above it.
+- **Risk Level.** Anchored to the budget, not to fixed bands: a customer selected for review is **Critical** as a
+  member of a detected ring and **High** otherwise; Medium scores 90 or above and is not selected; Low is the rest.
+  Hover the header for the one-sentence rule.
+- **Pattern(s).** Chips such as "Two or more late returns, 4 of 13 item-return lines" or "Shares identifiers with 4
+  accounts". Each chip carries its denominator.
+- **Refunded, Return %, Accounts.** Refunds paid in rupees with the part on transaction claims, units returned over
+  units bought, and the size of the customer's linked-account group.
+- **Status.** Open, In Review, Escalated, Closed; a closed case says how it ended (cleared, confirmed or not
+  confirmed after escalation).
+- **Recommendation.** A presentation rule over the results, not a model output: **Escalate** (98 customers) is
   selected and in a ring or with the wardrobing indicator elevated; **Hold** (186) is selected otherwise.
-- **Primary signals.** Chips such as "Two or more late returns, 4 of 13 item-return lines" or "Shares
-  identifiers with 4 accounts". Each chip carries its denominator.
 - **Return-rate rule.** The rule's own rank and whether the rule would have selected the customer.
-- **Status.** New, in review, awaiting approval, approved, rejected.
 
 Now three filter moves, each of which changes the address bar so a view can be sent as a link:
 
-1. **Show: All customers**, then **Model and return-rate rule: Selected by the rule, not by the model.** The rows
+1. Under **More filters**, **Show: All customers**, then **Model and return-rate rule: Selected by the rule, not by the model.** The rows
    are the rule's 209: high return rates, no claim or timing pattern, and the model leaves them out of the queue.
    Say: "These are mostly the honest heavy returners the rule has always sent for review."
-2. Back to **Show: Review set**, then **Group: by ring**. Members of the same ring sit under their first member,
+2. Back to **Show: Selected for review**, then **Group rows: By linked-account group**. Members of the same ring sit under their first member,
    so a reviewer sees the group once. 86 of the 284 are ring members, across 30 rings; 19 more are household
    members, which the kind rule labels differently and the queue does not escalate for.
 3. **Show: Cleared heavy returners.** Customers above the heavy-returner cutoff (a return rate of 40.6 percent in
@@ -273,11 +298,17 @@ Reset the filters, type the last five characters of the top customer's id (`0324
 press Enter, and open the case with the keyboard (Tab to the link, Enter) to show the queue works without a
 mouse.
 
+If there is time, show the bulk action: tick three cases, write one note in the bar that appears and press **Open**.
+The page says how many were recorded and, for any that were refused, why. **Investigations** in the sidebar then
+lists the cases the signed-in person has open.
+
 ### 4.3 One case end to end: W5401-C03245 (6 to 13 minutes)
 
 Screenshots `05-case-evidence.png`, `06-case-returns.png`, `06-case-linked-accounts.png`, `07-case-notes.png`.
 
-Rank 1, score 99.99, tier High, gate outcome Hold. The return-rate rule ranks this customer **553rd**: the rule
+Rank 1, score 99.99, risk level High, recommendation Hold. The page opens with **Case Summary** (case and customer
+identifiers, score and level, the snapshot) and **Financial Impact** (refunds paid, the part on transaction claims,
+units returned). The return-rate rule ranks this customer **553rd**: the rule
 would never have shown this case.
 
 **Evidence tab, top to bottom:**
@@ -315,18 +346,19 @@ shared device, payment instrument or address, and only with the evidence. We wil
 existed, so that note carries an **unverified name** marker; notes written since say **(signed in)**. Notes are append
 only and each one says which snapshot and run it was written on.
 
-Now the second-reviewer rule, two ways:
+Now the decision, three ways:
 
-- *Roles.* Signed in as Arjun (a reviewer), the Decision panel offers Open, Request approval and notes but no
-  Approve or Reject: "Approving or rejecting needs the approver role." Open the next case marked **New** (queue,
-  Status: New), write a note, press **Open case**, then **Request approval**.
-- *Refusal.* Sign out and sign in as **Meera** (reviewer and approver). On a case Meera opens herself, **Approve** is
-  refused in the server's own words: "You opened this case. A different reviewer must approve or reject it."
-  (screenshot `07b-case-refusal.png`). Say: "The rule compares who signed in, not a typed name, and it lives in the
-  server, not in the button."
-- *Approval.* On the case Arjun opened, Meera writes "Reviewed the timing evidence; agree it needs the policy team"
-  and presses **Approve**. The status tile turns to Approved with both names and times, each recorded under the
-  person who signed in.
+- *Clear.* Signed in as Arjun (a reviewer), open a case marked **Open** from the queue, write a note and press
+  **Open case**: the status becomes In Review. Read the evidence, write what you saw and press **Clear Case**. The
+  case closes as cleared under Arjun's name; no second person is needed to leave an honest customer alone.
+- *Escalate.* On another case, press **Open case**, then write "Timing evidence and linked claims; needs the
+  investigation team" and press **Escalate Case**. The status becomes Escalated. Arjun is not offered the next step:
+  "Closing an escalated case needs the approver (lead) role." Say: "The analyst who read the evidence decides
+  whether it goes further. What comes back is recorded by someone accountable for it."
+- *Close.* Sign out and sign in as **Meera** (the lead). The bell in the top bar shows Arjun's escalation, and the
+  Risk Queue shows a band **Escalated, awaiting an outcome**. Open the case, write the outcome and press **Close:
+  confirmed** (or **Close: not confirmed**). The status reads Closed with both names and times, and Arjun's bell tells
+  him his case was closed. **Audit Log** in the sidebar lists the three steps, newest first.
 
 Press **Download case summary** at the top of the case: a plain-text hand-off with the evidence, every return
 line with its status and refund, and the notes, for whoever acts on the decision.
@@ -338,7 +370,8 @@ score, and that the page tells you the budget this would cost. It changes nothin
 
 Screenshots `06-case-linked-accounts.png` for a ring member, `04-queue-grouped.png`.
 
-Go back to the queue, set **Group: by ring**, and open rank 4, W5401-C08645. Gate outcome **Escalate**.
+Go back to the queue, set **Group rows: By linked-account group**, and open rank 4, W5401-C08645. Risk level
+**Critical** (selected and in a ring), recommendation **Escalate**.
 
 - 33 units requested back of 56 purchased; expected about 10.9, band 4.9 to 16.8.
 - Evidence chips: repeat claims (transaction claims on 4 of 34 return lines), linked claims, late returns, shares
@@ -358,22 +391,30 @@ Compare with rank 3, W5401-C05428, whose ring has 3 of 5 members in the queue an
 history: the linked-accounts panel still lists that member inside the ring, unranked, so the reviewer knows the
 fifth account exists.
 
-**The same ring last month (one minute).** Back on W5401-C08645, point at the callout above the tabs: *Rejected on
-the 09 Aug 2026 snapshot by Ravi.* Open the **History** tab (screenshot `17-case-history.png`): rank 11 on 9 July,
-rank 4 on 9 August, rank 4 now; Escalate each time; 26, 30 and 33 units requested back; the August review opened by
-Asha and rejected by Ravi, with both notes on the **Notes** tab marked as written on the August snapshot. Say: "Next
+To show the ring as a picture, open **Network Graph** in the sidebar (or **View Network Graph** on the customer's
+page under **Customers**): the group's accounts on a circle, filled when selected for review, a line for each pair
+that shares identifiers and a heavier line where their claims matched. The list beside it holds every group of the
+run, rings first.
+
+**The same ring last month (one minute).** Back on W5401-C08645, point at the callout above the tabs: *Confirmed after
+escalation on the 09 Aug 2026 snapshot by Ravi.* Open the **History** tab (screenshot `17-case-history.png`): rank 11 on 9 July,
+rank 4 on 9 August, rank 4 now; Escalate each time; 26, 30 and 33 units requested back; the August review opened and escalated by
+Asha and closed as confirmed by Ravi, with the notes on the **Notes** tab marked as written on the August snapshot. Say: "Next
 month's export brings the same customers with the same identifiers, so the product remembers. But last month's
 decision does not decide this month's evidence: the case is new again, with the decision on it." Then open
-W5401-C05428 from the queue: its History shows it climbing from rank 38 to 23 to 3 while its August review waited
-for a second reviewer.
+W5401-C05428 from the queue: its History shows it climbing from rank 38 to 23 to 3 while its August review, escalated by
+Asha, waited for an outcome.
 
-### 4.5 Style investigation (16 to 19 minutes)
+### 4.5 Products / SKU (16 to 19 minutes)
 
-Screenshots `10-styles.png`, `08-styles-targeting.png`, `09-style-detail.png`.
+Screenshots `10-styles.png`, `08-styles-targeting.png`, `09-style-detail.png` (earlier layout).
 
-Click **Style investigation**. 37 styles; 6 carry a verdict, 31 read **Normal**.
+Click **Products / SKU**. 37 styles; 6 carry a verdict, 31 read **Normal**. The tiles count the styles, the Critical
+and High ones, the overall return rate and the share of returned units that came from each style's top tenth of
+returners; beside them, the categories by return rate and the styles by risk level. Rows are styles, with their SKUs
+inside; **Export** downloads the list as CSV.
 
-The panel at the top, **Two styles with similar return rates and different stories**, picks the pair
+The panel **Two styles with similar return rates and different stories** picks the pair
 automatically: a **Quality issue** style (many returns name a quality reason; suggested owner Merchandising)
 beside an **Abuse target** style (an ordinary product returned by an unusual set of buyers, linked accounts
 claiming on it within days of each other; suggested owner Returns policy). Say: "Same return rate, opposite
@@ -389,13 +430,17 @@ Set **Verdict: Abuse target** and open BB-JKT-02:
   styles), 33 of them ring members.
 - **Reasons given.** Reason codes with line and unit counts; here the transaction-claim group (item not received,
   missing parts, wrong item sent, empty package) is unusually large for a jacket.
+- **Product vs. abuse reading.** A short reading with its supporting and contradictory signals, written by fixed
+  rules from the numbers on the page; the panel says so. **Customer concentration** shows how much of the style's
+  returns came from its top 1, 5 and 10 percent of returners, and **Return rate by month** draws the style against
+  its category.
 - **When in the window** and **How risky the returners are**, with denominators and the SKU drill-down.
 
-### 4.6 Evaluation (19 to 23 minutes)
+### 4.6 Analytics: the evaluation (19 to 23 minutes)
 
 Screenshots `12-evaluation.png`, `10-evaluation.png`, `11-evaluation-truth.png`.
 
-Click **Evaluation**. This is Priya's page: what the queue costs and what it rests on.
+Click **Analytics**. This is Priya's page: what the queue costs and what it rests on.
 
 - **Abusers caught against alerts used.** Two curves on this very run, drawn from the simulation's truth, which
   the server exposes only here and marks as such: for every number of alerts, how many of W5401's 341 abusers
@@ -403,7 +448,7 @@ Click **Evaluation**. This is Priya's page: what the queue costs and what it res
   alerts catch 58 abusers and no honest heavy returner; the rule's first 58 catch 19 and review 39 honest heavy
   returners. With the pointer off the chart the page reads the full budget: at 284 alerts the model's queue holds
   232 abusers and 18 honest heavy returners, the rule's 75 and 209.
-- **Money behind the truth.** The Overview showed observed refunds. The functional review of this run
+- **Money behind the truth.** The Dashboard showed observed refunds. The functional review of this run
   (`reports/qa/2026-10-15/functional-review.md`) adds what only the simulation's truth can say: refunds paid on
   abusive return lines come to INR 23.7 lakh in the model's 284 against INR 8.0 lakh in the rule's 284. Say it as
   "the rule reviews more money, mostly honest money", and say that this figure comes from the truth, not a screen.
@@ -429,11 +474,11 @@ Click **Evaluation**. This is Priya's page: what the queue costs and what it res
 - **Run manifest** at the bottom: experiment id, seeds, bundle ids, contract version, code revision. Say: "Every
   number on this page can be regenerated from these seeds."
 
-### 4.7 Datasets & runs (23 to 25 minutes)
+### 4.7 Configuration: datasets and runs (23 to 25 minutes)
 
 Screenshots `02-datasets-and-runs.png`, `13-upload.png`.
 
-Click **Datasets & runs**. Show, without necessarily doing it:
+Click **Configuration**. Show, without necessarily doing it:
 
 - **Register a snapshot.** The checklist of eight files (manifest and seven tables). Validation runs on upload
   against the data contract; a snapshot that fails is rejected whole and the page lists every broken rule.
@@ -450,9 +495,9 @@ Afterwards `scripts/db_clear.py --world W7001N300 --yes` (or `arai db-clean` on 
 
 **A new month.** The dataset list shows W5401 three times: **09 Sept 2026**, **09 Aug 2026** and **09 Jul 2026**, the
 same 10,000-customer world exported on three dates (9,502, 9,791 and 10,000 accounts as new customers sign up). Say:
-"Next month's export is not a new world. It is the next snapshot of the same customers." Go to the **Overview**
-(screenshot `15-overview-history.png`): **Since the previous snapshot of W5401 (09 Aug 2026)**: 249 customers are in
-both queues, 35 are new to this one, 22 left it, 2 were decided last month (1 rejected, 1 approved). Click **New to
+"Next month's export is not a new world. It is the next snapshot of the same customers." Go to the **Dashboard**
+(screenshot `15-overview-history.png`, earlier layout): **Since the previous snapshot of W5401 (09 Aug 2026)**: 249 customers are in
+both queues, 35 are new to this one, 22 left it, 2 were closed last month (1 confirmed, 1 cleared). Click **New to
 the queue**: the queue filters to those 35, each marked "new to the queue since 09 Aug 2026 (rank ... then)".
 For the money question: in the simulation, 28 of those 35 are abusers and 8 of them first acted after 9 August
 (offline, from the simulation's truth; `records/2026-10-16-monthly-snapshots.md`), not on screen.
@@ -464,7 +509,7 @@ For the money question: in the simulation, 28 of those 35 are abusers and 8 of t
 "Three things to take away. The queue is built from what customers return and when, not from how much, and on
 these worlds that triples the share of reviews that find something while cutting honest heavy returners in the
 queue from 44 percent to under 5. Every case shows its denominators, its expectation and the record behind each
-link, so a second reviewer can disagree with the first on the page. And everything here is simulated: the next
+link, so the lead who closes a case can disagree with the reviewer on the page. And everything here is simulated: the next
 step is the same pipeline on a real month of returns, with the same evaluation page to say what changed."
 
 ---
@@ -473,10 +518,14 @@ step is the same pipeline on a real month of returns, with the same evaluation p
 
 | Question | Answer |
 |---|---|
-| Is the score a probability that this customer is abusing returns? | No. It is a percentile against the training worlds. The page says so wherever the score appears, and no screen uses the words fraud or confidence. |
-| Why is every customer in the queue "High"? | Tiers are anchored to the review budget: High is the queue, Medium is a score of 90 or above outside it, Low is the rest. Switch **Show** to All customers to see Medium and Low. |
+| Is the score a probability that this customer is abusing returns? | No. It is a percentile against the training worlds. The page says so wherever the score appears, and no screen uses the words fraud or confidence: the dashboard says suspected. |
+| Why is every customer in the queue Critical or High? | Levels are anchored to the review budget: the queue is Critical (in a detected ring) and High (the rest of the queue), Medium is a score of 90 or above outside it, Low is the rest. Switch **Show** to All customers to see Medium and Low. |
 | What decides Escalate against Hold? | A stated rule over the results, printed on hover: selected and in a ring, or with the wardrobing indicator elevated, is Escalate. It is not a model output and changes no rank. |
-| Who can approve a case? | A signed-in approver who did not open it; the server compares user ids, so one person cannot approve their own case under another name. On a laptop and on the demonstration VM the people are the personas of the development login (AM-74); a real deployment signs in through Keycloak single sign-on, with roles from Keycloak groups (contract 1.17.0; RUNBOOK 2.6 rehearses it with a development Keycloak). |
+| Who decides a case? | The reviewer who opened it clears it or escalates it; a person with the approver role (the lead) closes an escalated case as confirmed or not confirmed. Each step is recorded under the person who signed in, with a note, and is listed in the Audit Log. On a laptop and on the demonstration VM the people are the personas of the development login (AM-74); a real deployment signs in through Keycloak single sign-on, with roles from Keycloak groups (contract 1.17.0; RUNBOOK 2.6 rehearses it with a development realm). |
+| Why is there no second approval any more? | It was removed at the owner's request when the screens were redrawn (AM-76): the analyst's clear or escalate is the decision, and the second step is the outcome a lead records after an escalation. The record of who did what is unchanged, and reviews written under the earlier workflow stay readable. |
+| Is the dashboard's loss trend a loss? | No. It is refunds paid to customers selected for review. The panel says suspected, and the false positive rate beside it only counts cases a person has closed. The true rates appear in a separate panel, and only because this world is simulated. |
+| Does the model use phone numbers and email addresses? | No. Where a snapshot carries them, the links an analyst sees (linked accounts, rings, the Network Graph) also use a shared phone or mailbox, any two shared identifier types out of five. The model reads the three order identifiers only; a test scores one snapshot with and without the contact columns and requires every score and rank to be equal (AM-79). |
+| Where are email, phone and region? | They are optional columns of the data contract since amendment 1.2 (AM-78) and appear on the customer's page for snapshots that carry them. W5401 was written before them, so its customers show none. They are never model inputs. |
 | Who controls access? | On the demonstration VM nobody: anyone with the address picks a persona, and the personas' roles are fixed in `AUTH_DEV_USERS` (AM-74, AM-75); the data is synthetic. In a real deployment Keycloak groups decide each person's role; ARAI reads them at every sign-in and never edits them. An admin's People & access page shows everyone who has signed in and where each role comes from, can disable a person or end their sessions at once, and shows the append-only sign-in log (contract 2.0.0). |
 | Where do the memos come from? | A drafting model called after the run, only when an API key is configured, with each draft checked against the case's own numbers before it is stored. Without a key the panel says so and shows nothing else. |
 | Why are the bundle ids different from the experiment record? | The manifest hashes the dependency lock and library versions as well as the code and seeds. Scores, ranks and selections reproduce exactly; the ids differ when the environment does. |

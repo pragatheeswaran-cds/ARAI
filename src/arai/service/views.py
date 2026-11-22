@@ -12,7 +12,7 @@ from datetime import datetime
 
 from arai import features as F
 from arai.service import attribution, scoring
-from arai.service.store import NotFound, Store
+from arai.service.store import CLOSED_KINDS, ESCALATED_KINDS, NotFound, Store, outcome
 
 WARDROBING_LIMITATION = ("Occasion wear returned late in its return window, counted only when what the customer returned supports "
                          "it. It cannot establish that an item was worn, and it is independent of the model score.")
@@ -147,12 +147,13 @@ def community_detail(store: Store, run_id: str, row: dict) -> dict | None:
 
 
 def tier(row: dict) -> str | None:
-    """Decision D1, anchored to the queue: HIGH is selected for review, MEDIUM scores at or above 90 and is not selected, LOW
-    is every other eligible customer. None for a customer without a score. store.TIER_SQL is the same rule."""
+    """Decision D1, anchored to the queue: a customer selected for review is CRITICAL as a member of a detected ring and HIGH
+    otherwise (Penpot decision 5, 21 Nov 2026); MEDIUM scores at or above 90 and is not selected; LOW is every other eligible
+    customer. None for a customer without a score. store.TIER_SQL is the same rule."""
     if row["eligibility_status"] != "eligible" or row["risk_score"] is None:
         return None
     if row["selected_for_review"]:
-        return "HIGH"
+        return "CRITICAL" if row.get("community_kind") == "ring" else "HIGH"
     return "MEDIUM" if float(row["risk_score"]) >= TIER_MEDIUM_FROM else "LOW"
 
 
@@ -170,20 +171,26 @@ def gate_outcome(row: dict, summary: dict) -> str | None:
     return "WARNING" if band == "MEDIUM" or heavy else "LOW"
 
 
+WORKFLOW_STATE = {"open": "in_review", **{kind: "escalated" for kind in ESCALATED_KINDS}, **{kind: "closed" for kind in CLOSED_KINDS}}
+
+
 def workflow(row: dict, summary: dict) -> dict:
     """Where the case stands in the review workflow, derived from its reviews and never stored (store.STATE_SQL is the same rule).
 
-    The latest open, request_approval, approve or reject decides: in_review, awaiting_approval, approved, rejected. With no
-    such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed; it is still in the log),
-    and every other customer is new. A note or feedback never moves the state.
+    The latest open, clear, escalate or close decides: in_review, escalated, closed (the events of the earlier two-person
+    workflow read as an escalation and as closings). A closed case carries its outcome: cleared by the analyst, or confirmed
+    or not_confirmed by the lead who closed it after an escalation. With no such event a customer the gate leaves at LOW or
+    WARNING is auto_logged (no reviewer is needed; it is still in the log), and every other customer is new. A note or
+    feedback never moves the state.
     """
     kind = row.get("workflow_kind")
     if kind is None:
         state = "auto_logged" if gate_outcome(row, summary) in ("LOW", "WARNING") else "new"
     else:
-        state = {"open": "in_review", "request_approval": "awaiting_approval", "approve": "approved", "reject": "rejected"}[kind]
-    decided = kind in ("approve", "reject")
-    return {"state": state, "opened_by": row.get("opened_by"), "opened_by_user_id": row.get("opened_by_user_id"),
+        state = WORKFLOW_STATE[kind]
+    decided = kind in CLOSED_KINDS
+    return {"state": state, "outcome": outcome(kind, row.get("workflow_disposition")),
+            "opened_by": row.get("opened_by"), "opened_by_user_id": row.get("opened_by_user_id"),
             "opened_at": _iso(row.get("opened_at")),
             "decided_by": row.get("workflow_reviewer") if decided else None, "decided_at": _iso(row.get("workflow_at")) if decided else None}
 
@@ -230,9 +237,6 @@ def snapshot_comparison(store: Store, run: dict) -> dict | None:
     return {"dataset_id": previous["dataset_id"], "run_id": previous["run_id"], "cutoff": _iso(previous["cutoff"]), **counts}
 
 
-WORKFLOW_STATE = {"open": "in_review", "request_approval": "awaiting_approval", "approve": "approved", "reject": "rejected"}
-
-
 def _previous_field(row: dict, history: dict | None) -> dict | None:
     """The customer in the previous snapshot: absent from it (a later account), or its rank, score, place in that queue
     and where its review ended there. None when the run has no previous snapshot."""
@@ -250,7 +254,8 @@ def _earlier_decision(row: dict, history: dict | None) -> dict | None:
     decision = (history or {}).get("decisions", {}).get(row["customer_id"])
     if decision is None:
         return None
-    return {"state": WORKFLOW_STATE[decision["kind"]], "decided_by": decision["reviewer_name"],
+    return {"state": WORKFLOW_STATE[decision["kind"]], "outcome": outcome(decision["kind"], decision["disposition"]),
+            "decided_by": decision["reviewer_name"],
             "decided_at": _iso(decision["created_at"]), "cutoff": _iso(decision["cutoff"])}
 
 
@@ -269,6 +274,8 @@ def customer_item(row: dict, latest_disposition: str | None, summary: dict | Non
         "community": community_summary(row), "tier": tier(row), "gate_outcome": gate_outcome(row, summary),
         "primary_signals": primary_signals(row), "workflow": workflow(row, summary),
         "customer_id": row["customer_id"], "eligibility_status": row["eligibility_status"],
+        # contract 3.2.0 (AM-78): the account's region, email and phone; each null where the snapshot does not carry it
+        "contact": {name: (row.get("measures") or {}).get(name) for name in scoring.CONTACT_COLUMNS},
         "raw_score": _number(row["raw_score"]), "risk_score": _number(row["risk_score"]), "rank": _integer(row["rank"]),
         "selected_for_review": bool(row["selected_for_review"]), "baseline_rank": _integer(row["baseline_rank"]),
         "baseline_selected": bool(row["baseline_selected"]),
@@ -311,10 +318,11 @@ def export_row(item: dict, run: dict) -> list:
         item["support_counts"]["mature_requested_units"], item["support_counts"]["mature_purchased_units"],
         item["refunded_inr"], item["claim_refunded_inr"],
         f"{community['kind']} of {community['size']}" if community else "", community.get("id"), item["wardrobing_status"],
-        item["cleared_reason"], "; ".join(item["absent_signals"] or []), workflow["state"], workflow["opened_by"],
+        item["cleared_reason"], "; ".join(item["absent_signals"] or []),
+        workflow["state"] + (f" ({workflow['outcome']})" if workflow["outcome"] else ""), workflow["opened_by"],
         workflow["decided_by"], item["latest_disposition"], (previous.get("cutoff") or "")[:10] or None, previous.get("rank"),
         None if not previous else "not in snapshot" if not previous["present"] else "yes" if in_previous else "no",
-        f"{decision['state']} on the {decision['cutoff'][:10]} snapshot by {decision['decided_by']}" if decision else None,
+        f"{decision['outcome']} on the {decision['cutoff'][:10]} snapshot by {decision['decided_by']}" if decision else None,
         run["id"], run["world_id"], _iso(run["cutoff"])[:10])]
 
 
@@ -337,10 +345,67 @@ def _signal(code, label, value, denominator, unit, refs=()) -> dict:
             "source_refs": list(refs)}
 
 
-def _style_item(row: dict, reasons: list = ()) -> dict:
+PRODUCT_RISK_HELP = ("A stated rule over the style's own signals, not a model output: Critical is a targeting verdict with "
+                     "returners who are in a detected ring; High is a targeting or a mixed verdict; Medium is a quality verdict; "
+                     "Low is every other style.")
+
+
+def product_risk(row: dict) -> str:
+    """The product screen's four levels (Penpot decision 9), from the style's verdict and its ring returners."""
+    state = row["state"]
+    if state == "targeting" and (row.get("ring_returners") or 0) > 0:
+        return "CRITICAL"
+    if state in ("targeting", "mixed_or_uncertain"):
+        return "HIGH"
+    return "MEDIUM" if state == "quality" else "LOW"
+
+
+def product_assessment(row: dict, category_rate) -> dict:
+    """A rule-based reading of one style, in sentences made from its stored signals (Penpot decision 9): what points at
+    returns aimed at the style, and what points away from it. No model writes it."""
+    rate, purchased = _number(row["shrunk_return_rate"]), int(row["purchased_units"])
+    percent = lambda value: f"{round(float(value) * 100)}%"
+    supporting, contradicting = [], []
+    if rate is not None and category_rate is not None:
+        (supporting if rate - category_rate >= 0.05 else contradicting).append(
+            f"Return rate {percent(rate)} against {percent(category_rate)} for the category")
+    claim_share, damage_share = _number(row["claim_share"]), _number(row["damage_share"])
+    if claim_share is not None:
+        (supporting if claim_share >= 0.15 else contradicting).append(f"Transaction claims are {percent(claim_share)} of requested units")
+    linked = int(row["linked_claimers"])
+    (supporting if linked else contradicting).append(
+        f"{linked} customer(s) with a claim matched by a linked account" if linked else "No claim matched by a linked account")
+    rings = row.get("ring_returners")
+    if rings:
+        supporting.append(f"{int(rings)} returner(s) are in a detected ring")
+    flagged, unique = row.get("flagged_returners"), int(row["unique_returners"])
+    if flagged is not None and unique:
+        (supporting if flagged / unique >= 0.15 else contradicting).append(f"{int(flagged)} of {unique} returners are selected for review")
+    if damage_share is not None:
+        (contradicting if damage_share >= 0.25 else supporting).append(
+            f"Quality reasons on {percent(damage_share)} of requested units" + (": a product issue is likely" if damage_share >= 0.25 else ""))
+    summary = {
+        "targeting": "Returns on this style look aimed at it: claims and linked accounts stand out, and quality reasons do not explain them.",
+        "quality": "Returns on this style look like a product issue: many name a quality reason. This is for merchandising, not for a customer review.",
+        "mixed_or_uncertain": "Both a product issue and returns aimed at the style are possible; the signals do not separate them.",
+        "no_elevated_signal": "Nothing stands out on this style beyond its category.",
+        "insufficient_support": f"Too few mature sale lines ({purchased} units) to read this style.",
+        "no_return_evidence": "No return request on this style's mature sale lines.",
+    }.get(row["state"], "No reading for this style.")
+    return {"risk_level": product_risk(row), "summary": summary, "supporting": supporting, "contradicting": contradicting}
+
+
+def _style_item(row: dict, reasons: list = (), insights: dict | None = None) -> dict:
     unique = int(row["unique_returners"])
     flagged = row.get("flagged_returners")
+    own = (insights or {}).get(row["style_id"]) or {}
+    category_rate, rate = _number(own.get("category_return_rate")), _number(row["shrunk_return_rate"])
     return {
+        # the product screen's aggregates (contract 3.1.0, AM-77); null for runs scored before it
+        "category_return_rate": category_rate,
+        "deviation": rate - category_rate if rate is not None and category_rate is not None else None,
+        "concentration": own.get("concentration"), "monthly": own.get("monthly"),
+        "risk_level": product_risk(row), "assessment": product_assessment(row, category_rate),
         "style_id": row["style_id"], "category": row["category"], "state": row["state"],
         # the SKU screen's extras (contract 1.9.0); null for runs scored before it
         "name": row.get("name") or row["style_id"], "median_return_day": _number(row.get("median_return_day")),
@@ -577,12 +642,82 @@ def score_distribution(store: Store, run: dict) -> dict:
 def _style_items(store: Store, run_id: str, rows: list) -> list:
     """Style rows with their reason codes, fetched for the page in one query."""
     reasons = store.run_style_reasons(run_id, [row["style_id"] for row in rows])
-    return [_style_item(row, reasons.get(row["style_id"], [])) for row in rows]
+    insights = (store.get_run(run_id)["summary"] or {}).get("style_insights") if rows else None
+    return [_style_item(row, reasons.get(row["style_id"], []), insights) for row in rows]
 
 
 def style_queue(store: Store, run_id: str, state: str, after: str | None, limit: int) -> tuple:
     rows = store.run_styles(run_id, state, after, limit + 1)
     return _style_items(store, run_id, rows[:limit]), (rows[limit - 1]["style_id"] if len(rows) > limit else None)
+
+
+STYLE_EXPORT_COLUMNS = ["style_id", "name", "category", "risk_level", "verdict", "purchased_units", "requested_units", "return_rate",
+                        "category_return_rate", "deviation", "unique_returners", "returners_selected_for_review", "ring_returners",
+                        "claim_share", "quality_share", "linked_claimers", "assessment"]
+
+
+def style_export_row(item: dict) -> list:
+    """One style for the CSV export, from the item the list serves."""
+    rate = lambda value: None if value is None else f"{value:.4f}"
+    flagged = item["flagged_returner_share"]
+    return [_cell(v) for v in (
+        item["style_id"], item["name"], item["category"], item["risk_level"], item["state"], item["purchased_units"],
+        item["requested_units"], rate(item["shrunk_return_rate"]), rate(item["category_return_rate"]), rate(item["deviation"]),
+        item["unique_returners"], None if flagged is None else flagged["numerator"], item["ring_returners"],
+        rate(item["claim_share"]), rate(item["damage_share"]), item["linked_claimers"], item["assessment"]["summary"])]
+
+
+def run_insights(store: Store, run: dict) -> dict:
+    """The dashboard's numbers for one run (contract 3.1.0, AM-77): what scoring stored (orders, returns and refunds by day,
+    by channel, by category) and what is counted on read (tiers, workflow states, patterns). `available` is false for a
+    run scored before the aggregates existed; its counts are still served."""
+    stored = (run["summary"] or {}).get("insights") or {}
+    counts = store.queue_counts(run["id"], run["world_id"], run["dataset_id"], TIER_MEDIUM_FROM)
+    return {"run_id": run["id"], "cutoff": _iso(run["cutoff"]), "available": bool(stored),
+            "daily": stored.get("daily") or [], "channels": stored.get("channels") or [], "categories": stored.get("categories") or [],
+            "counts": counts}
+
+
+def community_list(store: Store, run_id: str) -> list:
+    """Every linked-account group of a run with its members and edges, for the network page."""
+    out = []
+    for community in store.run_communities(run_id):
+        out.append({"id": community["community_id"], "kind": community["kind"], "method": community["method"], "size": int(community["size"]),
+                    "selected_count": int(community["selected_count"]), "requested_units": int(community["requested_units"]),
+                    "purchased_units": int(community["purchased_units"]),
+                    "coordinated_claim_matches": int(community["coordinated_claim_matches"]),
+                    "members": [{"customer_id": m["customer_id"], "risk_score": _number(m["risk_score"]), "rank": _integer(m["rank"]),
+                                 "selected_for_review": bool(m["selected_for_review"]), "eligibility_status": m["eligibility_status"],
+                                 "mature_requested_units": int(m["mature_requested_units"]),
+                                 "mature_purchased_units": int(m["mature_purchased_units"]),
+                                 "evidence_tags": list(m["evidence_tags"])} for m in community["members"]],
+                    "edges": [{"a": e["a"], "b": e["b"], "types": list(e["types"]),
+                               "coordinated_claim_matches": int(e["coordinated_claim_matches"])} for e in community["edges"]]})
+    return out
+
+
+NOTIFICATION_LIMIT = 50
+
+
+def notifications(store: Store, user_id: str, can_decide: bool) -> dict:
+    """The signed-in person's notifications, newest first, each new or not against when they last looked."""
+    found = store.notifications(user_id, can_decide)
+    seen = found["seen_at"]
+    items = []
+    for row in found["closed"]:
+        how = outcome(row["kind"], row["disposition"]) or "closed"
+        items.append({"id": row["id"], "kind": "case_closed", "at": row["created_at"], "run_id": row["run_id"], "customer_id": row["customer_id"],
+                      "text": f"A case you opened was closed ({how.replace('_', ' ')}) by {row['reviewer_name']}"})
+    for row in found["escalated"]:
+        items.append({"id": row["id"], "kind": "case_escalated", "at": row["created_at"], "run_id": row["run_id"],
+                      "customer_id": row["customer_id"], "text": f"{row['reviewer_name']} escalated a case; it awaits an outcome"})
+    for row in found["runs"]:
+        items.append({"id": row["id"], "kind": "run_scored", "at": row["completed_at"], "run_id": row["id"], "customer_id": None,
+                      "text": f"A run was scored: world {row['world_id']}, snapshot {_iso(row['cutoff'])[:10]}"})
+    items.sort(key=lambda item: item["at"], reverse=True)
+    items = items[:NOTIFICATION_LIMIT]
+    out = [{**item, "at": _iso(item["at"]), "unread": seen is None or item["at"] > seen} for item in items]
+    return {"items": out, "unread": sum(item["unread"] for item in out), "seen_at": _iso(seen)}
 
 
 def _returner(row: dict) -> dict:

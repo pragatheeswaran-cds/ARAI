@@ -158,10 +158,10 @@ ul.facts { margin: 0 0 12px; padding-left: 20px; line-height: 1.9; }
 .badge.gate-HOLD { background: #dcefe3; color: #1f5a3f; }
 .badge.gate-WARNING { background: #fff0d4; color: #7a5510; }
 .badge.gate-LOW { background: #eff1e9; color: #5f6d5f; }
-.badge.state-awaiting_approval { background: #fff0d4; color: #7a5510; }
+.badge.state-escalated { background: #fff0d4; color: #7a5510; }
 .badge.state-in_review { background: #e9eef8; color: #2a4370; }
-.badge.state-approved { background: #dcefe3; color: #1f5a3f; }
-.badge.state-rejected { background: #efe3e3; color: #6b2f2f; }
+.badge.state-closed { background: #dcefe3; color: #1f5a3f; }
+.badge.tier-CRITICAL { background: #7a1f1f; color: #fff; font-weight: 600; }
 .runstrip { display: flex; gap: 22px; flex-wrap: wrap; padding: 10px 28px; background: #f7faf5; border-bottom: 1px solid #dbe4d8; font-size: 12px; color: var(--ink-2); align-items: center; }
 .runstrip strong { color: var(--ink); }
 .runstrip label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-left: auto; }
@@ -233,3 +233,80 @@ td.row-actions button { margin: 0 6px 6px 0; padding: 6px 10px; }
 form.confirm { border: 1px solid var(--line); border-radius: 7px; padding: 14px 18px; margin: 14px 0 0; background: #f8faf6; }
 form.confirm label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 form.confirm input { display: block; width: min(100%, 460px); margin-top: 4px; padding: 7px 9px; border: 1px solid #cbd9cf; border-radius: 6px; }
+
+/* Penpot shell (step 1, 21 Nov 2026): a dark slate top bar across the page and a light sidebar with icon links.
+   These rules come last so they replace the green shell above; the page contents are restyled screen by screen. */
+:root { --ink: #1f2937; --ink-2: #4b5563; --muted: #6b7280; --line: #e2e5ea; --page: #f5f6f8; --topbar: #3d4756; --side: #eef0f3; }
+.strip { background: #e9ebef; color: var(--ink-2); }
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 24px; background: var(--topbar); color: #fff; }
+.topbar-brand { display: flex; align-items: center; gap: 12px; font-size: 17px; font-weight: 600; }
+.topbar-brand .icon { width: 24px; height: 24px; }
+.topbar .signedin { padding: 0; color: #e5e7eb; }
+.topbar .signedin .muted { color: #c3c8d0; }
+.topbar .signedin strong { color: #fff; }
+.topbar button.quiet { color: #fff; border-color: #7b8494; padding: 6px 10px; }
+.topbar button.quiet:hover { background: #4d596b; }
+.icon { flex: none; vertical-align: middle; }
+.shell { grid-template-columns: 220px 1fr; min-height: calc(100vh - 82px); }
+aside { background: var(--side); color: var(--ink); padding: 16px 12px; border-right: 1px solid var(--line); }
+nav a { display: flex; align-items: center; gap: 12px; color: var(--ink); padding: 10px 12px; margin-bottom: 4px; }
+nav a.active, nav a:hover { background: #dfe3e9; color: var(--ink); }
+nav a.active { font-weight: 600; }
+.footnote { color: var(--muted); margin-top: 48px; padding: 0 12px; }
+header { border-bottom-color: var(--line); }
+.runstrip { background: #fafbfc; border-bottom-color: var(--line); }
+@media (max-width: 1000px) { .shell { grid-template-columns: 180px 1fr; } aside { padding: 12px 8px; } }
+@media (max-width: 640px) {
+  .topbar { padding: 10px 15px; }
+  .topbar-brand { font-size: 15px; }
+  aside { padding: 8px; border-right: none; border-bottom: 1px solid var(--line); }
+  nav a { margin-bottom: 0; }
+}
+@media print { .topbar { display: none; } }
+
+/* Risk Queue (Penpot step 2): the design's four filters lead; the app's other filters follow on their own row */
+.filters-more { flex-basis: 100%; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+
+/* queue identifiers stay on one line */
+table td:first-child strong, table td a.link { white-space: nowrap; }
+
+/* charts (Penpot step 3) */
+.plot { margin: 0; }
+.donut { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.donut-legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 150px; font-size: 12.5px; }
+.donut-legend li { display: grid; grid-template-columns: 14px 1fr auto auto; gap: 8px; align-items: center; padding: 4px 0; }
+.donut-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.vbars { display: flex; align-items: flex-end; gap: 12px; height: 180px; padding-top: 18px; }
+.vbar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; min-width: 0; }
+.vbar-value { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.vbar-fill { display: block; width: 70%; max-width: 54px; background: #6b7280; border-radius: 3px 3px 0 0; }
+.vbar-name { font-size: 11px; color: var(--ink-2); text-align: center; margin-top: 6px; line-height: 1.3; min-height: 44px; overflow-wrap: anywhere; }
+.hbars { display: grid; gap: 8px; }
+.hbar { display: grid; grid-template-columns: 120px 1fr 56px; gap: 10px; align-items: center; font-size: 12.5px; }
+.hbar-track { background: #eef0f3; height: 12px; border-radius: 3px; overflow: hidden; }
+.hbar-fill { display: block; height: 100%; background: #6b7280; }
+.hbar-value { text-align: right; font-variant-numeric: tabular-nums; }
+.checklist.one { columns: 1; }
+.badge.tier-HIGH { background: #4b5563; color: #fff; }
+.badge.tier-MEDIUM { background: #d7dbe2; color: #1f2937; }
+.badge.tier-LOW { background: #eef0f3; color: #4b5563; }
+@media (max-width: 640px) { .hbar { grid-template-columns: 90px 1fr 48px; } }
+
+/* workspace pages and the bell (Penpot step 4) */
+.stats.five { grid-template-columns: repeat(5, 1fr); }
+.network { width: 100%; max-width: 460px; display: block; margin: 0 auto 8px; }
+.network a:focus-visible circle { stroke: #d39720; stroke-width: 3; }
+.bell { position: relative; }
+.bell button { position: relative; margin-left: 0; display: inline-flex; align-items: center; }
+.bell-count { position: absolute; top: -6px; right: -6px; background: #b91c1c; color: #fff; border-radius: 9px; font-size: 10px; min-width: 17px; padding: 1px 4px; text-align: center; }
+.bell-panel { position: absolute; right: 0; top: 40px; z-index: 20; width: 340px; max-height: 420px; overflow: auto; background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18); }
+.bell-panel ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.bell-panel li { padding: 8px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+.bell-panel li.unread a { font-weight: 600; }
+.bell-panel a { color: var(--ink); text-decoration: none; display: block; padding: 0; margin: 0; background: none; }
+.bell-panel a:hover { text-decoration: underline; background: none; }
+.bell-panel small { color: var(--muted); }
+.topbar .profile-link { color: #fff; display: inline-flex; padding: 4px; border-radius: 50%; border: 1px solid #7b8494; }
+.topbar .profile-link.active, .topbar .profile-link:hover { background: #4d596b; }
+@media (max-width: 1000px) { .stats.five { grid-template-columns: repeat(2, 1fr); } }
+.nowrap { white-space: nowrap; }

@@ -25,6 +25,8 @@ def read_csv_table(path: Path, columns: dict) -> pd.DataFrame:
     raw = pd.read_csv(path, dtype=str, keep_default_na=False, encoding="utf-8")
     out = {}
     for name, rules in columns.items():
+        if rules.get("optional") and name not in raw.columns:       # an optional column the snapshot does not carry (AM-78)
+            continue
         text, kind = raw[name], rules["type"]
         empty = text == ""
         if kind == "date":
@@ -48,6 +50,16 @@ def read_csv_world(directory: Path, spec_root: Path | None = None) -> tuple:
     manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
     tables = {name: read_csv_table(directory / f"{name}.csv", schema[name]["columns"]) for name in TABLES}
     return tables, manifest
+
+
+def email_key(email) -> str | None:
+    """The mailbox behind an address: lower case, without a +tag in the local part. Aliases of one mailbox share it
+    (data contract 1.2). None for a missing or malformed address."""
+    if not isinstance(email, str) or "@" not in email:
+        return None
+    local, _, domain = email.strip().lower().partition("@")
+    local = local.split("+", 1)[0]
+    return local + "@" + domain if local and domain else None
 
 
 def cutoff_date(manifest: dict):

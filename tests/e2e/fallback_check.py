@@ -108,7 +108,7 @@ try:
         check("header names the baseline", "Return-rate baseline" in page.locator("header").inner_text())
         page.screenshot(path=str(OUT / "13-fallback-overview.png"), full_page=True)
 
-        page.get_by_role("link", name="Customer queue", exact=True).click()
+        page.get_by_role("link", name="Risk Queue", exact=True).click()
         settle()
         head = page.locator("main table thead").inner_text()
         check("the score is relabelled as a return-rate percentile", "Return-rate percentile" in head and "Reference percentile" not in head)
@@ -121,12 +121,12 @@ try:
               and "Wardrobing indicator" in text and "Why this score" in text)
         page.screenshot(path=str(OUT / "14-fallback-case.png"), full_page=True)
 
-        page.get_by_role("link", name="Evaluation").click()
+        page.get_by_role("link", name="Analytics").click()
         settle()
         text = page.locator("main").inner_text()
         check("evaluation says no winner and that nothing was promoted", "No winner" in text and "The return-rate baseline is active" in text)
 
-        page.get_by_role("link", name="Datasets & runs").click()
+        page.get_by_role("link", name="Configuration").click()
         settle()
         text = page.locator("main").inner_text()
         check("datasets page names the active bundle as the baseline", "Return-rate baseline" in text and "succeeded" in text)

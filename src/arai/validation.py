@@ -60,6 +60,8 @@ def _parse(report: Report, name: str, raw: pd.DataFrame, spec: dict, key: list) 
     """Type, nullability, enum and bound checks; returns a typed copy (unparseable cells become null)."""
     typed = {}
     for column, rules in spec["columns"].items():
+        if rules.get("optional") and column not in raw.columns:     # an optional column the snapshot does not carry (AM-78)
+            continue
         text = raw[column]
         empty = text == ""
         if not rules.get("nullable", False):
@@ -149,7 +151,8 @@ def validate_world(directory: Path, spec_root: Path | None = None) -> Report:
             report.add("M002", name, "row count differs from the manifest", [f"{len(frame)} != {entry['row_count']}"], 1)
         wanted = list(schema[name]["columns"])
         report.add("S001", name, "unknown or private column", [c for c in frame.columns if c not in wanted])
-        report.add("S002", name, "required column missing", [c for c in wanted if c not in frame.columns])
+        report.add("S002", name, "required column missing",
+                   [c for c in wanted if c not in frame.columns and not schema[name]["columns"][c].get("optional")])
         raw[name] = frame
     if "customer_master" in raw and "customer_id" in raw["customer_master"].columns:
         # generated identifiers carry their world (W5401-C00001): a manifest naming another world is a different snapshot

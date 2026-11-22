@@ -451,6 +451,135 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). Orders, returns and refunds by day, by channel and by category, as scoring stored them, with the live counts of the queue. */
+        get: operations["getRunInsights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/communities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). Every linked-account group of the run with its members and edges, rings first. */
+        get: operations["listCommunities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). The workflow events of the run's snapshot (open, clear, escalate, close), newest first. */
+        get: operations["listDecisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/customers/bulk-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 3.1.0 (AM-77). One workflow action (open, clear or escalate) on up to 100 customers of the run. Each customer is handled under the rules of the single review and in its own transaction; the answer says what happened to each, and a refusal for one customer does not undo the others. */
+        post: operations["appendBulkReviews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/styles/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). The style list as CSV (text/csv), every style of the chosen verdict; needs the export permission. */
+        get: operations["exportStyles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 3.1.0 (AM-77). What happened for the signed-in person in the last thirty days, newest first - a case they opened was closed by someone else, a case was escalated (for a lead), a run was scored. Read from the reviews and the runs; nothing is stored but when the person last looked. */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 3.1.0 (AM-77). Records that the signed-in person looked at their notifications now. */
+        post: operations["markNotificationsSeen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -472,6 +601,15 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Me: {
+            /**
+             * @description Contract 3.1.0 (AM-77), for the Profile page.
+             * @enum {string}
+             */
+            status: "active" | "disabled";
+            /** Format: date-time */
+            created_at: string | null;
+            /** Format: date-time */
+            last_sign_in_at: string | null;
             user_id: string;
             display_name: string;
             email: string | null;
@@ -656,7 +794,7 @@ export interface components {
                 review_set: components["schemas"]["RefundTotals"];
                 rule_set: components["schemas"]["RefundTotals"];
             } | null;
-            /** @description Contract 1.15.0 (AM-68). This run's review set against the previous snapshot of the same world (the latest earlier cutoff with a succeeded run, read from its latest succeeded run) - customers in both review sets, new to this one, gone from it, and how many of this review set had their review end in approve or reject on an earlier snapshot. Null until the run succeeded and on a world's first scored snapshot. */
+            /** @description Contract 1.15.0 (AM-68). This run's review set against the previous snapshot of the same world (the latest earlier cutoff with a succeeded run, read from its latest succeeded run) - customers in both review sets, new to this one, gone from it, and how many of this review set had their review closed on an earlier snapshot, as confirmed by the fraud team (confirmed_before) or as cleared or not confirmed (cleared_before). Null until the run succeeded and on a world's first scored snapshot. */
             previous_snapshot: {
                 dataset_id: string;
                 run_id: string;
@@ -665,8 +803,8 @@ export interface components {
                 repeat: number;
                 new: number;
                 left: number;
-                approved_before: number;
-                rejected_before: number;
+                confirmed_before: number;
+                cleared_before: number;
             } | null;
         };
         RefundTotals: {
@@ -691,6 +829,12 @@ export interface components {
             source_refs: string[];
         };
         Customer: {
+            /** @description Contract 3.2.0 (AM-78). The account's region, email and phone from customer_master (data contract 1.2), shown on the screens and never a model input. Each is null where the snapshot does not carry the column, as in every snapshot written before data contract 1.2. */
+            contact: {
+                region: string | null;
+                email: string | null;
+                phone: string | null;
+            };
             customer_id: string;
             /** @enum {string} */
             eligibility_status: "eligible" | "insufficient_history";
@@ -722,12 +866,14 @@ export interface components {
                 risk_score: number | null;
                 selected_for_review: boolean | null;
                 /** @enum {string|null} */
-                workflow_state: "in_review" | "awaiting_approval" | "approved" | "rejected" | null;
+                workflow_state: "in_review" | "escalated" | "closed" | null;
             } | null;
-            /** @description Contract 1.15.0 (AM-68). The latest earlier snapshot of the world on which this customer's review ended in a decision, with who decided and when. The workflow runs per snapshot, so a decision there does not decide this snapshot's case. Null without one. */
+            /** @description Contract 1.15.0 (AM-68). The latest earlier snapshot of the world on which this customer's review was closed, with how it ended, who decided and when. The workflow runs per snapshot, so a decision there does not decide this snapshot's case. Null without one. */
             earlier_decision: {
                 /** @enum {string} */
-                state: "approved" | "rejected";
+                state: "closed";
+                /** @enum {string} */
+                outcome: "cleared" | "confirmed" | "not_confirmed";
                 decided_by: string;
                 /** Format: date-time */
                 decided_at: string;
@@ -760,10 +906,10 @@ export interface components {
                 size: number;
             } | null;
             /**
-             * @description Anchored to the queue, not to fixed percentiles (the score is a training reference percentile, so fixed bands would put a quarter of customers in the top band). HIGH is selected for review; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer. Null for a customer without a score.
+             * @description Anchored to the queue, not to fixed percentiles (the score is a training reference percentile, so fixed bands would put a quarter of customers in the top band). A customer selected for review is CRITICAL as a member of a detected ring and HIGH otherwise (contract 3.0.0, AM-76); MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer. Null for a customer without a score.
              * @enum {string|null}
              */
-            tier: "HIGH" | "MEDIUM" | "LOW" | null;
+            tier: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
             /**
              * @description A presentation rule over stored results, not a model output, and the UI says so. ESCALATE is selected and either in a ring or with the wardrobing indicator elevated; HOLD is selected otherwise; WARNING is not selected and either MEDIUM or at or above the run's heavy_returner_cutoff; LOW is every other eligible customer. Null for a customer without a score.
              * @enum {string|null}
@@ -779,16 +925,21 @@ export interface components {
                 denominator: number | null;
                 unit: string;
             }[];
-            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. Contract 3.0.0 (AM-76) - the latest open, clear, escalate or close decides the state (in_review, escalated, closed); the events of the earlier two-person workflow read as an escalation (request_approval) and as closings (approve, reject). With no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; who opened a case does not limit who decides it. */
             workflow: {
                 /** @enum {string} */
-                state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                state: "new" | "in_review" | "escalated" | "closed" | "auto_logged";
+                /**
+                 * @description How a closed case ended - cleared by the analyst; or, after an escalation, confirmed (the lead closed it as needs_investigation) or not_confirmed (as likely_legitimate). Null while it is not closed.
+                 * @enum {string|null}
+                 */
+                outcome: "cleared" | "confirmed" | "not_confirmed" | null;
                 opened_by: string | null;
-                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case. */
+                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to list the cases a person has open. */
                 opened_by_user_id: string | null;
                 /** Format: date-time */
                 opened_at: string | null;
-                /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
+                /** @description The reviewer of the clear or close that is the latest workflow event; null otherwise. */
                 decided_by: string | null;
                 /** Format: date-time */
                 decided_at: string | null;
@@ -797,11 +948,11 @@ export interface components {
         /** @description Contract 2.0.0 (AM-71) removed reviewer_name (ignored since 1.16.0); a body that carries it is a 422. The author is the signed-in user. */
         ReviewRequest: {
             /**
-             * @description What the review does. note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; request_approval asks for a second person; approve and reject decide it. The rules, checked under one lock per customer - open needs a case that is not open (409 case_already_open while it is in review or awaiting approval); request_approval, approve and reject need an open case (409 case_not_open) that is not yet decided (409 case_decided; reopen first), and approval cannot be requested twice (409 case_already_open); approve and reject by the reviewer who made the latest open are refused (409 second_reviewer_required) with a fixed message the UI shows as it is, names compared without regard to case or spacing; the four workflow kinds apply only to a customer selected for review and feedback only to the others (409 out_of_scope). approve and reject carry a reading, needs_investigation or likely_legitimate (422 request.decision_disposition). Every kind needs a note, and no text may hold a NUL byte.
+             * @description What the review does (contract 3.0.0, AM-76). note (the default) and feedback record an opinion and never move the workflow; open takes the case into review; clear closes it as cleared; escalate hands it to the fraud team; close records the fraud team's outcome on an escalated case and needs the decide permission (403 otherwise). The rules, checked under one lock per customer - open needs a case that is not open (409 case_already_open while it is in review or escalated; opening a closed case reopens it); clear and escalate need a case in review (409 case_not_open before any open, 409 case_escalated once escalated); close needs an escalated case (409 case_not_escalated); nothing but an open follows a closed case (409 case_decided). The four workflow kinds apply only to a customer selected for review and feedback only to the others (409 out_of_scope). clear, escalate and close carry a reading, needs_investigation or likely_legitimate (422 request.decision_disposition); a close as needs_investigation is the outcome confirmed, as likely_legitimate not_confirmed. Every kind needs a note, and no text may hold a NUL byte. The kinds request_approval, approve and reject of the earlier two-person workflow are no longer accepted (422).
              * @default note
              * @enum {string}
              */
-            kind: "note" | "open" | "request_approval" | "approve" | "reject" | "feedback";
+            kind: "note" | "open" | "clear" | "escalate" | "close" | "feedback";
             /** @enum {string} */
             disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
             note: string;
@@ -815,10 +966,10 @@ export interface components {
             model_id: string;
             reviewer_name: string;
             /**
-             * @description Rows written before contract 1.8.0 are notes.
+             * @description Rows written before contract 1.8.0 are notes. request_approval, approve and reject are rows of the two-person workflow that contract 3.0.0 replaced; they are kept and read as an escalation and as closings.
              * @enum {string}
              */
-            kind: "note" | "open" | "request_approval" | "approve" | "reject" | "feedback";
+            kind: "note" | "open" | "clear" | "escalate" | "close" | "feedback" | "request_approval" | "approve" | "reject";
             /** @enum {string} */
             disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
             note: string;
@@ -874,7 +1025,7 @@ export interface components {
         };
         Neighbor: {
             customer_id: string;
-            shared_types: ("address" | "device" | "payment")[];
+            shared_types: ("address" | "device" | "payment" | "phone" | "email")[];
             shared_value_count: number;
             supported: boolean;
             max_value_fanout: number;
@@ -893,6 +1044,36 @@ export interface components {
             limitation: string;
         };
         Style: {
+            /** @description Contract 3.1.0 (AM-77). Requested over purchased units on the mature sale lines of the style's category. Null for runs scored before 3.1.0. */
+            category_return_rate: number | null;
+            /** @description shrunk_return_rate minus category_return_rate; null when either is. */
+            deviation: number | null;
+            /** @description The share of the style's requested units that came from its top 1%, 5% and 10% of returners (cumulative, at least one account) and from the returners outside the top 10%. Null for runs scored before 3.1.0. */
+            concentration: {
+                /** @enum {string} */
+                band: "top_1" | "top_5" | "top_10" | "others";
+                returners: number;
+                share: number | null;
+            }[] | null;
+            /** @description Purchased and requested units on mature sale lines by the month of the order. Null for runs scored before 3.1.0. */
+            monthly: {
+                month: string;
+                purchased_units: number;
+                requested_units: number;
+            }[] | null;
+            /**
+             * @description A stated rule over the style's own signals, not a model output - CRITICAL is a targeting verdict with returners in a detected ring; HIGH a targeting or a mixed verdict; MEDIUM a quality verdict; LOW every other style.
+             * @enum {string}
+             */
+            risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+            /** @description A rule-based reading in sentences made from the style's stored signals; no model writes it. */
+            assessment: {
+                /** @enum {string} */
+                risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+                summary: string;
+                supporting: string[];
+                contradicting: string[];
+            };
             style_id: string;
             category: string;
             /** @description "{brand} {category}" from sku_master, which has no name column, with the style id appended when that pair is not unique in the run; the style id alone for runs scored before contract 1.9.0. */
@@ -962,7 +1143,7 @@ export interface components {
         CommunityEdge: {
             a: string;
             b: string;
-            types: ("address" | "device" | "payment")[];
+            types: ("address" | "device" | "payment" | "phone" | "email")[];
             coordinated_claim_matches: number;
         };
         Case: {
@@ -1082,7 +1263,7 @@ export interface components {
             rank: number | null;
             risk_score: number | null;
             /** @enum {string|null} */
-            tier: "HIGH" | "MEDIUM" | "LOW" | null;
+            tier: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
             /** @enum {string|null} */
             gate_outcome: "ESCALATE" | "HOLD" | "WARNING" | "LOW" | null;
             selected_for_review: boolean | null;
@@ -1092,16 +1273,21 @@ export interface components {
             evidence_tags: string[];
             /** @enum {string|null} */
             community_kind: "ring" | "household" | null;
-            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. The latest open, request_approval, approve or reject decides the state; with no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; the server refuses an approve or reject by that reviewer (409 second_reviewer_required). */
+            /** @description Where the case stands in the review workflow, derived on read from the customer's reviews in this snapshot of its world (per snapshot since contract 1.15.0, AM-68) and never stored. Contract 3.0.0 (AM-76) - the latest open, clear, escalate or close decides the state (in_review, escalated, closed); the events of the earlier two-person workflow read as an escalation (request_approval) and as closings (approve, reject). With no such event a customer the gate leaves at LOW or WARNING is auto_logged (no reviewer is needed, and it is still in the log) and every other customer is new. A note or feedback never moves the state. opened_by names the reviewer of the latest open; who opened a case does not limit who decides it. */
             workflow: {
                 /** @enum {string} */
-                state: "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                state: "new" | "in_review" | "escalated" | "closed" | "auto_logged";
+                /**
+                 * @description How a closed case ended - cleared by the analyst; or, after an escalation, confirmed (the lead closed it as needs_investigation) or not_confirmed (as likely_legitimate). Null while it is not closed.
+                 * @enum {string|null}
+                 */
+                outcome: "cleared" | "confirmed" | "not_confirmed" | null;
                 opened_by: string | null;
-                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to tell a reviewer they cannot decide their own case. */
+                /** @description Contract 1.16.0. The user who made the latest open; null for an open written before sign-in existed. The UI compares it with the signed-in user to list the cases a person has open. */
                 opened_by_user_id: string | null;
                 /** Format: date-time */
                 opened_at: string | null;
-                /** @description The reviewer of the approve or reject that is the latest workflow event; null otherwise. */
+                /** @description The reviewer of the clear or close that is the latest workflow event; null otherwise. */
                 decided_by: string | null;
                 /** Format: date-time */
                 decided_at: string | null;
@@ -1122,7 +1308,7 @@ export interface components {
                 rank: number | null;
                 selected_for_review: boolean;
                 /** @enum {string|null} */
-                tier: "HIGH" | "MEDIUM" | "LOW" | null;
+                tier: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
                 community: {
                     id: string;
                     /**
@@ -1211,6 +1397,118 @@ export interface components {
             /** @enum {integer} */
             y_abuse: 0 | 1;
             action_types: string[];
+        };
+        /** @description One calendar day of the snapshot. Orders by order date; return requests (not withdrawn) by request date; refunds are the amounts of return lines with status refunded. Flagged means the rows of customers the run selected for review - a description of the review set, not a finding about a return. */
+        DailyActivity: {
+            /** Format: date */
+            date: string;
+            order_lines: number;
+            ordered_units: number;
+            order_value_inr: number;
+            return_lines: number;
+            returned_units: number;
+            refunded_inr: number;
+            flagged_return_lines: number;
+            flagged_refunded_inr: number;
+        };
+        ChannelActivity: {
+            channel: string;
+            return_lines: number;
+            flagged_return_lines: number;
+            refunded_inr: number;
+            flagged_refunded_inr: number;
+        };
+        CategoryActivity: {
+            category: string;
+            purchased_units: number;
+            requested_units: number;
+            return_rate: number | null;
+        };
+        /** @description Counted on read. tiers is every customer of the run by tier; states, in_ring, wardrobing_elevated and tags count the customers selected for review; outcomes counts the closed cases by how they ended. */
+        QueueCounts: {
+            outcomes: {
+                cleared: number;
+                confirmed: number;
+                not_confirmed: number;
+            };
+            tiers: {
+                [key: string]: number;
+            };
+            states: {
+                [key: string]: number;
+            };
+            in_ring: number;
+            wardrobing_elevated: number;
+            tags: {
+                [key: string]: number;
+            };
+        };
+        RunInsights: {
+            run_id: string;
+            /** Format: date-time */
+            cutoff: string;
+            /** @description False for a run scored before contract 3.1.0 - daily, channels and categories are then empty; counts are served. */
+            available: boolean;
+            daily: components["schemas"]["DailyActivity"][];
+            channels: components["schemas"]["ChannelActivity"][];
+            categories: components["schemas"]["CategoryActivity"][];
+            counts: components["schemas"]["QueueCounts"];
+        };
+        CommunityGroup: {
+            id: string;
+            /** @enum {string} */
+            kind: "ring" | "household";
+            method: string;
+            size: number;
+            selected_count: number;
+            requested_units: number;
+            purchased_units: number;
+            coordinated_claim_matches: number;
+            members: components["schemas"]["CommunityMember"][];
+            edges: components["schemas"]["CommunityEdge"][];
+        };
+        CommunityList: {
+            run_id: string;
+            items: components["schemas"]["CommunityGroup"][];
+        };
+        BulkReviewRequest: {
+            customer_ids: string[];
+            /** @enum {string} */
+            kind: "open" | "clear" | "escalate";
+            /** @enum {string} */
+            disposition: "needs_investigation" | "likely_legitimate" | "unresolved";
+            note: string;
+            idempotency_key: string;
+        };
+        BulkReviewResult: {
+            run_id: string;
+            kind: string;
+            recorded: number;
+            results: {
+                customer_id: string;
+                /** @enum {string} */
+                status: "recorded" | "refused";
+                review_id: string | null;
+                error_code: string | null;
+                message: string | null;
+            }[];
+        };
+        Notification: {
+            id: string;
+            /** @enum {string} */
+            kind: "case_closed" | "case_escalated" | "run_scored";
+            /** Format: date-time */
+            at: string;
+            run_id: string;
+            customer_id: string | null;
+            text: string;
+            unread: boolean;
+        };
+        NotificationList: {
+            items: components["schemas"]["Notification"][];
+            unread: number;
+            /** Format: date-time */
+            seen_at: string | null;
         };
         Health: {
             alive: boolean;
@@ -2464,14 +2762,16 @@ export interface operations {
                 community?: "all" | "ring" | "household" | "none";
                 /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
                 community_id?: string;
-                /** @description Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
-                tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
+                /** @description Show only customers of this tier (CRITICAL and HIGH are the queue, CRITICAL its members of a detected ring; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
+                tier?: "all" | "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
                 /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
                 gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
                 /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
-                state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                state?: "all" | "new" | "in_review" | "escalated" | "closed" | "auto_logged";
                 /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
                 exclude_mine?: boolean;
+                /** @description Contract 3.1.0 (AM-77). Only the cases the signed-in user has open - opened by them and in review or escalated - by user id. */
+                mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
                 /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
@@ -2574,14 +2874,16 @@ export interface operations {
                 community?: "all" | "ring" | "household" | "none";
                 /** @description Show only the members of this community of the run, in queue order (with review_only=false, every member). */
                 community_id?: string;
-                /** @description Show only customers of this tier (HIGH is the queue; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
-                tier?: "all" | "HIGH" | "MEDIUM" | "LOW";
+                /** @description Show only customers of this tier (CRITICAL and HIGH are the queue, CRITICAL its members of a detected ring; MEDIUM scores 90 or above and is not selected; LOW is every other eligible customer). A filter chooses what is shown; it changes no score or selection. */
+                tier?: "all" | "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
                 /** @description Show only customers with this gate outcome (a presentation rule over stored results, see Customer.gate_outcome). A filter chooses what is shown; it changes no score or selection. */
                 gate?: "all" | "ESCALATE" | "HOLD" | "WARNING" | "LOW";
                 /** @description Show only customers whose review workflow is in this state (see Customer.workflow). A filter chooses what is shown; it changes no score or selection. */
-                state?: "all" | "new" | "in_review" | "awaiting_approval" | "approved" | "rejected" | "auto_logged";
+                state?: "all" | "new" | "in_review" | "escalated" | "closed" | "auto_logged";
                 /** @description Contract 1.16.0 (AM-69). Leave out the cases the signed-in user opened, by user id (the approval band). Contract 2.0.0 (AM-71) removed exclude_reviewer, which compared a typed name; sending it is a 422. */
                 exclude_mine?: boolean;
+                /** @description Contract 3.1.0 (AM-77). Only the cases the signed-in user has open - opened by them and in review or escalated - by user id. */
+                mine?: boolean;
                 /** @description Only the cleared heavy returners, the queue's view of that name - eligible customers outside the review set whose raw return rate is at or above the run's heavy_returner_cutoff. A filter over stored results, nothing recomputed; combine with review_only=false. */
                 cleared_heavy?: boolean;
                 /** @description Contract 1.15.0 (AM-68). The customer against earlier snapshots of its world - new_in_queue is in this review set and not in the previous snapshot's (or there is no previous snapshot), repeat_in_queue is in both, decided_before had its review end in approve or reject on an earlier snapshot. A filter over stored results and reviews, nothing recomputed. */
@@ -3534,6 +3836,424 @@ export interface operations {
             };
             /** @description Internal failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRunInsights: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunInsights"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCommunities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunityList"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listDecisions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewPage"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    appendBulkReviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Handled; see results for each customer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkReviewResult"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportStyles: {
+        parameters: {
+            query?: {
+                state?: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    markNotificationsSeen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user's roles do not grant this, or a POST or DELETE lacks the session's X-CSRF-Token (forbidden, csrf_required) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown scoped resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict or not ready */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -62,19 +62,32 @@ export const CLEARED_REASON: Record<NonNullable<Customer["cleared_reason"]>, str
   below_threshold: "below the review threshold",
 };
 
-export const TIER_LABEL: Record<Tier, string> = { HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
-export const TIER_HELP = "Anchored to the queue, not to fixed bands: High is selected for review, Medium scores 90 or above and is not selected, Low is every other ranked customer.";
+/** The case of a customer in a run, as the screens name it: a case is one customer in one run, so the identifier is the
+ *  customer's own number (Penpot decision 1). "W5401-C03245" reads "CASE-03245". */
+export function caseId(customerId: string): string {
+  const tail = customerId.split("-").pop() ?? customerId;
+  return "CASE-" + tail.replace(/^C/i, "");
+}
+
+export const TIER_LABEL: Record<Tier, string> = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
+export const TIER_HELP =
+  "Anchored to the queue, not to fixed bands: a customer selected for review is Critical as a member of a detected ring and High otherwise; Medium scores 90 or above and is not selected; Low is every other ranked customer.";
 export const GATE_LABEL: Record<GateOutcome, string> = { ESCALATE: "Escalate", HOLD: "Hold", WARNING: "Warning", LOW: "Low" };
 export const GATE_HELP =
   "A stated presentation rule over the run's results, not a model output. Escalate: selected and in a ring or with the wardrobing indicator elevated. Hold: selected otherwise. Warning: not selected but Medium or at or above the heavy-returner cutoff. Low: the rest.";
 
 export const STATE_LABEL: Record<WorkflowState, string> = {
-  new: "New",
-  in_review: "In review",
-  awaiting_approval: "Awaiting approval",
-  approved: "Approved",
-  rejected: "Rejected",
+  new: "Open",
+  in_review: "In Review",
+  escalated: "Escalated",
+  closed: "Closed",
   auto_logged: "Auto-logged",
+};
+/** How a closed case ended, in the words the screens use. */
+export const OUTCOME_LABEL: Record<NonNullable<Customer["workflow"]["outcome"]>, string> = {
+  cleared: "cleared",
+  confirmed: "confirmed after escalation",
+  not_confirmed: "not confirmed after escalation",
 };
 
 /** The style verdict: five labels, mixed_or_uncertain kept apart (decision D8). */
@@ -167,7 +180,7 @@ export function caseSummary(data: CaseLike): string {
     c.rank
       ? `Score ${c.risk_score?.toFixed(2)} (a percentile against the training scores, not a probability) / rank ${c.rank} / tier ${words(c.tier)} / recommendation ${words(c.gate_outcome)}`
       : "Not ranked: fewer than three mature sale lines",
-    `Status ${words(w.state)}${w.opened_by ? `, opened by ${w.opened_by}` : ""}${w.decided_by ? `, decided by ${w.decided_by}` : ""}`,
+    `Status ${STATE_LABEL[w.state]}${w.outcome ? ` (${OUTCOME_LABEL[w.outcome]})` : ""}${w.opened_by ? `, opened by ${w.opened_by}` : ""}${w.decided_by ? `, decided by ${w.decided_by}` : ""}`,
     `Return-rate rule: ${c.baseline_rank ? `rank ${c.baseline_rank}, ${c.baseline_selected ? "selected" : "not selected"}` : "not ranked"}`,
     b ? `Requested ${b.actual_units} of ${b.purchased_units} mature units; expected ${b.expected_units.toFixed(1)}${b.band_low !== null && b.band_high !== null ? ` (normal band ${b.band_low.toFixed(1)} to ${b.band_high.toFixed(1)})` : ""}` : "No mature purchase yet",
     `Refunds paid ${money(c.refunded_inr)}, of which ${money(c.claim_refunded_inr)} on transaction claims (withdrawn and rejected requests carry none)`,
@@ -220,7 +233,7 @@ export function historyNote(customer: HistoryLike): string | null {
 export function earlierDecisionNote(customer: HistoryLike): string | null {
   const decision = customer.earlier_decision;
   if (!decision) return null;
-  return `${decision.state} on the ${snapshotDate(decision.cutoff)} snapshot by ${decision.decided_by}`;
+  return `${OUTCOME_LABEL[decision.outcome]} on the ${snapshotDate(decision.cutoff)} snapshot by ${decision.decided_by}`;
 }
 
 /** The newest succeeded run of the latest snapshot: the workspace opens there, whatever order snapshots were scored in. */
@@ -231,4 +244,52 @@ export function latestSnapshotRun<T extends Pick<Run, "status" | "cutoff">>(runs
     if (!best || new Date(run.cutoff).getTime() > new Date(best.cutoff).getTime()) best = run;
   }
   return best;
+}
+
+// ---------------------------------------------------------------- dashboard periods (contract 3.1.0)
+type Day = { date: string; return_lines: number; flagged_return_lines: number; refunded_inr: number; flagged_refunded_inr: number; order_lines: number };
+export type PeriodTotals = { days: Day[]; return_lines: number; flagged_return_lines: number; refunded_inr: number; flagged_refunded_inr: number; order_lines: number };
+
+function totals(days: Day[]): PeriodTotals {
+  const sum = (pick: (d: Day) => number) => days.reduce((value, d) => value + pick(d), 0);
+  return {
+    days,
+    return_lines: sum((d) => d.return_lines),
+    flagged_return_lines: sum((d) => d.flagged_return_lines),
+    refunded_inr: sum((d) => d.refunded_inr),
+    flagged_refunded_inr: sum((d) => d.flagged_refunded_inr),
+    order_lines: sum((d) => d.order_lines),
+  };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const isoDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+
+/** The last `days` calendar days up to `end` (an ISO date, the snapshot's last day) and the same number of days before
+ *  them, every day present (a day without a row is a day of zeros). `days` of 0 means the whole history and no previous period. */
+export function periods(daily: Day[], end: string, days: number): { current: PeriodTotals; previous: PeriodTotals | null } {
+  if (!days) return { current: totals(daily), previous: null };
+  const byDate = new Map(daily.map((d) => [d.date, d]));
+  const last = Date.parse(end + "T00:00:00Z");
+  const span = (from: number) =>
+    Array.from({ length: days }, (_, index) => {
+      const date = isoDay(from + index * DAY_MS);
+      return byDate.get(date) ?? { date, return_lines: 0, flagged_return_lines: 0, refunded_inr: 0, flagged_refunded_inr: 0, order_lines: 0 };
+    });
+  return { current: totals(span(last - (days - 1) * DAY_MS)), previous: totals(span(last - (2 * days - 1) * DAY_MS)) };
+}
+
+/** "+12%" against the previous period, or null when there is nothing to compare with. */
+export function change(current: number, previous: number | null | undefined): string | null {
+  if (previous === null || previous === undefined || previous === 0) return null;
+  const share = (current - previous) / previous;
+  return (share >= 0 ? "+" : "") + (share * 100).toFixed(0) + "%";
+}
+
+/** Rupees in the Indian short forms: lakh and crore above a lakh, whole rupees below. */
+export function inrShort(value: number): string {
+  if (value >= 1e7) return "₹" + (value / 1e7).toFixed(1) + " cr";
+  if (value >= 1e5) return "₹" + (value / 1e5).toFixed(1) + " L";
+  if (value >= 1e3) return "₹" + (value / 1e3).toFixed(0) + "K";
+  return "₹" + value.toFixed(0);
 }

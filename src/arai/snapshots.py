@@ -63,7 +63,7 @@ def settle(builder: WorldBuilder, ctx: Context) -> World:
     events = returns.settle(ctx, events)
     visible = events[events["visible"].astype(bool)].reset_index(drop=True)
     headers, return_lines, placed = assemble.build_return_tables(ctx, visible)
-    tables = assemble.build_operational(ctx, builder.profiles, orders, lines, headers, return_lines)
+    tables = assemble.build_operational(ctx, builder.profiles, orders, lines, headers, return_lines, builder.rel.contact)
 
     # an account that signed up after the cutoff is not yet in the export
     signed_up = tables["customer_master"]["signup_date"].to_numpy().astype("datetime64[D]") <= snapshot

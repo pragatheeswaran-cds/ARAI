@@ -20,6 +20,8 @@ Wardrobing signals (AM-52, superseding AM-28): the signal is a late return of oc
 
 Fit median imputation and one missingness indicator per feature on training only; all-null -> 0+indicator. Logistic scales; others do not. Freeze feature shape/order. Exclude IDs, private truth, persona, targets, age, loyalty/status, free text and disposition. Evidence includes measured values, denominator and source keys, not causal attribution.
 
+Decision AM-79 (22 Nov 2026): the features are unchanged. The relationship graph of the features stays the graph of the three order identifiers on which the bundle of EXP-20261005-04 was trained and tested, and features.py is not edited. Linking accounts by a shared phone number or mailbox is done in the evidence layer of the inference service (component 11), where it changes what an analyst is shown and no model input. An independent review before any world existed measured why: one model feature reads the graph (coordinated_claim_share), and the wider graph changes it for about 10 of 5,700 eligible customers of a 10,000-customer world, so an experiment on it could not have told the wider graph from the narrower one (records/2026-11-22-contact-links-design-review.md in the code repository).
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Complete operational snapshot and frozen training fallbacks.

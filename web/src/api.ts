@@ -38,6 +38,12 @@ export type DevUsers = S["DevUsers"];
 export type AdminUser = S["AdminUser"];
 export type AuthEvent = S["AuthEvent"];
 export type AuthEventKind = AuthEvent["kind"];
+export type RunInsights = S["RunInsights"];
+export type DailyActivity = S["DailyActivity"];
+export type CommunityGroup = S["CommunityGroup"];
+export type BulkReviewResult = S["BulkReviewResult"];
+export type Notification = S["Notification"];
+export type NotificationList = S["NotificationList"];
 
 export const API = "/api/v1";
 
@@ -108,6 +114,8 @@ export type CustomerFilters = {
   state: "all" | WorkflowState;
   // contract 1.16.0: the cases the signed-in user did not open, by user id
   exclude_mine?: boolean;
+  // contract 3.1.0: only the cases the signed-in user has open
+  mine?: boolean;
   // contract 1.13.0: the cleared heavy returners view, filtered by the server rather than page by page in the browser
   cleared_heavy?: boolean;
   // contract 1.15.0: the customer against earlier snapshots of its world
@@ -122,6 +130,11 @@ export function queueExportUrl(runId: string, filters: Partial<CustomerFilters>)
   }
   if (filters.review_only === false) params.set("review_only", "false");
   return `${API}/runs/${encodeURIComponent(runId)}/customers/export${params.size ? "?" + params : ""}`;
+}
+
+/** The address of the style list's CSV export (contract 3.1.0). */
+export function stylesExportUrl(runId: string, state: string): string {
+  return `${API}/runs/${encodeURIComponent(runId)}/styles/export${state && state !== "all" ? "?state=" + encodeURIComponent(state) : ""}`;
 }
 
 export const api = {
@@ -153,6 +166,15 @@ export const api = {
   experiment: (id: string) => request<Experiment>(`/experiments/${encodeURIComponent(id)}`),
   curves: (id: string, runId: string, maxPoints = 200) =>
     request<Curves>(`/experiments/${encodeURIComponent(id)}/curves`, undefined, { run_id: runId, max_points: maxPoints }),
+  // the Penpot screens (contract 3.1.0, AM-77)
+  insights: (runId: string) => request<RunInsights>(`/runs/${encodeURIComponent(runId)}/insights`),
+  communities: (runId: string) => request<{ run_id: string; items: CommunityGroup[] }>(`/runs/${encodeURIComponent(runId)}/communities`),
+  decisions: (runId: string, cursor?: string | null) =>
+    request<Page<Review>>(`/runs/${encodeURIComponent(runId)}/decisions`, undefined, { cursor, limit: 50 }),
+  bulkReviews: (runId: string, body: S["BulkReviewRequest"]) =>
+    request<BulkReviewResult>(`/runs/${encodeURIComponent(runId)}/customers/bulk-reviews`, json(body)),
+  notifications: () => request<NotificationList>("/notifications"),
+  notificationsSeen: () => request<null>("/notifications/seen", { method: "POST" }),
   // people and access (contract 2.0.0, AM-71; admin only)
   adminUsers: () => request<{ items: AdminUser[] }>("/admin/users"),
   adminAction: (userId: string, action: "disable" | "enable" | "end-sessions", reason?: string) =>

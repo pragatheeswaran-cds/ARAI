@@ -18,6 +18,8 @@ Operational manifest: schema_version=1.0, world_id, cutoff, history_start, timez
 
 Private profiles/action rates/unit facts/order layer (base or campaign)/address failure multipliers/campaigns/memberships/allocations/actions/customer/style truth live outside inference mounts. Amendment 1.1 changes private truth only: the seven operational tables and manifest schema_version stay 1.0, and no operational field distinguishes a campaign order. Required fields and joins in private-truth.yaml reconstruct labels. Supervised labels join only after feature artifact freeze.
 
+Amendment 1.2 (AM-78): customer_master gains three optional columns, region (north, south, west, east, central, northeast), email and phone. Optional is a new column property: a snapshot without the column is valid and reads as before, so every snapshot written under 1.0 and 1.1 stays valid and manifest schema_version stays 1.0; a present value follows the column's type and enum. None of the three is a model input. Email and phone are shown on the screens; accounts whose addresses are aliases of one mailbox, or that carry the same number, can be linked by them, which the features do not do under EXP-20261005-04. The private table contact_truth records which group offered which shared phone or mailbox and which member's account carries it.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Canonical CSV tables and manifest.

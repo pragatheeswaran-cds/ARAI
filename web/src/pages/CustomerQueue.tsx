@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ApiError, api, queueExportUrl, type Customer, type CustomerFilters } from "../api";
+import { ApiError, api, newKey, queueExportUrl, type BulkReviewResult, type Customer, type CustomerFilters } from "../api";
 import { useSession, useWorkspace } from "../App";
-import { CustomerTable, SCORE_HELP, TAGS, tagLabel } from "../components/CustomerTable";
-import { Callout, ErrorBox, PageTitle, Panel, number, percent, useLoad } from "../components/ui";
+import { CustomerTable, SCORE_HELP, TAGS, tagLabel, type Selection } from "../components/CustomerTable";
+import { Callout, ErrorBox, PageTitle, Panel, Stat, label, number, percent, useLoad } from "../components/ui";
 import { GATE_HELP, GATE_LABEL, HISTORY_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, snapshotDate } from "../derive";
 
 const COMPARISONS: Record<CustomerFilters["comparison"], string> = {
@@ -17,21 +17,96 @@ const EMPTY: CustomerFilters = {
   community_id: "", tier: "all", gate: "all", state: "all", history: "all",
 };
 
-/** Cases a second person must decide, without the ones this reviewer opened. */
-function ApprovalBand({ runId }: { runId: string }) {
+/** Escalated cases waiting for a lead to record the investigation team's outcome. */
+function EscalatedBand({ runId }: { runId: string }) {
   const { can } = useSession();
   const { fallback } = useWorkspace();
-  const band = useLoad(() => api.customers(runId, { ...EMPTY, review_only: false, state: "awaiting_approval", exclude_mine: true }, null, 20), [runId]);
+  const band = useLoad(() => api.customers(runId, { ...EMPTY, review_only: false, state: "escalated" }, null, 20), [runId]);
   const items = band.data?.items ?? [];
   if (!items.length || !can("decide")) return null;
   return (
-    <div className="band" role="region" aria-label="Awaiting a second reviewer">
+    <div className="band" role="region" aria-label="Escalated cases awaiting an outcome">
       <h3>
-        Awaiting your approval: {number(items.length)}
-        {band.data?.next_cursor ? "+" : ""} case(s) another reviewer opened
+        Escalated, awaiting an outcome: {number(items.length)}
+        {band.data?.next_cursor ? "+" : ""} case(s)
       </h3>
-      <p className="small">A case is decided by someone other than the person who opened it. Cases you opened are not listed.</p>
+      <p className="small">An escalated case stays open until a lead records the investigation team's outcome and closes it.</p>
       <CustomerTable runId={runId} customers={items} fallback={fallback} compact />
+    </div>
+  );
+}
+
+/** The four counts above the queue (Penpot board 2), counted by the server for the whole run. */
+function QueueTiles({ runId, version }: { runId: string; version: number }) {
+  const insights = useLoad(() => api.insights(runId), [runId, version]);
+  const tiers = insights.data?.counts.tiers;
+  if (!tiers) return null;
+  return (
+    <div className="stats">
+      <Stat name="Total Cases" value={number(tiers.CRITICAL + tiers.HIGH)} note="customers selected for review" />
+      <Stat name="Critical / High" value={`${number(tiers.CRITICAL)} / ${number(tiers.HIGH)}`} note="Critical: selected and in a detected ring" />
+      <Stat name="Medium" value={number(tiers.MEDIUM)} note="score 90 or above, not selected" />
+      <Stat name="Low" value={number(tiers.LOW)} note="every other ranked customer" />
+    </div>
+  );
+}
+
+type BulkKind = "open" | "clear" | "escalate";
+
+/** One action on the selected cases. The server handles each case under the single-case rules and says what happened to each. */
+function BulkBar({ runId, chosen, onDone, clear }: { runId: string; chosen: string[]; onDone: () => void; clear: () => void }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<BulkReviewResult | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const act = async (kind: BulkKind) => {
+    if (!note.trim()) {
+      setError(new ApiError(422, { error_code: "note_required", message: "A note is required with every action.", request_id: "", details: [] }));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const reading = kind === "clear" ? "likely_legitimate" : kind === "escalate" ? "needs_investigation" : "unresolved";
+      const done = await api.bulkReviews(runId, { customer_ids: chosen, kind, disposition: reading, note: note.trim(), idempotency_key: newKey() });
+      setResult(done);
+      setNote("");
+      onDone();
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure : new ApiError(0, null));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const refused = result?.results.filter((r) => r.status === "refused") ?? [];
+  return (
+    <div className="band" role="region" aria-label="Bulk actions">
+      <h3>{number(chosen.length)} case(s) selected</h3>
+      <div className="filters">
+        <label>
+          Note for every selected case (required)
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={4000} size={50} placeholder="What you looked at and why" />
+        </label>
+        <button type="button" disabled={busy || !chosen.length} onClick={() => act("open")}>
+          Open
+        </button>
+        <button type="button" disabled={busy || !chosen.length} onClick={() => act("clear")}>
+          Clear
+        </button>
+        <button type="button" className="primary" disabled={busy || !chosen.length} onClick={() => act("escalate")}>
+          Escalate
+        </button>
+        <button type="button" className="quiet" disabled={busy} onClick={clear}>
+          Deselect all
+        </button>
+      </div>
+      {result && (
+        <p className="small" role="status">
+          {label(result.kind)}: recorded for {number(result.recorded)} case(s)
+          {refused.length ? `; refused for ${number(refused.length)}: ${[...new Set(refused.map((r) => label(r.error_code ?? "refused")))].join(", ")}` : ""}.
+        </p>
+      )}
+      {error && <ErrorBox error={error} />}
     </div>
   );
 }
@@ -39,7 +114,30 @@ function ApprovalBand({ runId }: { runId: string }) {
 export function CustomerQueue() {
   const { runId = "" } = useParams();
   const { run, fallback } = useWorkspace();
-  const canExport = useSession().can("export"); // reviewers and above (contract 1.16.0)
+  const session = useSession();
+  const canExport = session.can("export"); // reviewers and above (contract 1.16.0)
+  const canReview = session.can("review");
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [version, setVersion] = useState(0);
+  const selection: Selection = {
+    chosen,
+    toggle: (id) =>
+      setChosen((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    setAll: (ids, on) =>
+      setChosen((current) => {
+        const next = new Set(current);
+        for (const id of ids) {
+          if (on) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      }),
+  };
   const [params, setParams] = useSearchParams();
   const comparison = (params.get("comparison") ?? "all") as CustomerFilters["comparison"];
   // the queue opens on the review set; a comparison view, a community, a cleared view or a state filter needs every customer
@@ -112,8 +210,23 @@ export function CustomerQueue() {
 
   return (
     <>
-      <PageTitle title="Case queue">Filters change what is shown. They never change a score or the run's review selection.</PageTitle>
-      <ApprovalBand runId={runId} />
+      <PageTitle title="Risk Queue">
+        Investigate high-risk customers and take action. Filters change what is shown; they never change a score or the run's review selection.
+      </PageTitle>
+      <QueueTiles runId={runId} version={version} />
+      <EscalatedBand runId={runId} />
+      {canReview && chosen.size > 0 && (
+        <BulkBar
+          runId={runId}
+          chosen={[...chosen]}
+          clear={() => setChosen(new Set())}
+          onDone={() => {
+            setChosen(new Set());
+            setVersion((value) => value + 1);
+            load(null);
+          }}
+        />
+      )}
       <Panel>
         <form
           className="filters"
@@ -127,18 +240,8 @@ export function CustomerQueue() {
             <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="e.g. C00219" />
           </label>
           <button type="submit">Search</button>
-          <label>
-            Show
-            <select value={view} onChange={(e) => set("show", e.target.value)}>
-              <option value="review">Selected for review</option>
-              <option value="cleared">Cleared heavy returners</option>
-              <option value="all">All customers</option>
-              <option value="eligible">Eligible (ranked)</option>
-              <option value="insufficient">Insufficient history</option>
-            </select>
-          </label>
           <label title={TIER_HELP}>
-            Tier
+            Risk Level
             <select value={filters.tier} onChange={(e) => set("tier", e.target.value)}>
               <option value="all">Any</option>
               {(Object.keys(TIER_LABEL) as (keyof typeof TIER_LABEL)[]).map((tier) => (
@@ -148,24 +251,15 @@ export function CustomerQueue() {
               ))}
             </select>
           </label>
-          <label title={GATE_HELP}>
-            Recommendation
-            <select value={filters.gate} onChange={(e) => set("gate", e.target.value)}>
-              <option value="all">Any</option>
-              {(Object.keys(GATE_LABEL) as (keyof typeof GATE_LABEL)[]).map((gate) => (
-                <option key={gate} value={gate}>
-                  {GATE_LABEL[gate]}
+          <label>
+            Pattern
+            <select value={filters.evidence} onChange={(e) => set("evidence", e.target.value)}>
+              <option value="">Any</option>
+              {TAGS.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tagLabel(tag)}
                 </option>
               ))}
-            </select>
-          </label>
-          <label>
-            Linked accounts
-            <select value={filters.community} onChange={(e) => set("community", e.target.value)}>
-              <option value="all">Any</option>
-              <option value="ring">In a ring</option>
-              <option value="household">In a household</option>
-              <option value="none">No supported link</option>
             </select>
           </label>
           <label>
@@ -202,15 +296,35 @@ export function CustomerQueue() {
               <option value="incomplete">Incomplete</option>
             </select>
           </label>
+          <span className="filters-more">More filters</span>
           <label>
-            Measured evidence
-            <select value={filters.evidence} onChange={(e) => set("evidence", e.target.value)}>
-              <option value="">Any</option>
-              {TAGS.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tagLabel(tag)}
+            Show
+            <select value={view} onChange={(e) => set("show", e.target.value)}>
+              <option value="review">Selected for review</option>
+              <option value="cleared">Cleared heavy returners</option>
+              <option value="all">All customers</option>
+              <option value="eligible">Eligible (ranked)</option>
+              <option value="insufficient">Insufficient history</option>
+            </select>
+          </label>
+          <label title={GATE_HELP}>
+            Recommendation
+            <select value={filters.gate} onChange={(e) => set("gate", e.target.value)}>
+              <option value="all">Any</option>
+              {(Object.keys(GATE_LABEL) as (keyof typeof GATE_LABEL)[]).map((gate) => (
+                <option key={gate} value={gate}>
+                  {GATE_LABEL[gate]}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            Linked accounts
+            <select value={filters.community} onChange={(e) => set("community", e.target.value)}>
+              <option value="all">Any</option>
+              <option value="ring">In a ring</option>
+              <option value="household">In a household</option>
+              <option value="none">No supported link</option>
             </select>
           </label>
           <label>
@@ -285,7 +399,9 @@ export function CustomerQueue() {
                 : "No customer matches. Clear the search or change a filter."}
           </div>
         )}
-        {shown.length > 0 && <CustomerTable runId={runId} customers={shown} fallback={fallback} run={run} grouped={grouped} />}
+        {shown.length > 0 && (
+          <CustomerTable runId={runId} customers={shown} fallback={fallback} run={run} grouped={grouped} selection={canReview ? selection : undefined} />
+        )}
         {cursor && (
           <p>
             <button type="button" onClick={() => load(cursor)} disabled={loading}>

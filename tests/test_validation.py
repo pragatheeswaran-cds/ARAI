@@ -76,6 +76,21 @@ def test_private_column_is_rejected(copy):
     assert "S001" in _rules(validate_world(copy))
 
 
+def test_a_snapshot_without_the_optional_contact_columns_is_still_valid(copy):
+    """Data contract 1.2 (AM-78): region, email and phone are optional, so a snapshot written before them is accepted."""
+    _rewrite(copy, "customer_master", lambda f: f.drop(columns=["region", "email", "phone"]))
+    report = validate_world(copy)
+    assert report.accepted, report.violations[:3]
+    from arai.operational import read_csv_world
+    tables, _ = read_csv_world(copy)
+    assert "email" not in tables["customer_master"].columns and len(tables["customer_master"])
+
+
+def test_a_region_outside_the_list_is_rejected(copy):
+    _rewrite(copy, "customer_master", lambda f: f.assign(region="mars"))
+    assert "T002" in _rules(validate_world(copy))
+
+
 def test_missing_required_column_is_rejected(copy):
     _rewrite(copy, "sales_order", lambda f: f.drop(columns="device_id"))
     assert "S002" in _rules(validate_world(copy))

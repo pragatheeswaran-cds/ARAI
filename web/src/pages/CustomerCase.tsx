@@ -4,7 +4,7 @@ import { ApiError, api, newKey, type Case, type Community, type Curves, type Dis
 import { useSession, useWorkspace } from "../App";
 import { Chips, GateBadge, SCORE_HELP, StateBadge, TierBadge, workflowNote } from "../components/CustomerTable";
 import { Badge, Callout, CopyId, ErrorBox, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, rupees, shortId, useLoad } from "../components/ui";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, STATE_LABEL, TIER_LABEL, caseSummary, clearedHeavyReturner, earlierDecisionNote, historyNote, notObserved, rawRate, snapshotDate } from "../derive";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, OUTCOME_LABEL, STATE_LABEL, TIER_LABEL, caseId, caseSummary, clearedHeavyReturner, earlierDecisionNote, historyNote, notObserved, rawRate, snapshotDate } from "../derive";
 
 const TABS = ["evidence", "returns", "linked accounts", "history", "notes"] as const;
 type Tab = (typeof TABS)[number];
@@ -498,26 +498,24 @@ function MemoPanel({ data }: { data: Case }) {
 }
 
 // ---------------------------------------------------------------- decision
+/** The kinds this screen writes; the list still shows the kinds of the earlier two-person workflow. */
+type ActionKind = Exclude<ReviewKind, "request_approval" | "approve" | "reject">;
 function Decision({ data, runId, onChanged }: { data: Case; runId: string; onChanged: () => void }) {
   const { me, can } = useSession();
   const w = data.customer.workflow;
   const selected = data.customer.selected_for_review;
   const [disposition, setDisposition] = useState<Disposition>("needs_investigation");
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState<ReviewKind | null>(null);
+  const [busy, setBusy] = useState<ActionKind | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [done, setDone] = useState<string | null>(null);
   // the opener by user id (contract 1.16.0); an open written before sign-in existed has only its typed name
   const mine = w.opened_by_user_id ? w.opened_by_user_id === me.user_id : !!w.opened_by && w.opened_by === me.display_name;
   const decide = can("decide");
-  const act = async (kind: ReviewKind, override?: Disposition, text?: string) => {
+  const act = async (kind: ActionKind, override?: Disposition, text?: string) => {
     const body = text ?? note.trim();
     if (!body) {
       setError(new ApiError(422, { error_code: "note_required", message: "A note is required with every action.", request_id: "", details: [] }));
-      return;
-    }
-    if ((kind === "approve" || kind === "reject") && (override ?? disposition) === "unresolved") {
-      setError(new ApiError(422, { error_code: "decision_needs_reading", message: "Choose a reading (needs investigation or likely legitimate) before approving or rejecting.", request_id: "", details: [] }));
       return;
     }
     setBusy(kind);
@@ -540,12 +538,16 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
         {STATE_LABEL[w.state]}
       </Row>
       {w.decided_by && (
-        <Row name="Decided by" note={ist(w.decided_at)}>
+        <Row name={w.outcome === "cleared" ? "Cleared by" : "Closed by"} note={ist(w.decided_at)}>
           {w.decided_by}
+          {w.outcome && w.outcome !== "cleared" ? ` (${OUTCOME_LABEL[w.outcome]})` : ""}
         </Row>
       )}
-      {mine && (w.state === "in_review" || w.state === "awaiting_approval") && (
-        <Callout>You opened this case. A different reviewer must approve or reject it.</Callout>
+      {mine && w.state === "in_review" && <Callout>You opened this case. Clear it or escalate it when you have read the evidence.</Callout>}
+      {w.state === "escalated" && (
+        <Callout>
+          Escalated to the investigation team. {decide ? "Record their outcome below to close the case." : "A lead records their outcome to close the case."}
+        </Callout>
       )}
       {!can("review") ? (
         <p className="muted">
@@ -570,6 +572,7 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
               <option value="unresolved">Unresolved</option>
             </select>
           </label>
+          <p className="small">The reading is stored with a note. Clear, Escalate and the two outcomes set their own.</p>
         </div>
         <label>
           Note (required with every action)
@@ -577,27 +580,32 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
         </label>
         {selected ? (
           <>
-            {(w.state === "new" || w.state === "approved" || w.state === "rejected" || w.state === "auto_logged") && (
+            {(w.state === "new" || w.state === "closed" || w.state === "auto_logged") && (
               <button type="button" className="primary" disabled={busy !== null} onClick={() => act("open")}>
-                {w.state === "new" || w.state === "auto_logged" ? "Open case" : "Reopen case"}
+                {w.state === "closed" ? "Reopen case" : "Open case"}
               </button>
             )}
             {w.state === "in_review" && (
-              <button type="button" disabled={busy !== null} onClick={() => act("request_approval")}>
-                Request approval
-              </button>
-            )}
-            {(w.state === "in_review" || w.state === "awaiting_approval") && decide && (
               <>
-                <button type="button" className="primary" disabled={busy !== null} onClick={() => act("approve")} title={mine ? "The server will refuse: you opened this case" : undefined}>
-                  Approve
+                <button type="button" disabled={busy !== null} onClick={() => act("clear", "likely_legitimate")}>
+                  Clear Case
                 </button>
-                <button type="button" disabled={busy !== null} onClick={() => act("reject")} title={mine ? "The server will refuse: you opened this case" : undefined}>
-                  Reject
+                <button type="button" className="primary" disabled={busy !== null} onClick={() => act("escalate", "needs_investigation")}>
+                  Escalate Case
                 </button>
               </>
             )}
-            {(w.state === "in_review" || w.state === "awaiting_approval") && !decide && <p className="small">Approving or rejecting needs the approver role.</p>}
+            {w.state === "escalated" && decide && (
+              <>
+                <button type="button" className="primary" disabled={busy !== null} onClick={() => act("close", "needs_investigation")}>
+                  Close: confirmed
+                </button>
+                <button type="button" disabled={busy !== null} onClick={() => act("close", "likely_legitimate")}>
+                  Close: not confirmed
+                </button>
+              </>
+            )}
+            {w.state === "escalated" && !decide && <p className="small">Closing an escalated case needs the approver (lead) role.</p>}
           </>
         ) : (
           <>
@@ -620,13 +628,13 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
       )}
       {error && <ErrorBox error={error} />}
       <p className="small">
-        <b>What a decision means.</b> Open takes the case into review. Approve records a second reviewer's sign-off on the case with the reading
-        chosen above; Reject records that the second reviewer does not sign it off. Neither approves, refuses or reverses a return or a refund:
-        nothing here reaches the order or refund system.
+        <b>What a decision means.</b> Open takes the case into review. Clear Case closes it as likely legitimate. Escalate Case hands it to the
+        investigation team; a lead later closes it with their outcome, confirmed or not confirmed. None of these approves, refuses or reverses a return
+        or a refund: nothing here reaches the order or refund system.
       </p>
       <p className="muted">
         The gate rule says {data.customer.gate_outcome ? GATE_LABEL[data.customer.gate_outcome] : "n/a"} for this case. It is a presentation rule, not a decision;
-        the decision is yours and a second person's. Every action is appended, never edited.
+        the decision is yours. Every action is appended, never edited.
       </p>
     </Panel>
   );
@@ -692,10 +700,10 @@ type HistoryEntry = Case["history"][number];
 export function historySummary(history: HistoryEntry[], worldId: string): string {
   const present = history.filter((h) => h.present);
   const queued = present.filter((h) => h.selected_for_review).map((h) => snapshotDate(h.cutoff));
-  const decided = present.filter((h) => h.workflow && (h.workflow.state === "approved" || h.workflow.state === "rejected"));
+  const decided = present.filter((h) => h.workflow && h.workflow.state === "closed");
   const parts = [`${present.length} of ${history.length} scored snapshot(s) of ${worldId} include this customer`];
   parts.push(queued.length ? `selected for review on ${queued.length}: ${queued.join(", ")}` : "never selected for review");
-  for (const h of decided) parts.push(`${h.workflow!.state} on ${snapshotDate(h.cutoff)} by ${h.workflow!.decided_by}`);
+  for (const h of decided) parts.push(`${h.workflow!.outcome ? OUTCOME_LABEL[h.workflow!.outcome] : "closed"} on ${snapshotDate(h.cutoff)} by ${h.workflow!.decided_by}`);
   return parts.join("; ") + ".";
 }
 
@@ -782,7 +790,7 @@ function Notes({ data, runId }: { data: Case; runId: string }) {
       </p>
       {data.reviews.map((review) => (
         <article className="note" key={review.review_id}>
-          <Badge text={review.kind} tone={review.kind === "approve" ? "green" : review.kind === "reject" ? "amber" : "gray"} /> <Badge text={review.disposition} tone="green" />
+          <Badge text={review.kind} tone={review.kind === "clear" || review.kind === "close" || review.kind === "approve" ? "green" : review.kind === "escalate" || review.kind === "reject" ? "amber" : "gray"} /> <Badge text={review.disposition} tone="green" />
           <p>{review.note}</p>
           <small>
             {review.reviewer_name} {review.author.verified ? "(signed in)" : <Badge text="unverified name" tone="gray" />} / {ist(review.created_at)} / written on the{" "}
@@ -815,10 +823,11 @@ export function CustomerCase() {
   return (
     <>
       <Link className="button back" to={`/runs/${runId}/customers`}>
-        Back to case queue
+        Back to Risk Queue
       </Link>
-      <PageTitle title={`Case ${customerId}`}>
-        Observed evidence for a human reviewer. It is not a finding of misconduct. <CopyId id={customerId} showId={false} />
+      <PageTitle title="Investigation Details">
+        {caseId(customerId)} / customer {customerId} <CopyId id={customerId} showId={false} />. Observed evidence for a human reviewer; it is not a
+        finding of misconduct.
       </PageTitle>
       <LoadState state={state} />
       {data && c && (
@@ -848,6 +857,30 @@ export function CustomerCase() {
               its own. See the History tab and the notes.
             </Callout>
           )}
+          <div className="grid even">
+            <Panel title="Case Summary" aside={<StateBadge customer={c} compact />}>
+              <Row name="Case ID">{caseId(c.customer_id)}</Row>
+              <Row name="Customer ID">{c.customer_id}</Row>
+              <Row name="Region">{c.contact.region ? label(c.contact.region) : "not in this snapshot"}</Row>
+              <Row name="Risk Score" note="a percentile against the training scores, not a probability">
+                {c.risk_score === null ? "n/a" : `${c.risk_score.toFixed(0)} / 100`} <TierBadge tier={c.tier} />
+              </Row>
+              <Row name="Snapshot" note={run ? `world ${run.world_id}` : undefined}>
+                {run ? snapshotDate(run.cutoff) : "n/a"}
+              </Row>
+            </Panel>
+            <Panel title="Financial Impact">
+              <Row name="Refund Amount" note="refunds paid on this customer's refunded return lines in the snapshot">
+                {c.refunded_inr === null || c.refunded_inr === undefined ? "n/a" : rupees(c.refunded_inr)}
+              </Row>
+              <Row name="On transaction claims" note="where no item comes back to inspect">
+                {c.claim_refunded_inr === null || c.claim_refunded_inr === undefined ? "n/a" : rupees(c.claim_refunded_inr)}
+              </Row>
+              <Row name="Units returned" note="requested for return on mature sale lines, of the units bought on them">
+                {c.support_counts.mature_requested_units} / {c.support_counts.mature_purchased_units}
+              </Row>
+            </Panel>
+          </div>
           <div className="stats">
             <Stat
               name={fallback ? "Return-rate percentile" : "Score and tier"}

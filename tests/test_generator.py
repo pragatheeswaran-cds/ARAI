@@ -455,3 +455,57 @@ def test_generate_refuses_to_overwrite_a_world_of_another_simulator(tmp_path, ca
     assert "left untouched" in capsys.readouterr().out and manifest.read_bytes() == kept
     assert cli.main(["generate", "--seed", "2003", "--customers", "150", "--overwrite", *roots]) == 0
     assert json.loads(manifest.read_text())["generator"]["config_sha256"] != "0" * 64
+
+
+# ------------------------------------------------------------------ contact details (data contract 1.2, AM-78)
+def test_every_account_has_a_region_an_email_and_a_phone_and_none_is_a_real_one(world):
+    from arai.generator.relationships import EMAIL_DOMAIN, REGIONS
+    master = world.tables["customer_master"]
+    assert list(master.columns[-3:]) == ["region", "email", "phone"] and not master[["region", "email", "phone"]].isna().any().any()
+    assert set(master["region"]) <= set(REGIONS) and master["region"].nunique() >= 4
+    assert master["email"].str.endswith("@" + EMAIL_DOMAIN).all()                    # a domain reserved for documentation
+    assert master["phone"].str.fullmatch(r"\+91 5\d{4} \d{5}").all()                  # Indian mobile numbers start with 6 to 9
+
+
+def test_groups_share_phones_and_mailboxes_as_the_private_record_says(world):
+    from arai.generator.relationships import email_key
+    master = world.tables["customer_master"].set_index("customer_id")
+    record = world.truth["contact_truth"]
+    assert set(record["identifier_type"]) == {"phone", "email"} and set(record["group_type"]) <= {"household", "coordination"}
+    used = record[record["used_shared_value"]]
+    assert len(used) and len(record) > len(used)                                     # some members keep their own
+    phones = used[used["identifier_type"] == "phone"]
+    assert (phones["customer_id"].map(master["phone"]) == phones["shared_value"]).all()
+    mailboxes = used[used["identifier_type"] == "email"]
+    assert (mailboxes["customer_id"].map(master["email"]).map(email_key) == mailboxes["shared_value"]).all()
+    assert mailboxes["customer_id"].map(master["email"]).str.contains(r"\+\d+@").all()   # each member carries an alias of the mailbox
+    # a member who did not take the shared value does not carry it
+    kept = record[~record["used_shared_value"] & (record["identifier_type"] == "phone")]
+    assert (kept["customer_id"].map(master["phone"]) != kept["shared_value"]).all()
+    # a household lives in one region
+    households = world.truth["customer_truth"].dropna(subset=["household_id"])
+    assert households.assign(region=households["customer_id"].map(master["region"])).groupby("household_id")["region"].nunique().max() == 1
+    # coordination groups share more often than households do
+    share = record.drop_duplicates(["group_id", "identifier_type"]).groupby("group_type")["group_id"].nunique()
+    groups = world.truth["customer_truth"]
+    assert share["coordination"] / groups["coordination_group_id"].nunique() > share["household"] / groups["household_id"].nunique()
+
+
+def test_mailbox_aliases_reduce_to_one_key():
+    from arai.generator.relationships import email_key
+    assert email_key("G12AB+3@Example.com") == "g12ab@example.com" and email_key("c9@example.com") == "c9@example.com"
+    assert email_key(None) is None and email_key("not an address") is None and email_key("+x@example.com") is None
+
+
+def test_an_account_in_a_household_and_a_ring_is_recorded_with_what_it_carries_in_the_end():
+    """The private record must match the operational columns for every account, also the few in two groups."""
+    from arai.generator.relationships import email_key
+    world = generate_world(2002)
+    master = world.tables["customer_master"].set_index("customer_id")
+    record = world.truth["contact_truth"]
+    carried = pd.Series([master.loc[c, "phone"] if kind == "phone" else email_key(master.loc[c, "email"])
+                         for c, kind in zip(record["customer_id"], record["identifier_type"])], index=record.index)
+    assert ((carried == record["shared_value"]) == record["used_shared_value"]).all()
+    truth = world.truth["customer_truth"].dropna(subset=["household_id"])
+    regions = truth.assign(region=truth["customer_id"].map(master["region"])).groupby("household_id")["region"].nunique()
+    assert regions.max() == 1                                                        # a ring never moves a household member

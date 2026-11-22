@@ -10,7 +10,7 @@ the demonstration world W5401 is 30 MB, so these are for trying the flow, not fo
 | `01-ordinary-300` | W7001N300 | 300 | The everyday case: upload, score, review a short queue (9 selected out of 173 eligible) |
 | `02-honest-only-300` | W7002N300 | 300 | The same shopping without any abuse mechanism: the queue still fills to its budget (9 of 167), so the reviewers' job is to clear people, not confirm them |
 | `03-history-1000-june` | W7004 as of 9 June 2026 | 913 | The first snapshot of a world (23 selected of 457 eligible) |
-| `04-history-1000-september` | W7004 as of 9 September 2026 | 1,000 | The next snapshot of the same customers (28 of 553): the case's History tab, the Overview's "since the previous snapshot" panel, decisions carried forward |
+| `04-history-1000-september` | W7004 as of 9 September 2026 | 1,000 | The next snapshot of the same customers (28 of 553): the case's History tab, the Dashboard's "since the previous snapshot" panel, decisions carried forward |
 | `05-rejected-orphan-line` | W7001N300 | 300 | A broken export: one sales order removed while its line stays. Validation refuses it whole with rule F001 (`order_id not in sales_order`); nothing is stored |
 
 The counts above come from scoring with the active bundle of EXP-20261005-04; they are deterministic.
@@ -18,13 +18,14 @@ The counts above come from scoring with the active bundle of EXP-20261005-04; th
 ## The walk
 
 1. **Sign in.** On the demonstration VM (https://arai-demo.duckdns.org) or `uv run arai local`, pick a persona.
-   Admin registers and scores; Asha, Ravi and Meera review and approve; Arjun reviews; Priya only looks.
-2. **Register.** As Admin, open **Datasets & runs**, choose the eight files of `01-ordinary-300`, press
+   Admin registers and scores; Asha, Ravi and Meera review and close escalated cases; Arjun reviews; Priya only looks.
+2. **Register.** As Admin, open **Configuration** (the Datasets & runs page), choose the eight files of `01-ordinary-300`, press
    **Validate and register**. The page names the world, its cutoff and its customer count.
 3. **Score.** Press **Score with the active bundle**. Three hundred customers take a few seconds; the run page shows
    the stages and ends with the summary (eligible, selected, communities, rings).
-4. **Review.** Sign out, sign in as Asha, open the queue, open a case, request approval. Sign in as Ravi to approve or
-   reject it: the opener cannot decide their own case (the second-reviewer rule), so Asha approving is refused.
+4. **Review.** Sign out, sign in as Arjun, open the **Risk Queue**, open a case and press **Clear Case**, then open
+   another and press **Escalate Case**. Sign in as Ravi to close the escalated one as confirmed or not confirmed: Arjun,
+   a reviewer without the approver role, is not offered that step.
    Priya sees everything and can change nothing. Memos are unavailable on an instance without `ANTHROPIC_API_KEY`,
    by design.
 5. **History.** Register and score `03-history-1000-june`, then `04-history-1000-september`. The queue and every case

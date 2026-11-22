@@ -1231,7 +1231,9 @@ def test_tiers_gate_outcomes_and_primary_signals_follow_the_stated_rules_and_the
         if c["eligibility_status"] != "eligible":
             assert c["tier"] is None and c["gate_outcome"] is None
             continue
-        tier = "HIGH" if c["selected_for_review"] else "MEDIUM" if c["risk_score"] >= 90 else "LOW"        # decision D1
+        in_ring = c["community"] is not None and c["community"]["kind"] == "ring"
+        tier = (("CRITICAL" if in_ring else "HIGH") if c["selected_for_review"]                            # decision D1, with
+                else "MEDIUM" if c["risk_score"] >= 90 else "LOW")                                        # Critical for a ring
         assert c["tier"] == tier
         if c["selected_for_review"]:                                                                      # decision D2
             ring = c["community"] is not None and c["community"]["kind"] == "ring"
@@ -1245,12 +1247,12 @@ def test_tiers_gate_outcomes_and_primary_signals_follow_the_stated_rules_and_the
         assert all(len(p["label"]) < 40 for p in c["primary_signals"])
     assert {c["gate_outcome"] for c in everyone} >= {"HOLD", "WARNING", "LOW"} and {c["tier"] for c in everyone} >= {"HIGH", "MEDIUM", "LOW"}
     # the SQL filters are the same rules: each filter returns exactly the customers the shown field says
-    for name, values in (("tier", ("HIGH", "MEDIUM", "LOW")), ("gate", ("ESCALATE", "HOLD", "WARNING", "LOW"))):
+    for name, values in (("tier", ("CRITICAL", "HIGH", "MEDIUM", "LOW")), ("gate", ("ESCALATE", "HOLD", "WARNING", "LOW"))):
         field = "tier" if name == "tier" else "gate_outcome"
         for value in values:
             shown = [c["customer_id"] for c in all_pages(client, url, {"review_only": "false", name: value})]
             assert shown == [c["customer_id"] for c in everyone if c[field] == value], (name, value)
-    assert client.get(url, params={"tier": "CRITICAL"}).status_code == 422
+    assert client.get(url, params={"tier": "SEVERE"}).status_code == 422
     # the breakdown: five families covering the 43 features, delta against the shown score, the counterfactual against the edge
     selected = [c for c in everyone if c["selected_for_review"]]
     cleared = [c for c in everyone if c["eligibility_status"] == "eligible" and not c["selected_for_review"]]
@@ -1316,7 +1318,7 @@ def test_under_baseline_fallback_only_the_expected_vs_actual_family_moves_the_sc
     assert 0 < median < 1
 
 
-def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_derived(client, env, written):
+def test_the_review_workflow_is_open_in_review_escalated_closed_and_its_state_is_derived(client, env, written):
     run = scored_run(client, env, written)
     url = f"{API}/runs/{run['run_id']}/customers"
     queue = all_pages(client, url)
@@ -1324,69 +1326,110 @@ def test_the_review_workflow_needs_a_second_person_to_decide_and_its_state_is_de
     # before any review: the queue is new, every eligible customer outside it is auto-logged, the unranked are new
     for c in everyone:
         expected = "auto_logged" if c["gate_outcome"] in ("LOW", "WARNING") else "new"
-        assert c["workflow"] == {"state": expected, "opened_by": None, "opened_by_user_id": None, "opened_at": None,
+        assert c["workflow"] == {"state": expected, "outcome": None, "opened_by": None, "opened_by_user_id": None, "opened_at": None,
                                   "decided_by": None, "decided_at": None}
     assert {c["workflow"]["state"] for c in queue} == {"new"} and any(c["workflow"]["state"] == "auto_logged" for c in everyone)
-    first, second = queue[0]["customer_id"], queue[1]["customer_id"]
+    first, second, third = (c["customer_id"] for c in queue[:3])
     reviews = lambda customer: f"{url}/{customer}/reviews"
     post = lambda customer, key, **body: client.post(reviews(customer), json={
         "reviewer_name": "Asha", "disposition": "needs_investigation", "note": "Looked at the timeline.", "idempotency_key": key, **body})
-    # a note never moves the state; the kinds that do need an open first
-    assert post(first, "k0").status_code == 201 and client.get(f"{url}/{first}").json()["customer"]["workflow"]["state"] == "new"
-    for kind in ("approve", "reject", "request_approval"):
+    workflow = lambda customer: client.get(f"{url}/{customer}").json()["customer"]["workflow"]
+    # a note never moves the state; clearing and escalating need an open first, closing needs an escalation
+    assert post(first, "k0").status_code == 201 and workflow(first)["state"] == "new"
+    for kind in ("clear", "escalate"):
         refused = post(first, "k-" + kind, kind=kind)
         assert refused.status_code == 409 and refused.json()["error_code"] == "case_not_open", kind
+    refused = post(first, "k-close", kind="close")
+    assert refused.status_code == 409 and refused.json()["error_code"] == "case_not_escalated"
     opened = post(first, "k1", kind="open")
     assert opened.status_code == 201 and opened.json()["kind"] == "open"
     conforms("Review", opened.json())
-    state = client.get(f"{url}/{first}").json()["customer"]["workflow"]
+    state = workflow(first)
     assert state["state"] == "in_review" and state["opened_by"] == "Asha" and state["opened_at"] and state["decided_by"] is None
-    # the reviewer who opened the case cannot decide it; the message is fixed
-    for kind in ("approve", "reject"):
-        refused = post(first, "k2-" + kind, kind=kind)
-        assert refused.status_code == 409 and refused.json()["error_code"] == "second_reviewer_required"
-        assert refused.json()["message"] == "You opened this case. A different reviewer must approve or reject it."
-    assert post(first, "k3", kind="request_approval").status_code == 201
-    assert client.get(f"{url}/{first}").json()["customer"]["workflow"]["state"] == "awaiting_approval"
-    # the approval band: awaiting cases, without the ones this reviewer opened
-    band = all_pages(client, url, {"state": "awaiting_approval"})
+    # the analyst who opened the case escalates it: no second person is needed for that
+    assert post(first, "k3", kind="escalate").status_code == 201
+    assert workflow(first)["state"] == "escalated" and workflow(first)["outcome"] is None
+    band = all_pages(client, url, {"state": "escalated"})
     assert [c["customer_id"] for c in band] == [first]
-    # contract 2.0.0: the typed-name filter is refused, so no band silently shows the cases the reviewer opened
-    removed = client.get(url, params={"state": "awaiting_approval", "exclude_reviewer": "Asha"})
+    # contract 2.0.0: the typed-name filter is refused
+    removed = client.get(url, params={"state": "escalated", "exclude_reviewer": "Asha"})
     assert removed.status_code == 422 and "exclude_mine" in removed.json()["message"]
-    # the band by the signed-in user's id
+    # the cases a person did not open themselves, by the signed-in user's id
     asha, ravi = client.as_user("Asha"), client.as_user("Ravi")
-    assert all_pages(asha, url, {"state": "awaiting_approval", "exclude_mine": "true"}) == []
-    assert [c["customer_id"] for c in all_pages(ravi, url, {"state": "awaiting_approval", "exclude_mine": "true"})] == [first]
-    assert client.get(f"{url}/{first}").json()["customer"]["workflow"]["opened_by_user_id"] == asha.get(f"{API}/me").json()["user_id"]
-    decided = post(first, "k4", kind="approve", reviewer_name="Ravi", disposition="likely_legitimate")
+    assert all_pages(asha, url, {"state": "escalated", "exclude_mine": "true"}) == []
+    assert [c["customer_id"] for c in all_pages(ravi, url, {"state": "escalated", "exclude_mine": "true"})] == [first]
+    assert workflow(first)["opened_by_user_id"] == asha.get(f"{API}/me").json()["user_id"]
+    # an escalated case is not cleared; a lead closes it with the fraud team's outcome, and may be the person who opened it
+    refused = post(first, "k3b", kind="clear", disposition="likely_legitimate")
+    assert refused.status_code == 409 and refused.json()["error_code"] == "case_escalated"
+    decided = post(first, "k4", kind="close", reviewer_name="Ravi", disposition="needs_investigation")
     assert decided.status_code == 201
-    state = client.get(f"{url}/{first}").json()["customer"]["workflow"]
-    assert state["state"] == "approved" and state["opened_by"] == "Asha" and state["decided_by"] == "Ravi" and state["decided_at"]
-    assert [c["customer_id"] for c in all_pages(client, url, {"state": "approved"})] == [first]
-    # feedback on a cleared case records an opinion without moving it out of the log
+    state = workflow(first)
+    assert state["state"] == "closed" and state["outcome"] == "confirmed"
+    assert state["opened_by"] == "Asha" and state["decided_by"] == "Ravi" and state["decided_at"]
+    assert [c["customer_id"] for c in all_pages(client, url, {"state": "closed"})] == [first]
+    # feedback on a customer outside the queue records an opinion without moving it out of the log
     cleared = next(c for c in everyone if c["workflow"]["state"] == "auto_logged")["customer_id"]
     assert post(cleared, "k5", kind="feedback", disposition="likely_legitimate", note="Agree: the basket predicts this.").status_code == 201
     row = client.get(f"{url}/{cleared}").json()["customer"]
     assert row["workflow"]["state"] == "auto_logged" and row["latest_disposition"] == "likely_legitimate"
-    # a reopen after a decision goes back into review; a reject by a second person closes it the other way
-    assert post(second, "k6", kind="open", reviewer_name="Ravi").status_code == 201
-    assert post(second, "k7", kind="reject", reviewer_name="Asha", disposition="likely_legitimate").status_code == 201
-    assert client.get(f"{url}/{second}").json()["customer"]["workflow"]["state"] == "rejected"
-    assert post(second, "k8", kind="open", reviewer_name="Asha").status_code == 201
-    assert client.get(f"{url}/{second}").json()["customer"]["workflow"]["state"] == "in_review"
+    # the analyst clears a case alone, and a reopen takes a closed case back into review
+    assert post(second, "k6", kind="open").status_code == 201
+    assert post(second, "k7", kind="clear", disposition="likely_legitimate").status_code == 201
+    state = workflow(second)
+    assert state["state"] == "closed" and state["outcome"] == "cleared" and state["decided_by"] == "Asha"
+    assert post(second, "k8", kind="open").status_code == 201
+    assert workflow(second)["state"] == "in_review" and workflow(second)["outcome"] is None
+    # an escalation the fraud team does not confirm closes as not_confirmed
+    assert post(third, "k9", kind="open").status_code == 201 and post(third, "k10", kind="escalate").status_code == 201
+    assert post(third, "k11", kind="close", disposition="likely_legitimate").status_code == 201
+    assert workflow(third)["outcome"] == "not_confirmed"
     # every state filter returns exactly the customers whose workflow says so; the list is still append-only
-    for state_name in ("new", "in_review", "awaiting_approval", "approved", "rejected", "auto_logged"):
+    for state_name in ("new", "in_review", "escalated", "closed", "auto_logged"):
         shown = [c["customer_id"] for c in all_pages(client, url, {"review_only": "false", "state": state_name})]
         assert shown == [c["customer_id"] for c in all_pages(client, url, {"review_only": "false"}) if c["workflow"]["state"] == state_name]
     history = client.get(reviews(first)).json()["items"]
-    assert [r["kind"] for r in history] == ["note", "open", "request_approval", "approve"]
-    assert post(first, "k9", note=" ").status_code == 422 and post(first, "k10", kind="close").status_code == 422
+    assert [r["kind"] for r in history] == ["note", "open", "escalate", "close"]
+    # the kinds of the earlier two-person workflow are no longer written, and the states they led to are no longer filters
+    assert post(first, "k12", note=" ").status_code == 422
+    for kind in ("request_approval", "approve", "reject"):
+        assert post(first, "k13-" + kind, kind=kind).status_code == 422, kind
+    assert client.get(url, params={"state": "awaiting_approval"}).status_code == 422
+
+
+def test_reviews_of_the_earlier_two_person_workflow_still_read_as_escalated_and_closed(client, env, written):
+    """Rows written before the workflow changed stay in the append-only list: a request for approval reads as an escalation,
+    an approval or a rejection as a closing with the outcome its reading gives."""
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    first, second = [c["customer_id"] for c in client.get(url, params={"limit": 2}).json()["items"]]
+    store = Store(env["config"].database_url)
+    run_row = store.get_run(run["run_id"])
+
+    def legacy(key: str, customer: str, kind: str, reading: str) -> None:
+        with store.transaction() as db:
+            db.execute("""INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind, dataset_id)
+                          VALUES (%s, %s, %s, %s, %s, 'Meera', %s, 'earlier workflow', %s, %s)""",
+                       (key, run_row["world_id"], customer, run["run_id"], run_row["model_id"], reading, kind, run_row["dataset_id"]))
+
+    workflow = lambda customer: client.get(f"{url}/{customer}").json()["customer"]["workflow"]
+    legacy("rev-l1", first, "open", "unresolved")
+    legacy("rev-l2", first, "request_approval", "needs_investigation")
+    assert workflow(first)["state"] == "escalated"
+    legacy("rev-l3", first, "approve", "needs_investigation")
+    assert (workflow(first)["state"], workflow(first)["outcome"], workflow(first)["decided_by"]) == ("closed", "confirmed", "Meera")
+    legacy("rev-l4", second, "open", "unresolved")
+    legacy("rev-l5", second, "reject", "likely_legitimate")
+    assert (workflow(second)["state"], workflow(second)["outcome"]) == ("closed", "not_confirmed")
+    # an open written before sign-in existed has no user id and reads as unverified
+    opened = next(r for r in client.get(f"{url}/{second}/reviews").json()["items"] if r["review_id"] == "rev-l4")
+    assert opened["author"] == {"user_id": None, "display_name": "Meera", "verified": False}
+    conforms("Case", client.get(f"{url}/{first}").json())
 
 
 def test_workflow_rules_refuse_a_second_open_a_second_decision_and_actions_out_of_scope(client, env, written):
-    """Contract 1.13.0: the state machine is closed. One open at a time, one decision until a reopen, names compared without
-    case, the workflow kinds for the queue and feedback for the rest, a reading with every decision, no NUL byte anywhere."""
+    """The state machine is closed. One open at a time, one decision until a reopen, the workflow kinds for the queue and
+    feedback for the rest, a reading with every decision, no NUL byte anywhere."""
     run = scored_run(client, env, written)
     url = f"{API}/runs/{run['run_id']}/customers"
     queue = all_pages(client, url)
@@ -1397,20 +1440,23 @@ def test_workflow_rules_refuse_a_second_open_a_second_decision_and_actions_out_o
     assert post(first, "o1", kind="open").status_code == 201
     twice = post(first, "o2", kind="open", reviewer_name="Ravi")                      # cannot take over an open case
     assert twice.status_code == 409 and twice.json()["error_code"] == "case_already_open"
-    for name in ("asha", " ASHA "):                                                      # the opener, however spelled
-        refused = post(first, "a-" + name.strip(), kind="approve", reviewer_name=name)
-        assert refused.status_code == 409 and refused.json()["error_code"] == "second_reviewer_required", name
-    assert post(first, "r1", kind="request_approval").status_code == 201
-    again = post(first, "r2", kind="request_approval")
+    refused = post(first, "c0", kind="close")                                           # nothing was escalated yet
+    assert refused.status_code == 409 and refused.json()["error_code"] == "case_not_escalated"
+    for kind in ("clear", "escalate", "close"):                                         # a decision carries a reading
+        unresolved = post(first, "u-" + kind, kind=kind, disposition="unresolved")
+        assert unresolved.status_code == 422 and unresolved.json()["details"][0]["rule_id"] == "request.decision_disposition", kind
+    assert post(first, "r1", kind="escalate").status_code == 201
+    for kind in ("escalate", "clear"):                                                  # escalated: only a lead's close follows
+        again = post(first, "r2-" + kind, kind=kind)
+        assert again.status_code == 409 and again.json()["error_code"] == "case_escalated", kind
+    again = post(first, "r3", kind="open")
     assert again.status_code == 409 and again.json()["error_code"] == "case_already_open"
-    unresolved = post(first, "d0", kind="approve", reviewer_name="Ravi", disposition="unresolved")
-    assert unresolved.status_code == 422 and unresolved.json()["details"][0]["rule_id"] == "request.decision_disposition"
-    assert post(first, "d1", kind="approve", reviewer_name="Ravi").status_code == 201
-    for kind in ("approve", "reject", "request_approval"):                                # decided: nothing but a reopen
+    assert post(first, "d1", kind="close", reviewer_name="Ravi").status_code == 201
+    for kind in ("clear", "escalate", "close"):                                         # closed: nothing but a reopen
         refused = post(first, "d2-" + kind, kind=kind, reviewer_name="Meera")
         assert refused.status_code == 409 and refused.json()["error_code"] == "case_decided", kind
     state = client.get(f"{url}/{first}").json()["customer"]["workflow"]
-    assert state["state"] == "approved" and state["decided_by"] == "Ravi"
+    assert state["state"] == "closed" and state["outcome"] == "confirmed" and state["decided_by"] == "Ravi"
     assert post(first, "n1", reviewer_name="Meera").status_code == 201                  # a note is always allowed
     assert post(first, "o3", kind="open", reviewer_name="Meera").status_code == 201     # the way back is a reopen
     assert client.get(f"{url}/{first}").json()["customer"]["workflow"]["state"] == "in_review"
@@ -1426,14 +1472,15 @@ def test_workflow_rules_refuse_a_second_open_a_second_decision_and_actions_out_o
     assert nul.status_code == 422 and nul.json()["error_code"] == "invalid_request"
     assert client.get(url, params={"search": "a\x00b"}).status_code == 422
     # concurrent decisions on one case: one lands, the others meet the decided case
-    assert post(second, "c0", kind="open").status_code == 201
+    assert post(second, "cc0", kind="open").status_code == 201
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(4) as pool:
-        answers = list(pool.map(lambda i: post(second, f"c{i}", kind="approve" if i % 2 else "reject", reviewer_name=f"R{i}").status_code,
+        answers = list(pool.map(lambda i: post(second, f"c{i}", kind="clear" if i % 2 else "escalate", reviewer_name=f"R{i}").status_code,
                                 range(1, 5)))
     assert sorted(answers) == [201, 409, 409, 409]
     decided = client.get(f"{url}/{second}").json()["customer"]["workflow"]
-    assert decided["state"] in ("approved", "rejected") and decided["decided_by"].startswith("R")
+    assert decided["state"] in ("closed", "escalated")
+    assert decided["decided_by"].startswith("R") if decided["state"] == "closed" else decided["decided_by"] is None
 
 
 def test_the_cleared_heavy_returner_view_is_filtered_by_the_server(client, env, written):
@@ -1859,9 +1906,9 @@ def test_snapshots_of_one_world_keep_the_customer_and_its_history(client, env, w
 
     # a case decided on the earlier snapshot: the decision stays with that snapshot, the later case starts its own review
     target = min(repeat)
-    for number, (name, kind) in enumerate((("Asha", "open"), ("Ravi", "reject"))):
+    for number, (name, kind) in enumerate((("Asha", "open"), ("Ravi", "clear"))):
         made = client.post(f"{API}/runs/{first['run_id']}/customers/{target}/reviews",
-                           json={"reviewer_name": name, "kind": kind, "disposition": "needs_investigation",
+                           json={"reviewer_name": name, "kind": kind, "disposition": "likely_legitimate",
                                  "note": f"{kind} on the earlier snapshot", "idempotency_key": f"earlier-{number}"})
         assert made.status_code == 201, made.text
         conforms("Review", made.json())
@@ -1870,24 +1917,25 @@ def test_snapshots_of_one_world_keep_the_customer_and_its_history(client, env, w
     conforms("Case", case)
     customer = case["customer"]
     assert customer["workflow"]["state"] == "new"                                            # not decided on this snapshot
-    assert customer["earlier_decision"]["state"] == "rejected" and customer["earlier_decision"]["decided_by"] == "Ravi"
+    assert customer["earlier_decision"]["state"] == "closed" and customer["earlier_decision"]["outcome"] == "cleared"
+    assert customer["earlier_decision"]["decided_by"] == "Ravi"
     assert customer["earlier_decision"]["cutoff"] == first["cutoff"]
     assert [r["snapshot_cutoff"] for r in case["reviews"]] == [first["cutoff"]] * 2         # the notes follow the customer
     history = case["history"]
     assert [h["run_id"] for h in history] == [first["run_id"], second["run_id"]] and [h["current"] for h in history] == [False, True]
-    assert history[0]["workflow"]["state"] == "rejected" and history[0]["workflow"]["decided_by"] == "Ravi"
+    assert history[0]["workflow"]["state"] == "closed" and history[0]["workflow"]["decided_by"] == "Ravi"
     assert (history[0]["notes"], history[1]["notes"]) == (2, 0) and all(h["present"] for h in history)
     assert (history[0]["rank"], history[1]["rank"]) == (before[target]["rank"], customer["rank"])
     assert history[1]["gate_outcome"] == customer["gate_outcome"] and history[1]["tier"] == customer["tier"]
     assert [c["customer_id"] for c in all_pages(client, url, {"review_only": "false", "history": "decided_before"})] == [target]
-    assert client.get(f"{API}/runs/{second['run_id']}", params={}).json()["previous_snapshot"]["rejected_before"] == 1
+    assert client.get(f"{API}/runs/{second['run_id']}", params={}).json()["previous_snapshot"]["cleared_before"] == 1
 
     # the later snapshot's review is its own: it opens although the earlier one was decided, and the earlier one stays decided
     opened = client.post(f"{API}/runs/{second['run_id']}/customers/{target}/reviews",
                          json={"reviewer_name": "Asha", "kind": "open", "disposition": "unresolved", "note": "back in the queue",
                                "idempotency_key": "later-0"})
     assert opened.status_code == 201 and opened.json()["dataset_id"] == second["dataset_id"]
-    assert client.get(f"{API}/runs/{first['run_id']}/customers/{target}").json()["customer"]["workflow"]["state"] == "rejected"
+    assert client.get(f"{API}/runs/{first['run_id']}/customers/{target}").json()["customer"]["workflow"]["state"] == "closed"
     assert client.get(f"{API}/runs/{second['run_id']}/customers/{target}").json()["customer"]["workflow"]["state"] == "in_review"
     # an account that signed up after the earlier cutoff shows as absent from that snapshot in its history
     later_account = next(c["customer_id"] for c in after if c["customer_id"] not in before)
@@ -1900,7 +1948,7 @@ def test_snapshots_of_one_world_keep_the_customer_and_its_history(client, env, w
     row = dict(zip(rows[0], rows[1]))
     assert len(rows) == 2 and row["customer_id"] == target and row["previous_cutoff"] == first["cutoff"][:10]
     assert row["previous_rank"] == str(before[target]["rank"]) and row["previous_in_queue"] == "yes"
-    assert row["earlier_decision"] == f"rejected on the {first['cutoff'][:10]} snapshot by Ravi" and row["cutoff"] == second["cutoff"][:10]
+    assert row["earlier_decision"] == f"cleared on the {first['cutoff'][:10]} snapshot by Ravi" and row["cutoff"] == second["cutoff"][:10]
 
 
 def test_evaluation_truth_applies_only_to_the_snapshot_it_describes(client, env, written, earlier, world):
@@ -1957,11 +2005,12 @@ def test_roles_decide_what_each_person_may_do(client, env, written):
         assert refused.status_code == 403 and refused.json()["error_code"] == "forbidden", refused.text
         conforms("Error", refused.json())
     assert "reviewer role" in viewer.get(f"{url}/export").json()["message"]
-    # a reviewer notes, opens and exports, but does not decide or operate
+    # a reviewer notes, opens, clears, escalates and exports, but does not close an escalated case or operate
     assert reviewer.get(f"{url}/export").status_code == 200
     assert reviewer.post(f"{url}/{customer}/reviews", json=note("r1", kind="open")).status_code == 201
-    decide = reviewer.post(f"{url}/{customer}/reviews", json=note("r2", kind="approve"))
-    assert decide.status_code == 403 and "approver role" in decide.json()["message"]
+    assert reviewer.post(f"{url}/{customer}/reviews", json=note("r1b", kind="escalate", disposition="needs_investigation")).status_code == 201
+    decide = reviewer.post(f"{url}/{customer}/reviews", json=note("r2", kind="close", disposition="needs_investigation"))
+    assert decide.status_code == 403 and "approver (lead) role" in decide.json()["message"]
     assert reviewer.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "r"}).status_code == 403
     # an admin operates and exports, and does not review
     assert admin.post(f"{API}/runs", json={"dataset_id": run["dataset_id"], "idempotency_key": "a"}).status_code == 202
@@ -2047,35 +2096,20 @@ def test_the_development_login_is_for_laptops_and_off_under_single_sign_on(clien
     assert "httponly" in cookie and "samesite=lax" in cookie and "secure" not in cookie   # Secure on the vm profile only
 
 
-def test_the_second_reviewer_rule_compares_user_ids_and_names_only_for_older_reviews(client, env, written):
+def test_the_person_who_opened_a_case_can_decide_it_and_decisions_carry_the_signed_in_author(client, env, written):
     run = scored_run(client, env, written)
     url = f"{API}/runs/{run['run_id']}/customers"
     first, second = [c["customer_id"] for c in client.get(url, params={"limit": 2}).json()["items"]]
-    asha, ravi = client.as_user("Asha"), client.as_user("Ravi")
+    asha = client.as_user("Asha")
     body = lambda key, kind, reading="needs_investigation": {"kind": kind, "disposition": reading, "note": "n", "idempotency_key": key}
-    store = Store(env["config"].database_url)
     assert asha.post(f"{url}/{first}/reviews", json=body("o", "open")).status_code == 201
-    # the same person under another name is still the opener
-    with store.transaction() as db:
-        db.execute("UPDATE users SET display_name = 'Asha Kumar' WHERE display_name = 'Asha'")
-    refused = asha.post(f"{url}/{first}/reviews", json=body("a1", "approve"))
-    assert refused.status_code == 409 and refused.json()["error_code"] == "second_reviewer_required"
-    # a different person who happens to carry the opener's old name is a second reviewer
-    with store.transaction() as db:
-        db.execute("UPDATE users SET display_name = 'Asha' WHERE display_name = 'Ravi'")
-    decided = ravi.post(f"{url}/{first}/reviews", json=body("a2", "approve", "likely_legitimate"))
-    assert decided.status_code == 201 and decided.json()["reviewer_name"] == "Asha" and decided.json()["author"]["verified"]
-    # an open written before sign-in existed has no user id: its typed name decides, and it reads as unverified
-    run_row = store.get_run(run["run_id"])
-    with store.transaction() as db:
-        db.execute("""INSERT INTO reviews (id, world_id, customer_id, run_id, model_id, reviewer_name, disposition, note, kind, dataset_id)
-                      VALUES ('rev-legacy', %s, %s, %s, %s, 'Meera', 'unresolved', 'typed name', 'open', %s)""",
-                   (run_row["world_id"], second, run["run_id"], run_row["model_id"], run_row["dataset_id"]))
-    legacy = next(r for r in client.get(f"{url}/{second}/reviews").json()["items"] if r["review_id"] == "rev-legacy")
-    assert legacy["author"] == {"user_id": None, "display_name": "Meera", "verified": False}
-    meera = client.as_user("Meera")
-    assert meera.post(f"{url}/{second}/reviews", json=body("m1", "approve")).json()["error_code"] == "second_reviewer_required"
-    assert client.as_user("R1").post(f"{url}/{second}/reviews", json=body("r1", "approve", "likely_legitimate")).status_code == 201
+    cleared = asha.post(f"{url}/{first}/reviews", json=body("a1", "clear", "likely_legitimate"))
+    assert cleared.status_code == 201 and cleared.json()["reviewer_name"] == "Asha" and cleared.json()["author"]["verified"]
+    # the same lead opens, escalates and later records the outcome
+    for key, kind in (("o2", "open"), ("e2", "escalate"), ("c2", "close")):
+        assert asha.post(f"{url}/{second}/reviews", json=body(key, kind)).status_code == 201, kind
+    state = client.get(f"{url}/{second}").json()["customer"]["workflow"]
+    assert (state["state"], state["outcome"], state["opened_by"], state["decided_by"]) == ("closed", "confirmed", "Asha", "Asha")
 
 
 # ------------------------------------------------------------------ Keycloak single sign-on (contract 1.17.0, AM-70)
@@ -2376,3 +2410,170 @@ def test_keycloak_role_changes_are_logged_and_a_disabled_person_cannot_sign_in(s
     browser.cookies.clear()
     refused = _sign_in(browser, fake)
     assert refused.headers["location"] == "/?signin_error=user_disabled" and "set-cookie" not in refused.headers
+
+# ------------------------------------------------------------------ dashboard, product screen and workspace extras (contract 3.1.0, AM-77)
+def test_run_insights_add_up_to_the_snapshot_and_count_the_queue_live(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}"
+    insights = client.get(f"{url}/insights").json()
+    conforms("RunInsights", insights)
+    assert insights["available"] and insights["daily"] == sorted(insights["daily"], key=lambda d: d["date"])
+    everyone = all_pages(client, f"{url}/customers", {"review_only": "false"})
+    queue = [c for c in everyone if c["selected_for_review"]]
+    counts = insights["counts"]
+    for tier in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+        assert counts["tiers"][tier] == sum(c["tier"] == tier for c in everyone), tier
+    assert counts["states"]["new"] == len(queue) and counts["states"]["in_review"] == 0
+    assert counts["in_ring"] == sum(c["tier"] == "CRITICAL" for c in everyone)
+    for tag, value in counts["tags"].items():
+        assert value == sum(tag in c["evidence_tags"] for c in queue), tag
+    # flagged is a part of the whole on every day and in every channel; the channels cover the same return lines as the days
+    assert all(d["flagged_return_lines"] <= d["return_lines"] and d["flagged_refunded_inr"] <= d["refunded_inr"] + 0.01 for d in insights["daily"])
+    assert sum(c["return_lines"] for c in insights["channels"]) == sum(d["return_lines"] for d in insights["daily"]) > 0
+    assert abs(sum(c["refunded_inr"] for c in insights["channels"]) - sum(d["refunded_inr"] for d in insights["daily"])) < 1
+    assert all(c["return_rate"] is None or 0 <= c["return_rate"] for c in insights["categories"]) and insights["categories"]
+    # the counts move with the workflow, without a new run
+    first = queue[0]["customer_id"]
+    opened = client.post(f"{url}/customers/{first}/reviews", json={"kind": "open", "disposition": "unresolved", "note": "n", "idempotency_key": "i1"})
+    assert opened.status_code == 201
+    assert client.get(f"{url}/insights").json()["counts"]["states"]["in_review"] == 1
+    cleared = client.post(f"{url}/customers/{first}/reviews", json={"kind": "clear", "disposition": "likely_legitimate", "note": "n",
+                                                                     "idempotency_key": "i2"})
+    assert cleared.status_code == 201
+    counts = client.get(f"{url}/insights").json()["counts"]
+    assert counts["outcomes"] == {"cleared": 1, "confirmed": 0, "not_confirmed": 0} and counts["states"]["closed"] == 1
+
+
+def test_styles_carry_the_product_aggregates_a_rule_based_reading_and_an_export(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/styles"
+    styles = all_pages(client, url)
+    categories = {c["category"]: c["return_rate"] for c in client.get(f"{API}/runs/{run['run_id']}/insights").json()["categories"]}
+    assert styles
+    for style in styles:
+        conforms("Style", style)
+        assert style["risk_level"] == style["assessment"]["risk_level"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW")
+        assert (style["risk_level"] in ("CRITICAL", "HIGH")) == (style["state"] in ("targeting", "mixed_or_uncertain"))
+        assert style["assessment"]["summary"] and isinstance(style["assessment"]["supporting"], list)
+        if style["category_return_rate"] is not None:
+            assert abs(style["category_return_rate"] - categories[style["category"]]) < 1e-9
+            assert abs(style["deviation"] - (style["shrunk_return_rate"] - style["category_return_rate"])) < 1e-9
+        if style["concentration"] is not None and style["requested_units"]:
+            bands = {b["band"]: b for b in style["concentration"]}
+            assert bands["top_1"]["share"] <= bands["top_5"]["share"] <= bands["top_10"]["share"] <= 1 + 1e-9
+            assert abs(bands["top_10"]["share"] + bands["others"]["share"] - 1) < 1e-9
+            assert bands["top_10"]["returners"] + bands["others"]["returners"] == style["unique_returners"]
+        if style["monthly"] is not None:
+            assert sum(m["purchased_units"] for m in style["monthly"]) == style["purchased_units"]
+            assert sum(m["requested_units"] for m in style["monthly"]) == style["requested_units"]
+    assert any(style["monthly"] for style in styles)
+    import csv
+    import io
+    text = client.get(f"{url}/export").text
+    rows = list(csv.reader(io.StringIO(text)))
+    assert rows[0][:4] == ["style_id", "name", "category", "risk_level"] and len(rows) == len(styles) + 1
+    assert client.as_user("Viewer").get(f"{url}/export").status_code == 403
+
+
+def test_bulk_actions_communities_decisions_notifications_and_my_cases(client, env, written):
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}"
+    queue = all_pages(client, f"{url}/customers")
+    outside = next(c["customer_id"] for c in all_pages(client, f"{url}/customers", {"review_only": "false"})
+                   if c["eligibility_status"] == "eligible" and not c["selected_for_review"])
+    asha, ravi = client.as_user("Asha"), client.as_user("Ravi")
+    ids = [c["customer_id"] for c in queue[:3]]
+    bulk = lambda who, key, kind, customers, reading="needs_investigation": who.post(f"{url}/customers/bulk-reviews", json={
+        "customer_ids": customers, "kind": kind, "disposition": reading, "note": "bulk", "idempotency_key": key})
+    opened = bulk(asha, "b1", "open", [*ids, outside, "no-such-customer"])
+    assert opened.status_code == 200, opened.text
+    conforms("BulkReviewResult", opened.json())
+    by_customer = {r["customer_id"]: r for r in opened.json()["results"]}
+    assert opened.json()["recorded"] == 3 and all(by_customer[c]["status"] == "recorded" for c in ids)
+    assert by_customer[outside]["error_code"] == "out_of_scope" and by_customer["no-such-customer"]["error_code"] == "not_found"
+    again = bulk(asha, "b1", "open", ids)                                       # the same key: nothing is written twice
+    assert again.json()["recorded"] == 3 and [r["review_id"] for r in again.json()["results"]] == [by_customer[c]["review_id"] for c in ids]
+    refused = bulk(asha, "b2", "open", ids)                                     # a new key: the cases are already open
+    assert refused.json()["recorded"] == 0 and {r["error_code"] for r in refused.json()["results"]} == {"case_already_open"}
+    assert bulk(asha, "b3", "escalate", ids, "unresolved").status_code == 422
+    assert bulk(client.as_user("Viewer"), "b4", "open", ids).status_code == 403
+    assert bulk(asha, "b5", "escalate", ids[:2]).json()["recorded"] == 2
+    # my cases: opened by me and still in review or escalated
+    mine = [c["customer_id"] for c in all_pages(asha, f"{url}/customers", {"mine": "true"})]
+    assert sorted(mine) == sorted(ids) and all_pages(ravi, f"{url}/customers", {"mine": "true"}) == []
+    # the decisions log: the workflow events of the snapshot, newest first
+    decisions = all_pages(client, f"{url}/decisions")
+    assert sorted(d["kind"] for d in decisions) == ["escalate", "escalate", "open", "open", "open"]
+    assert [d["created_at"] for d in decisions] == sorted((d["created_at"] for d in decisions), reverse=True)
+    for decision in decisions:
+        conforms("Review", decision)
+    # notifications: a lead sees the escalations of others; the opener sees a closing by someone else; marking seen clears the count
+    for_ravi = ravi.get(f"{API}/notifications").json()
+    conforms("NotificationList", for_ravi)
+    assert sum(n["kind"] == "case_escalated" for n in for_ravi["items"]) == 2 and for_ravi["unread"] == len(for_ravi["items"])
+    assert any(n["kind"] == "run_scored" for n in for_ravi["items"])
+    closed = ravi.post(f"{url}/customers/{ids[0]}/reviews", json={"kind": "close", "disposition": "needs_investigation", "note": "n",
+                                                                    "idempotency_key": "c1"})
+    assert closed.status_code == 201
+    for_asha = asha.get(f"{API}/notifications").json()
+    mine_closed = [n for n in for_asha["items"] if n["kind"] == "case_closed"]
+    assert len(mine_closed) == 1 and mine_closed[0]["customer_id"] == ids[0] and "confirmed" in mine_closed[0]["text"] and mine_closed[0]["unread"]
+    assert not any(n["kind"] == "case_escalated" for n in for_asha["items"])    # her own escalations are not news to her
+    assert asha.post(f"{API}/notifications/seen").status_code == 204
+    after = asha.get(f"{API}/notifications").json()
+    assert after["unread"] == 0 and after["seen_at"] and len(after["items"]) == len(for_asha["items"])
+    # the profile fields, and the groups of linked accounts
+    me = asha.get(f"{API}/me").json()
+    conforms("Me", me)
+    assert me["status"] == "active" and me["created_at"] and me["last_sign_in_at"]
+    groups = client.get(f"{url}/communities").json()
+    conforms("CommunityList", groups)
+    members = {m["customer_id"] for g in groups["items"] for m in g["members"]}
+    assert members == {c["customer_id"] for c in all_pages(client, f"{url}/customers", {"review_only": "false"}) if c["community"]}
+    assert all(g["size"] == len(g["members"]) for g in groups["items"])
+
+
+def test_contact_details_are_served_searched_and_absent_for_an_older_snapshot(client, env, written, world):
+    """Contract 3.2.0 (AM-78): region, email and phone ride with the customer; the search finds a customer by any of the three
+    texts it can match; a run on a snapshot without the columns serves nulls."""
+    run = scored_run(client, env, written)
+    url = f"{API}/runs/{run['run_id']}/customers"
+    master = world.tables["customer_master"].set_index("customer_id")
+    everyone = all_pages(client, url, {"review_only": "false"})
+    for customer in everyone[:50]:
+        conforms("Customer", customer)
+        row = master.loc[customer["customer_id"]]
+        assert customer["contact"] == {"region": row["region"], "email": row["email"], "phone": row["phone"]}
+    target = everyone[0]
+    by_email = all_pages(client, url, {"review_only": "false", "search": target["contact"]["email"]})
+    assert [c["customer_id"] for c in by_email] == [target["customer_id"]]
+    by_phone = {c["customer_id"] for c in all_pages(client, url, {"review_only": "false", "search": target["contact"]["phone"]})}
+    assert by_phone == set(master.index[master["phone"] == target["contact"]["phone"]])
+    # the model never sees them: no contact column is a model input
+    from arai.service.scoring import CONTACT_COLUMNS
+    assert not set(CONTACT_COLUMNS) & set(client.get(f"{API}/runs/{run['run_id']}").json().get("feature_order") or [])
+
+def test_contact_links_change_what_is_shown_and_never_a_score_a_rank_or_a_selection(env, world):
+    """Decision AM-79: the model reads the graph of the three order identifiers; the analyst is shown the wider one."""
+    bundle = bundles.load_bundle(env["model_id"], env["root"])
+    manifest = {"world_id": world.world_id, "cutoff": world.context.s.cutoff.isoformat()}
+    with_contact = scoring.score_snapshot(world.tables, manifest, bundle)
+    tables = dict(world.tables, customer_master=world.tables["customer_master"].drop(columns=["region", "email", "phone"]))
+    without = scoring.score_snapshot(tables, manifest, bundle)
+    a, b = with_contact.customers.set_index("customer_id"), without.customers.set_index("customer_id")
+    for column in ("raw_score", "risk_score", "rank", "selected_for_review", "baseline_rank", "eligibility_status"):
+        pd.testing.assert_series_equal(a[column], b[column])
+    for name in bundle.feature_order:                                               # every model input is what it was
+        pd.testing.assert_series_equal(a[name], b[name])
+    pd.testing.assert_frame_equal(with_contact.attributions, without.attributions)
+    pd.testing.assert_frame_equal(with_contact.styles[["style_id", "state", "linked_claimers"]], without.styles[["style_id", "state", "linked_claimers"]])
+    # what is shown is wider: more links, and no link of the model's graph is lost
+    pairs = lambda output: set(zip(output.neighbors["customer_id"], output.neighbors["neighbor_id"]))
+    assert pairs(without) < pairs(with_contact)
+    new = with_contact.neighbors.set_index(["customer_id", "neighbor_id"]).loc[sorted(pairs(with_contact) - pairs(without))]
+    assert new["shared_types"].str.contains("phone|email").all()
+    assert with_contact.summary["contact_link_edges"] == (len(pairs(with_contact)) - len(pairs(without))) // 2 > 0
+    assert without.summary["contact_link_edges"] == 0 and with_contact.summary["graph_edges"] == len(pairs(with_contact)) // 2
+    assert (a["supported_neighbor_count"] >= b["supported_neighbor_count"]).all() and (a["supported_neighbor_count"] > b["supported_neighbor_count"]).any()
+    assert a["community_id"].notna().sum() > b["community_id"].notna().sum()
+    assert not {"supported_neighbor_count", "max_identifier_fanout"} & set(bundle.feature_order)

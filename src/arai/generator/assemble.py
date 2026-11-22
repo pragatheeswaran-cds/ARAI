@@ -86,19 +86,24 @@ def empty_table(columns: dict) -> pd.DataFrame:
     return pd.DataFrame({name: pd.Series(dtype=dtype[spec["type"]]) for name, spec in columns.items()})
 
 
-def build_reference_tables(ctx: Context, profiles) -> dict:
+def build_reference_tables(ctx: Context, profiles, contact: pd.DataFrame | None = None) -> dict:
     cat, constants = ctx.catalog, ctx.s.amendment["emitted_constants"]
+    customers = pd.DataFrame({
+        "customer_id": profiles["customer_id"], "signup_date": _days(profiles["signup_date"]),
+        "account_status": "unknown", "loyalty_tier": constants["loyalty_tier"],
+        "marketing_channel": constants["marketing_channel"]})
+    if contact is not None:                                 # data contract 1.2 (AM-78): region, email and phone per account
+        details = contact.set_index("customer_id").reindex(customers["customer_id"].to_numpy())
+        for name in ("region", "email", "phone"):
+            customers[name] = details[name].to_numpy()
     return {
-        "customer_master": pd.DataFrame({
-            "customer_id": profiles["customer_id"], "signup_date": _days(profiles["signup_date"]),
-            "account_status": "unknown", "loyalty_tier": constants["loyalty_tier"],
-            "marketing_channel": constants["marketing_channel"]}),
+        "customer_master": customers,
         "sku_master": cat.sku_master.assign(launch_date=_days(cat.sku_launch)),
         "reason_code": cat.reason_code.copy(),
     }
 
 
-def build_operational(ctx: Context, profiles, orders, lines, return_headers, return_lines) -> dict:
+def build_operational(ctx: Context, profiles, orders, lines, return_headers, return_lines, contact: pd.DataFrame | None = None) -> dict:
     cat = ctx.catalog
     subtotal = lines.groupby("order_id", sort=False)["total_p"].sum()
     subtotal = subtotal.reindex(orders["order_id"]).to_numpy()
@@ -106,7 +111,7 @@ def build_operational(ctx: Context, profiles, orders, lines, return_headers, ret
     shipping = np.where(subtotal >= accepted["free_shipping_subtotal"] * 100, 0, accepted["otherwise_shipping"] * 100)
     sku = cat.sku_master["sku"].to_numpy()
     tables = {
-        **build_reference_tables(ctx, profiles),
+        **build_reference_tables(ctx, profiles, contact),
         "sales_order": pd.DataFrame({
             "order_id": orders["order_id"].to_numpy(), "customer_id": ctx.customer_ids[orders["cust"].to_numpy(dtype=int)],
             "order_date": _days(orders["order_date"]), "channel": orders["channel"].to_numpy(),
@@ -218,6 +223,7 @@ def build_truth(ctx: Context, profiles, rel, orders, lines, unit_facts, campaign
         "unit_truth": unit_truth,
         "campaign": campaign_truth.assign(campaign_date=_days(campaign_truth["campaign_date"]).to_numpy()),
         "relationship_truth": rel.truth,
+        "contact_truth": rel.contact_truth,
         "unit_allocation": pd.DataFrame(reservations, columns=["world_id", "order_id", "order_line_no", "unit_index",
                                                                "reservation_kind", "event_id"]),
         "action_truth": action_truth,

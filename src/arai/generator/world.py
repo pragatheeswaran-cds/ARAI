@@ -168,7 +168,7 @@ class WorldBuilder:
         events = _concat([self.honest_events, self.abusive_events])
         visible = events[events["visible"].astype(bool)] if len(events) else events
         headers, return_lines, placed = assemble.build_return_tables(ctx, visible)
-        tables = assemble.build_operational(ctx, self.profiles, self.orders, self.lines, headers, return_lines)
+        tables = assemble.build_operational(ctx, self.profiles, self.orders, self.lines, headers, return_lines, self.rel.contact)
         truth = assemble.build_truth(ctx, self.profiles, self.rel, self.orders, self.lines, self.unit_facts,
                                      self.campaign_units, placed, self.actions, self.campaign_truth, self.defect_prone,
                                      self.fit_issue, self.g_address, self.hot_list, self.reservations)
@@ -181,7 +181,7 @@ class WorldBuilder:
         """A world in which no account has ordered: the reference tables plus empty transaction tables."""
         ctx, schema = self.ctx, _schema(self.ctx.s.spec_root)
         tables = {name: assemble.empty_table(schema[name]["columns"]) for name in assemble.OPERATIONAL_TABLES}
-        reference = assemble.build_reference_tables(ctx, self.profiles)
+        reference = assemble.build_reference_tables(ctx, self.profiles, self.rel.contact)
         tables.update({name: reference[name] for name in ("customer_master", "sku_master", "reason_code")})
         defect_prone, fit_issue = returns.product_truth_draws(ctx)
         style_ids = ctx.catalog.styles["style_id"].to_numpy()
@@ -195,6 +195,7 @@ class WorldBuilder:
                 "household_id": self.rel.household_id, "coordination_group_id": self.rel.coordination_group_id,
                 "shared_location_id": self.rel.shared_location_id}),
             "relationship_truth": self.rel.truth,
+            "contact_truth": self.rel.contact_truth,
             "product_truth": pd.DataFrame({
                 "world_id": ctx.world_id, "style_id": style_ids, "defect_state": np.where(defect_prone, "defect_prone", "ordinary"),
                 "latent_defect_probability": np.where(defect_prone, defaults["defect_prone_style"], defaults["ordinary_style"]),

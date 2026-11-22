@@ -42,3 +42,39 @@ Return activity that remains unusually high after accounting for relevant purcha
 
 **Pending Return Item**:
 A submitted return item awaiting the inspection stage at which prioritization occurs; its eventual inspection result is not yet available to that decision.
+
+**Case**:
+One customer in one scored run, as a unit of review. It carries the customer's own number (CASE-03245 for W5401-C03245); it is not a single return.
+_Avoid_: Using case for one return or one refund
+
+**Risk Level**:
+Where a customer stands against the review budget: Critical (selected for review and in a detected ring), High (selected for review otherwise), Medium (a score of 90 or above, not selected) and Low. A presentation rule over the results, not a model output.
+_Avoid_: Tier in text shown to analysts; severity
+
+**Case Status**:
+Open (not yet taken up), In Review (opened by a reviewer), Escalated (handed to the investigation team) or Closed. A closed case says how it ended: cleared, confirmed after escalation, or not confirmed after escalation.
+_Avoid_: Approved, rejected, awaiting approval (the earlier two-person workflow)
+
+**Clear**:
+A reviewer's decision that a case needs no further action; it closes the case as cleared.
+
+**Escalate**:
+A reviewer's decision to hand a case to the investigation team. A lead later closes it with the outcome.
+
+**Lead**:
+A person with the approver role, who closes an escalated case as confirmed or not confirmed.
+_Avoid_: Second reviewer, approver in text shown to analysts
+
+**Suspected**:
+The word for anything that describes the customers selected for review rather than a confirmed case: suspected return rate, suspected loss trend.
+_Avoid_: Fraud rate, fraud loss, false claim when nothing has been confirmed
+
+**Linked-account Group**:
+Accounts joined by shared identifiers. A ring is a group whose claims matched or whose members sit in the queue together; a household shares an address and a device and nothing else. Membership is evidence, not guilt.
+
+**Contact Details**:
+The region, email and phone of an account, optional in the data. They are shown to the analyst and are never model inputs.
+
+**Evidence Graph**:
+The links between accounts that an analyst is shown: any two shared identifier types out of address, device, payment method, phone number and mailbox. It is wider than the graph the model reads, which uses the three order identifiers only; it changes what is shown and never a score, a rank or a selection.
+_Avoid_: Saying the model uses phone or email
