@@ -4,7 +4,7 @@
 > `deploy-and-snapshots`, which held `year-of-snapshots` and every other branch, was merged into `main` on 21 Nov).
 > The latest work, now on `main`: the screens of the Penpot design, the workflow Open, In Review,
 > Escalated, Closed, region, email and phone in the data, and links through a phone or a mailbox as evidence (AM-76 to AM-79). 253 Python tests and 30 frontend tests
-> pass, and the browser walkthrough passes 71 of 71. New open items:
+> pass, and the browser walkthrough passes 71 of 71 (75 of 75 and 32 frontend tests after the analyst view, AM-80). New open items:
 >
 > | # | Item | Waits on |
 > |---|---|---|
@@ -19,6 +19,9 @@
 > | P9 | Update the demonstration VM to the new screens | Decided 22 Nov: the steps are written (RUNBOOK 8.10) and not yet run; the owner runs them |
 > | P10 | Branches on GitHub whose work `main` contains | Decided 22 Nov: all kept as markers; `main` is the one to use |
 > | P11 | Owner sign-off on the acceptance register, and SEL-AC-05 (items 2.3 and 2.4 below) | The owner |
+> | P12 | Analyst view (AM-80): a one-line queue row, a case worded for a returns analyst, the model's internals behind the Model detail switch | Done 22 Nov |
+> | P13 | From the same analyst's review, not built because the simulation carries no such data: the inspection result and pickup remarks of a returned item; scoring at the time of a return request, at least for claims; customer tenure, payment mode and customer-care history | Roadmap: each needs new columns in the data contract and, where the model reads them, a new experiment |
+> | P14 | From the same review, not built: an outcome that produces a recommended action for the returns-policy team; closed cases feeding back into the ranking; a loss figure that counts reverse logistics and unsellable stock instead of refunds paid; the Dashboard's model-and-rule comparison behind the Model detail switch | Roadmap; the last one is a screen change the owner has not asked for |
 >
 > The rest of this file is the list of 17 Oct 2026, kept as written.
 

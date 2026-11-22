@@ -37,10 +37,10 @@ describe("fallback banner", () => {
 });
 
 describe("customer table", () => {
-  const show = (fallback: boolean, rows: Customer[]) =>
+  const show = (fallback: boolean, rows: Customer[], showRule = true) =>
     render(
       <MemoryRouter>
-        <CustomerTable runId="run-1" customers={rows} fallback={fallback} />
+        <CustomerTable runId="run-1" customers={rows} fallback={fallback} showRule={showRule} />
       </MemoryRouter>,
     );
   it("shows the return-rate rule beside the model rank with neutral wording", () => {
@@ -48,6 +48,26 @@ describe("customer table", () => {
     expect(screen.getByText("Return-rate rule")).toBeInTheDocument();
     expect(screen.getByText("not selected by the rule")).toBeInTheDocument();
     expect(screen.queryByText(/caught|missed|cleared|fraud/i)).toBeNull();
+  });
+  it("leaves the return-rate rule out of the analyst view until model detail is switched on (AM-80)", () => {
+    window.localStorage.removeItem("arai.modelDetail");
+    const first = show(false, [customer({})], false);
+    expect(screen.queryByText("Return-rate rule")).toBeNull();
+    first.unmount();
+    window.localStorage.setItem("arai.modelDetail", "1");
+    show(false, [customer({})], false);
+    expect(screen.getByText("Return-rate rule")).toBeInTheDocument();
+    window.localStorage.removeItem("arai.modelDetail");
+  });
+  it("keeps a case on one line: short pattern names, the rest in tooltips (AM-80)", () => {
+    show(false, [
+      customer({
+        primary_signals: [{ tag: "late_returns", label: "Two or more late returns", family: "timing", value: 4, denominator: 13, unit: "of return lines" }],
+      }),
+    ]);
+    expect(screen.getByText("Late returns")).toBeInTheDocument();
+    expect(screen.getByTitle(/Two or more late returns: 4 of 13/)).toBeInTheDocument();
+    expect(document.querySelectorAll("tbody td small").length).toBe(0);
   });
   it("hides the comparison under baseline fallback and relabels the score", () => {
     show(true, [customer({})]);
@@ -68,7 +88,7 @@ describe("customer table", () => {
     expect(screen.getByTitle(/Two or more transaction claims: 3 of 5/)).toBeInTheDocument();
     expect(screen.getByText("ring")).toBeInTheDocument();
     expect(screen.getByText("In Review")).toBeInTheDocument();
-    expect(screen.getByText("opened by Asha")).toBeInTheDocument();
+    expect(screen.getByTitle(/opened by Asha/)).toBeInTheDocument();
     expect(screen.queryByText(/probability|fraud/i)).toBeNull();
   });
   it("shows a cleared heavy returner with its templated reason", () => {
@@ -90,7 +110,7 @@ describe("customer table", () => {
       selected_for_review: false, tier: null, gate_outcome: null })]);
     expect(screen.getByText("insufficient history")).toBeInTheDocument();
     expect(screen.getByText("not ranked")).toBeInTheDocument();
-    expect(screen.getByText(/fewer than 3 mature sale lines/)).toBeInTheDocument();
+    expect(screen.getAllByTitle(/fewer than 3 mature sale lines/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/low risk/i)).toBeNull();
   });
 });

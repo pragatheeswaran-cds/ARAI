@@ -89,7 +89,7 @@ with sync_playwright() as pw:
     text = main_text(page)
     check("overview shows eligible, selected and excluded counts", all(w in text for w in ("Eligible customers", "Selected for review", "Insufficient history")))
     check("overview compares model and rule with neutral wording", "Selected by the model, not by the return-rate rule" in text and "caught" not in text.lower())
-    check("header carries run, bundle and cutoff", "Cutoff" in page.locator("header").inner_text() and "Bundle" in page.locator("header").inner_text())
+    check("header carries the snapshot cutoff", "Cutoff" in page.locator("header").inner_text())
     check("synthetic data is labelled on every page", "SYNTHETIC DATA ONLY" in page.locator(".strip").inner_text())
     check("no truth on the overview", not any(w in text.lower() for w in TRUTH_WORDS))
     shot(page, "01-overview")
@@ -119,6 +119,19 @@ with sync_playwright() as pw:
     check("queue route carries the run", "/runs/run-" in page.url and page.url.endswith("/customers"), page.url)
     rows = page.locator("main .panel table tbody tr").count()
     check("queue opens on the review set", rows == 50 and "Load more" in main_text(page), rows)
+    # AM-80: the analyst view is one line per case and leaves the model's internals out until Model detail is switched on
+    box = page.locator("main .panel table tbody tr").first.bounding_box()
+    tallest = max(page.locator("main .panel table tbody tr").nth(i).bounding_box()["height"] for i in range(rows))
+    wrap = page.locator("main .panel .tablewrap").first
+    check("every queue row is one line and the table fits the page without scrolling sideways",
+          box is not None and tallest <= 44 and wrap.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), tallest)
+    check("the analyst view leaves out the return-rate rule and the run's identifiers",
+          "Return-rate rule" not in page.locator("main .panel table thead").inner_text() and "Bundle" not in page.locator("header").inner_text()
+          and page.get_by_label("Model and return-rate rule").count() == 0)
+    shot(page, "03a-queue-analyst-view")
+    page.get_by_label("Model detail").check()
+    settle(page)
+    check("header carries run, bundle and cutoff with model detail on", "Cutoff" in page.locator("header").inner_text() and "Bundle" in page.locator("header").inner_text())
     check("queue shows the return-rate rule rank beside the model rank", "Return-rate rule" in page.locator("main .panel table thead").inner_text())
     page.get_by_label("Show").focus()
     page.keyboard.type("All")                              # keyboard: type-ahead to "All customers"
@@ -147,10 +160,22 @@ with sync_playwright() as pw:
     settle(page)
     check("case opens from the keyboard", page.url.endswith("/customers/" + first_customer), page.url)
     text = main_text(page)
-    check("case shows observed and expected with denominators", "Actual units requested for return" in text and "Expected for this basket" in text and "Normal band" in text)
-    check("case shows the served tier, recommendation and status with their caveats",
-          "Score and tier" in text and "not a model output" in text and "Status" in text and "not a probability" in text)
-    check("case breaks the score down without parts that add up", "Why this score" in text and "not parts that add up" in text)
+    check("case shows observed and expected with denominators", "Actual units requested for return" in text and "Expected for this basket" in text and "Usual range for this basket" in text)
+    check("case shows the served tier, next step and status with their caveats",
+          "Risk Score" in text and "Suggested next step" in text and "not a model output" in text and "Status" in text and "not a probability" in text)
+    check("case breaks the score down without parts that add up", "Why this score" in text and "not parts that add up" in text and "If the threshold moved" in text)
+    page.get_by_label("Model detail").uncheck()
+    settle(page)
+    text = main_text(page)
+    check("the analyst view of a case says in words what the score rests on, without the model's internals",
+          "Why this score" in text and ("the score leans on this" in text or "No single group of evidence holds this score up" in text)
+          and "not parts that add up" not in text and "If the threshold moved" not in text
+          and "Residual z" not in text and "bundle" not in text.lower(), text[:120])
+    check("the analyst view of a case says evidence, not verdict", "fraud" not in text.lower() and "confidence" not in text.lower() and "proof" not in text.lower().replace("not proof", ""))
+    shot(page, "05a-case-analyst-view")
+    page.get_by_label("Model detail").check()
+    settle(page)
+    text = main_text(page)
     check("case shows the memo only by status", "Investigation memo" in text and ("Memo unavailable" in text or "Summary" in text or "Being drafted" in text))
     check("case separates the wardrobing indicator", "Wardrobing indicator" in text and "cannot establish" in text)
     check("case says evidence, not verdict", "not a finding of misconduct" in text and "fraud" not in text.lower() and "confidence" not in text.lower())
@@ -208,8 +233,9 @@ with sync_playwright() as pw:
     settle(page)
     text = main_text(page)
     check("the history filter finds the customers decided on an earlier snapshot",
-          "W5401-C08645" in text and "W5401-C07084" in text and "confirmed after escalation on the 09 Aug 2026 snapshot by Ravi" in text
-          and "cleared on the 09 Aug 2026 snapshot by Meera" in text, text[:120])
+          "W5401-C08645" in text and "W5401-C07084" in text and "earlier: confirmed" in text and "earlier: cleared" in text
+          and page.locator('main [title*="confirmed after escalation on the 09 Aug 2026 snapshot by Ravi"]').count() >= 1
+          and page.locator('main [title*="cleared on the 09 Aug 2026 snapshot by Meera"]').count() >= 1, text[:120])
     shot(page, "16-queue-history")
     page.goto(BASE + queue_href + "/W5401-C08645?tab=history")
     settle(page)

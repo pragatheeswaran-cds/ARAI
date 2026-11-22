@@ -258,6 +258,13 @@ how to proceed, the owner chose **"Show the links, keep the model"**.
 | E7 leads only close an escalated case | Stands |
 | E8 merge to `main` | Stands: after this work, the branch is merged and pushed |
 
+Analyst view (AM-80, 22 Nov 2026, after a review of the screens from a returns analyst's seat): the Risk Queue is one
+line per case (Rank, Case ID, Customer ID, Score, Level, short pattern names, Refunded, Return %, Accounts, Status,
+Next step); the Return-rate rule column, the Latest note column and the notes under each cell moved to tooltips or
+to a header switch, **Model detail**, which is off by default. The case has one Case Summary instead of the summary
+plus a row of four figures, and says in sentences why the score is what it is; the breakdown table, the threshold
+slider and the run's identifiers show with Model detail.
+
 What an analyst now sees where a snapshot carries contact details (AM-79, API contract 3.3.0): linked accounts,
 groups, rings, the Critical level and the Network Graph include links through a shared phone or mailbox. Scores,
 ranks and the selection are unchanged, and a test requires that.

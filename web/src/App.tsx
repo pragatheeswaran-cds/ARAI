@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom";
 import { API, ApiError, SIGNED_OUT_EVENT, allPages, api, setCsrfToken, type Dataset, type ExperimentSummary, type Health, type Me, type NotificationList, type Run } from "./api";
-import { ErrorBox, PageTitle, ist, number, shortId, useLoad } from "./components/ui";
+import { ErrorBox, ModelDetailToggle, PageTitle, ist, number, shortId, useLoad, useModelDetail } from "./components/ui";
 import { datasetName, latestSnapshotRun } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
 import { CustomerProfile, CustomerSearch } from "./pages/CustomerProfile";
@@ -266,6 +266,20 @@ function SignedIn() {
   );
 }
 
+/** The right of the workspace header. The analyst view names the snapshot; model detail adds the run and the bundle. */
+function RunContext({ run, modelLabel }: { run: Run; modelLabel: string }) {
+  const [detail] = useModelDetail();
+  return (
+    <>
+      <strong>{detail ? `Run ${shortId(run.run_id, 12)} / ${modelLabel}` : `Snapshot of ${ist(run.cutoff, false)}`}</strong>
+      <br />
+      {detail ? `Bundle ${shortId(run.model_id, 14)} / Cutoff ${ist(run.cutoff)}` : `Cutoff ${ist(run.cutoff)}`}
+      <br />
+      <ModelDetailToggle />
+    </>
+  );
+}
+
 /** Why the return-rate ranking is active, in the words the situation calls for. */
 export function fallbackReason(health: Health | null, experiment: ExperimentSummary | null): string | null {
   if (!health || health.promoted_model_ready) return null;
@@ -359,17 +373,7 @@ function Shell({ children }: { children: ReactNode }) {
               <strong>{run ? `World ${run.world_id}` : "No scored run selected"}</strong>
             </div>
             <div className="small context" aria-label="Run context">
-              {run ? (
-                <>
-                  <strong>
-                    Run {shortId(run.run_id, 12)} / {modelLabel}
-                  </strong>
-                  <br />
-                  Bundle {shortId(run.model_id, 14)} / Cutoff {ist(run.cutoff)}
-                </>
-              ) : (
-                <strong>Register a dataset and score it to begin</strong>
-              )}
+              {run ? <RunContext run={run} modelLabel={modelLabel} /> : <strong>Register a dataset and score it to begin</strong>}
             </div>
           </header>
           {run && <RunStrip run={run} dataset={dataset} />}

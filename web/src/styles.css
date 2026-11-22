@@ -310,3 +310,16 @@ table td:first-child strong, table td a.link { white-space: nowrap; }
 .topbar .profile-link.active, .topbar .profile-link:hover { background: #4d596b; }
 @media (max-width: 1000px) { .stats.five { grid-template-columns: repeat(2, 1fr); } }
 .nowrap { white-space: nowrap; }
+
+/* AM-80: the queue is one line per case; the patterns cell alone may wrap. Model detail is one switch in the header. */
+table.dense td { padding: 7px 6px; white-space: nowrap; vertical-align: middle; }
+table.dense thead th { padding: 9px 6px; }
+table.dense td.patterns { white-space: nowrap; }
+table.dense td.rank { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+table.dense td small { margin-top: 2px; white-space: normal; }
+table.dense .chip { margin: 1px 3px 1px 0; padding: 2px 7px; }
+.detail-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; cursor: pointer; min-height: 24px; }
+.detail-toggle input { margin: 0; }
+.drivers { list-style: none; margin: 0 0 12px; padding: 0; }
+.drivers li { padding: 10px 0; border-bottom: 1px solid #ecf0e6; }
+.drivers li small { display: block; color: var(--muted); margin-top: 3px; }

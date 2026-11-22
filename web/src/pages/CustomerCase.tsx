@@ -3,9 +3,12 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiError, api, newKey, type Case, type Community, type Curves, type Disposition, type ReviewKind, type ScoreDistribution, type Signal } from "../api";
 import { useSession, useWorkspace } from "../App";
 import { Chips, GateBadge, SCORE_HELP, StateBadge, TierBadge, workflowNote } from "../components/CustomerTable";
-import { Badge, Callout, CopyId, ErrorBox, LoadState, PageTitle, Panel, Row, Stat, ist, label, number, percent, rupees, shortId, useLoad } from "../components/ui";
-import { CLEARED_REASON, GATE_HELP, GATE_LABEL, OUTCOME_LABEL, STATE_LABEL, TIER_LABEL, caseId, caseSummary, clearedHeavyReturner, earlierDecisionNote, historyNote, notObserved, rawRate, snapshotDate } from "../derive";
 
+import { Badge, Callout, CopyId, ErrorBox, LoadState, PageTitle, Panel, Row, ist, label, number, percent, rupees, shortId, useLoad, useModelDetail } from "../components/ui";
+import { CLEARED_REASON, GATE_HELP, GATE_LABEL, GATE_MEANING, OUTCOME_LABEL, STATE_LABEL, TIER_LABEL, caseId, caseSummary, clearedHeavyReturner, earlierDecisionNote, historyNote, notObserved, rawRate, snapshotDate } from "../derive";
+
+/** A family counts as carrying the score when a typical customer's values there move it by a point or more. */
+const LEANS_ON = 1;
 const TABS = ["evidence", "returns", "linked accounts", "history", "notes"] as const;
 type Tab = (typeof TABS)[number];
 const SHARES = new Set(["share", "share of requested units", "share of claim lines", "share of window", "share of item-return lines"]);
@@ -50,6 +53,7 @@ function ClearedHeader({ data }: { data: Case }) {
 
 // ---------------------------------------------------------------- evidence: why this score
 function Breakdown({ data }: { data: Case }) {
+  const [detail] = useModelDetail();
   const b = data.score_breakdown;
   const score = data.customer.risk_score;
   if (!b || score === null) {
@@ -60,10 +64,51 @@ function Breakdown({ data }: { data: Case }) {
     );
   }
   const widest = Math.max(1, ...b.families.map((f) => Math.abs(f.delta_points)));
+  const selected = data.customer.selected_for_review;
+  const ordered = [...b.families].sort((x, y) => x.delta_points - y.delta_points);
+  // a selected case that would leave the queue without a family leans on it, however small the move in points
+  const decisive = (f: (typeof ordered)[number]) => selected && !f.in_queue_without && f.delta_points < 0;
+  const leans = ordered.filter((f) => f.delta_points <= -LEANS_ON || decisive(f));
+  const favour = ordered.filter((f) => f.delta_points >= LEANS_ON);
+  const quiet = ordered.filter((f) => Math.abs(f.delta_points) < LEANS_ON && !decisive(f));
   return (
     <Panel title="Why this score" aside={<span className="small">score {score.toFixed(1)}</span>}>
       <p className="muted">
-        The score the frozen model gives when one feature family sits at typical values ({b.typical_from === "training" ? "the training median" : "this snapshot's median"}) and
+        What the score rests on for this customer. Each line asks one question: if this customer looked like a typical customer on this group of
+        evidence alone, and everything else stayed as it is, where would the score be?
+      </p>
+      <ul className="drivers">
+        {leans.map((f) => (
+          <li key={f.family}>
+            <strong>{f.label}</strong>: the score leans on this.
+            <small>
+              With a typical customer's values here the score would be {f.score_without.toFixed(1)} instead of {score.toFixed(1)}
+              {selected ? (f.in_queue_without ? ", and the case would still be in the queue." : ", and the case would leave the queue.") : "."}
+            </small>
+          </li>
+        ))}
+        {leans.length === 0 && (
+          <li>
+            No single group of evidence holds this score up.
+            <small>Setting any one group to a typical customer's values lowers the score by less than a point{selected ? " and leaves the case in the queue" : ""}.</small>
+          </li>
+        )}
+        {favour.map((f) => (
+          <li key={f.family}>
+            <strong>{f.label}</strong>: this counts in the customer's favour.
+            <small>With a typical customer's values here the score would be higher, {f.score_without.toFixed(1)} instead of {score.toFixed(1)}.</small>
+          </li>
+        ))}
+        {quiet.length > 0 && leans.length > 0 && (
+          <li>
+            Little or no effect on this score: {quiet.map((f) => f.label.toLowerCase()).join(", ")}.
+          </li>
+        )}
+      </ul>
+      {detail && (
+        <>
+      <p className="muted">
+        Model detail. The score the frozen model gives when one feature family sits at typical values ({b.typical_from === "training" ? "the training median" : "this snapshot's median"}) and
         everything else stays as observed. A family that lowers the score when set to typical is one the score leans on. These are not parts that add
         up to the score.
       </p>
@@ -109,6 +154,8 @@ function Breakdown({ data }: { data: Case }) {
           </tbody>
         </table>
       </div>
+        </>
+      )}
       <h3>Analyst rules that would have fired</h3>
       <ul className="facts">
         {data.rules_fired.map((rule) => (
@@ -124,6 +171,7 @@ function Breakdown({ data }: { data: Case }) {
 
 // ---------------------------------------------------------------- evidence: expected vs actual
 function Expected({ data }: { data: Case }) {
+  const [detail] = useModelDetail();
   const b = data.customer.basket_expectation;
   if (!b) return <Panel title="Expected vs actual returns"><p className="muted">No mature purchase yet, so there is no expectation.</p></Panel>;
   const top = Math.max(b.actual_units, b.band_high ?? b.expected_units, b.expected_units) * 1.15 || 1;
@@ -149,12 +197,14 @@ function Expected({ data }: { data: Case }) {
       <Row name="Expected for this basket" note="From other customers who bought the same products">
         {b.expected_units.toFixed(1)}
       </Row>
-      <Row name="Normal band" note="Expected plus or minus two standard deviations">
-        {b.band_low !== null && b.band_high !== null ? `${b.band_low.toFixed(1)} to ${b.band_high.toFixed(1)}` : "not available"}
+      <Row name="Usual range for this basket" note={detail ? "Expected plus or minus two standard deviations" : "A rule-of-thumb range around the expected figure, from how much buyers of the same products vary"}>
+        {b.band_low !== null && b.band_high !== null ? `${b.band_low.toFixed(1)} to ${b.band_high.toFixed(1)} units` : "not available"}
       </Row>
-      <Row name="Residual z" note="Heuristic, not a significance test">
-        {b.z === null ? "n/a" : b.z.toFixed(2)}
-      </Row>
+      {detail && (
+        <Row name="Residual z" note="Heuristic, not a significance test">
+          {b.z === null ? "n/a" : b.z.toFixed(2)}
+        </Row>
+      )}
       <div className="band-chart" role="img" aria-label={`Actual ${b.actual_units} against a normal band of ${b.band_low?.toFixed(1)} to ${b.band_high?.toFixed(1)}`}>
         {b.band_low !== null && b.band_high !== null && <span className="band-range" style={{ left: pct(b.band_low), width: `calc(${pct(b.band_high)} - ${pct(b.band_low)})` }} />}
         <span className="band-expected" style={{ left: pct(b.expected_units) }} title={`expected ${b.expected_units.toFixed(1)}`} />
@@ -162,7 +212,7 @@ function Expected({ data }: { data: Case }) {
       </div>
       <div className="band-scale" aria-hidden="true">
         <span>0</span>
-        <span>band {b.band_low?.toFixed(0) ?? "?"} to {b.band_high?.toFixed(0) ?? "?"} / actual {b.actual_units}</span>
+        <span>usual range {b.band_low?.toFixed(0) ?? "?"} to {b.band_high?.toFixed(0) ?? "?"} / actual {b.actual_units}</span>
         <span>{top.toFixed(0)}</span>
       </div>
       <h3>Why the expectation is where it is</h3>
@@ -233,6 +283,7 @@ function Evidence({ data, runId }: { data: Case; runId: string }) {
 
 // ---------------------------------------------------------------- return behaviour
 function Returns({ data, runId }: { data: Case; runId: string }) {
+  const [detail] = useModelDetail();
   const returns = data.timeline.filter((e) => e.event_type !== "purchase");
   const withdrawn = returns.filter((e) => e.line_status === "withdrawn").length; // listed, never counted in the evidence
   const purchases = data.timeline.filter((e) => e.event_type === "purchase");
@@ -326,7 +377,7 @@ function Returns({ data, runId }: { data: Case; runId: string }) {
                 {e.quantity} x {e.style_id ? <Link to={`/runs/${runId}/styles/${e.style_id}`}>{e.style_id}</Link> : ""} {e.sku} size {e.size} / {e.line_status ? label(e.line_status) : ""}
                 {e.window_days ? ` / ${e.window_days}-day window` : ""} {e.amount_inr ? `/ ${rupees(e.amount_inr)}` : ""}
               </small>
-              <small>{e.source_ref}</small>
+              {detail && <small>{e.source_ref}</small>}
             </li>
           ))}
         </ol>
@@ -633,7 +684,7 @@ function Decision({ data, runId, onChanged }: { data: Case; runId: string; onCha
         or a refund: nothing here reaches the order or refund system.
       </p>
       <p className="muted">
-        The gate rule says {data.customer.gate_outcome ? GATE_LABEL[data.customer.gate_outcome] : "n/a"} for this case. It is a presentation rule, not a decision;
+        The suggested next step for this case is {data.customer.gate_outcome ? GATE_LABEL[data.customer.gate_outcome] : "n/a"}. It is a stated rule, not a decision;
         the decision is yours. Every action is appended, never edited.
       </p>
     </Panel>
@@ -782,6 +833,7 @@ function History({ data, runId }: { data: Case; runId: string }) {
 
 // ---------------------------------------------------------------- notes
 function Notes({ data, runId }: { data: Case; runId: string }) {
+  const [detail] = useModelDetail();
   return (
     <Panel title={data.reviews.length ? `${data.reviews.length} entr(ies), oldest first` : "No entry yet"}>
       <p className="muted">
@@ -795,8 +847,8 @@ function Notes({ data, runId }: { data: Case; runId: string }) {
           <small>
             {review.reviewer_name} {review.author.verified ? "(signed in)" : <Badge text="unverified name" tone="gray" />} / {ist(review.created_at)} / written on the{" "}
             {snapshotDate(review.snapshot_cutoff)} snapshot
-            {review.dataset_id === data.dataset_id ? (review.run_id === runId ? " (this run)" : " (another run of this snapshot)") : " (an earlier or later snapshot)"} / run{" "}
-            {shortId(review.run_id, 12)} / bundle {shortId(review.model_id, 14)}
+            {review.dataset_id === data.dataset_id ? (review.run_id === runId ? " (this run)" : " (another run of this snapshot)") : " (an earlier or later snapshot)"}
+            {detail ? ` / run ${shortId(review.run_id, 12)} / bundle ${shortId(review.model_id, 14)}` : ""}
           </small>
         </article>
       ))}
@@ -809,6 +861,7 @@ export function CustomerCase() {
   const { runId = "", customerId = "" } = useParams();
   const { fallback, run, experiment, dataset } = useWorkspace();
   const { can } = useSession();
+  const [detail] = useModelDetail();
   const [params, setParams] = useSearchParams();
   const tab = (TABS as readonly string[]).includes(params.get("tab") ?? "") ? (params.get("tab") as Tab) : "evidence";
   const state = useLoad(() => api.customerCase(runId, customerId), [runId, customerId]);
@@ -861,11 +914,36 @@ export function CustomerCase() {
             <Panel title="Case Summary" aside={<StateBadge customer={c} compact />}>
               <Row name="Case ID">{caseId(c.customer_id)}</Row>
               <Row name="Customer ID">{c.customer_id}</Row>
-              <Row name="Region">{c.contact.region ? label(c.contact.region) : "not in this snapshot"}</Row>
-              <Row name="Risk Score" note="a percentile against the training scores, not a probability">
-                {c.risk_score === null ? "n/a" : `${c.risk_score.toFixed(0)} / 100`} <TierBadge tier={c.tier} />
+              {(c.contact.region || detail) && <Row name="Region">{c.contact.region ? label(c.contact.region) : "not in this snapshot"}</Row>}
+              <Row
+                name={fallback ? "Return-rate percentile" : "Risk Score"}
+                note={
+                  <span title={SCORE_HELP}>
+                    {detail ? "a percentile against the training scores, not a probability" : "0 to 100; higher is more unusual among customers seen before. Not a probability."}
+                  </span>
+                }
+              >
+                {c.risk_score === null ? "n/a" : `${c.risk_score.toFixed(1)} / 100`} <TierBadge tier={c.tier} />
               </Row>
-              <Row name="Snapshot" note={run ? `world ${run.world_id}` : undefined}>
+              <Row
+                name="Place in the queue"
+                note={[c.selected_for_review ? "selected for review" : c.eligibility_status === "eligible" ? "not selected: in the log" : "not ranked", historyNote(c)].filter(Boolean).join(" / ")}
+              >
+                {c.rank ? `Rank ${number(c.rank)} of ${number(run?.eligible_count ?? 0)}` : `${c.support_counts.mature_sale_lines} mature sale line(s): too little history to rank`}
+              </Row>
+              <Row
+                name="Suggested next step"
+                note={<span title={GATE_HELP}>{c.gate_outcome ? GATE_MEANING[c.gate_outcome] : "No suggestion: this customer is not ranked."} A stated rule, not a model output.</span>}
+              >
+                <GateBadge gate={c.gate_outcome} />
+              </Row>
+              <Row name="Status" note={workflowNote(c) ?? undefined}>
+                <StateBadge customer={c} compact />
+              </Row>
+              <Row name="Linked accounts" note={c.community ? "Membership is evidence, not guilt" : "No account shares two identifier types"}>
+                {c.community ? `${c.community.size} / ${c.community.kind}` : "none"}
+              </Row>
+              <Row name="Snapshot" note={run && detail ? `world ${run.world_id}` : undefined}>
                 {run ? snapshotDate(run.cutoff) : "n/a"}
               </Row>
             </Panel>
@@ -880,30 +958,6 @@ export function CustomerCase() {
                 {c.support_counts.mature_requested_units} / {c.support_counts.mature_purchased_units}
               </Row>
             </Panel>
-          </div>
-          <div className="stats">
-            <Stat
-              name={fallback ? "Return-rate percentile" : "Score and tier"}
-              value={
-                <span title={SCORE_HELP}>
-                  {c.risk_score === null ? "n/a" : c.risk_score.toFixed(1)} <TierBadge tier={c.tier} />
-                </span>
-              }
-              note={c.rank ? `Rank ${number(c.rank)} of ${number(run?.eligible_count ?? 0)} / not a probability` : `${c.support_counts.mature_sale_lines} mature sale line(s): too little history to rank`}
-            />
-            <Stat name="Recommendation" value={<GateBadge gate={c.gate_outcome} />} note={<span title={GATE_HELP}>A stated rule over the run's results, not a model output</span>} />
-            <Stat
-              name="Status"
-              value={<StateBadge customer={c} compact />}
-              note={[workflowNote(c), c.selected_for_review ? "selected for review" : c.eligibility_status === "eligible" ? "not selected: in the log" : "not ranked", historyNote(c)]
-                .filter(Boolean)
-                .join(" / ")}
-            />
-            <Stat
-              name="Linked accounts"
-              value={c.community ? `${c.community.size} / ${c.community.kind}` : "none"}
-              note={c.community ? "Membership is evidence, not guilt" : "No account shares two identifier types"}
-            />
           </div>
           <div className="grid">
             <div>
@@ -954,8 +1008,9 @@ export function CustomerCase() {
             <div>
               <MemoPanel data={data} />
               <Decision data={data} runId={runId} onChanged={state.reload} />
-              <Slider data={data} distribution={extras.data?.distribution ?? null} curves={extras.data?.curves ?? null} />
-              <p className="small manifest">
+              {detail && <Slider data={data} distribution={extras.data?.distribution ?? null} curves={extras.data?.curves ?? null} />}
+              {!detail && <p className="small muted">Model detail (top right) adds the score breakdown table, the threshold slider and the run's identifiers.</p>}
+              <p className="small manifest" hidden={!detail}>
                 Run {run?.run_id ?? runId} / bundle {run?.model_id ?? ""}
                 {configHash ? ` / config ${configHash.slice(0, 16)}` : ""}
                 {dataset ? ` / dataset ${dataset.manifest_hash.slice(0, 16)}` : ""}

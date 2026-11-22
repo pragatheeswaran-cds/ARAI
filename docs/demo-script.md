@@ -101,8 +101,8 @@ what it replaced.
 | Screen | What shows the rule | Line it supports |
 |---|---|---|
 | Dashboard, "Model and return-rate rule compared" | 209 model only, 75 both, 209 rule only | Three quarters of the two lists differ |
-| Risk Queue, column "Return-rate rule" | The rule's rank for every customer: rank 1 is the rule's 553rd, rank 5 its 2,254th | The real cases never arrive |
-| Risk Queue, More filters, "Selected by the rule, not by the model" | The 209 the rule would have reviewed | The rule punishes loyalty |
+| Risk Queue with **Model detail** on, column "Return-rate rule" | The rule's rank for every customer: rank 1 is the rule's 553rd, rank 5 its 2,254th | The real cases never arrive |
+| Risk Queue with **Model detail** on, More filters, "Selected by the rule, not by the model" | The 209 the rule would have reviewed | The rule punishes loyalty |
 | Risk Queue, More filters, Show "Cleared heavy returners" | The customers above the 40.6 percent cutoff the model left out, each with the reason it was left out and what was not observed (no claims, no late returns, no links) | The loyal customer is left alone |
 | Customer case, "Analyst rules that would have fired" | The five legacy rules against this case | A decision nobody can defend, then one with a record |
 | Analytics, "Abusers caught against alerts used" | First 58 alerts: 58 abusers against 19; 0 honest heavy returners against 39 | Same budget, three times the hits |
@@ -256,24 +256,29 @@ Screenshots `02-queue.png`, `03-queue-rule-only.png`, `04-queue-grouped.png`, `0
 The four tiles count the cases: **284** in all, **86 Critical and 198 High**, 307 Medium, 5,085 Low. The queue opens
 on the review set: 50 rows and a **Load more** button, 284 in total.
 
+The screens open in the analyst view: one line per case, and nothing of the model's internals. Tick **Model
+detail** at the top right of the header now; it adds the Return-rate rule column here, and the score breakdown table
+and the threshold slider on the case. Say why it is a switch: an analyst reads the first view all day, and the second
+is there when someone asks how the model got there. The choice stays in the browser.
+
 Walk the columns left to right:
 
-- **Case ID and Customer ID.** A case is one customer in this run, so the case carries the customer's own number
-  (CASE-03245 for W5401-C03245) with the rank under it.
-- **Risk Score.** A percentile against the training worlds, not a probability. The threshold for this run is 95.5;
+- **Rank, Case ID and Customer ID.** A case is one customer in this run, so the case carries the customer's own
+  number (CASE-03245 for W5401-C03245).
+- **Score.** A percentile against the training worlds, not a probability. The threshold for this run is 95.5;
   the queue is everyone at or above it.
-- **Risk Level.** Anchored to the budget, not to fixed bands: a customer selected for review is **Critical** as a
+- **Level.** Anchored to the budget, not to fixed bands: a customer selected for review is **Critical** as a
   member of a detected ring and **High** otherwise; Medium scores 90 or above and is not selected; Low is the rest.
   Hover the header for the one-sentence rule.
-- **Pattern(s).** Chips such as "Two or more late returns, 4 of 13 item-return lines" or "Shares identifiers with 4
-  accounts". Each chip carries its denominator.
-- **Refunded, Return %, Accounts.** Refunds paid in rupees with the part on transaction claims, units returned over
-  units bought, and the size of the customer's linked-account group.
-- **Status.** Open, In Review, Escalated, Closed; a closed case says how it ended (cleared, confirmed or not
-  confirmed after escalation).
-- **Recommendation.** A presentation rule over the results, not a model output: **Escalate** (98 customers) is
+- **Pattern(s).** Short chips such as "Late returns" or "Shared identifiers". Point at one for its numbers: "Two or
+  more late returns: 4 of 13 item-return lines". Each carries its denominator.
+- **Refunded, Return %, Accounts.** Refunds paid in rupees (an asterisk marks a part paid on transaction claims;
+  point at it for the amount), units returned over units bought, and the size of the customer's linked-account group.
+- **Status.** Open, In Review, Escalated, Closed. Point at it for who opened or decided the case and the latest
+  note; a case decided on an earlier snapshot carries a badge such as "earlier: confirmed".
+- **Next step.** A presentation rule over the results, not a model output: **Escalate** (98 customers) is
   selected and in a ring or with the wardrobing indicator elevated; **Hold** (186) is selected otherwise.
-- **Return-rate rule.** The rule's own rank and whether the rule would have selected the customer.
+- **Return-rate rule** (Model detail). The rule's own rank and whether the rule would have selected the customer.
 
 Now three filter moves, each of which changes the address bar so a view can be sent as a link:
 
@@ -315,12 +320,13 @@ would never have shown this case.
 
 - **Expected vs actual returns.** 12 units requested back of 29 purchased on mature sale lines, and INR 24,365
   refunded, none of it on transaction claims (the **Refunds paid** row). A customer buying
-  the same products would be expected to request about 5.7, with a normal band of 1.5 to 10.0. The expectation is
+  the same products would be expected to request about 5.7, with a usual range of 1.5 to 10.0. The expectation is
   built from what was bought, so a customer who buys fit-sensitive jeans is not punished for a jeans return rate.
   Open **Why the expectation is where it is** to show the products behind the number.
-- **Why this score.** Five families, each shown as the score the customer would have without that family. Without
-  the **return timing** family the score drops from 99.99 to 51.7 and the customer leaves the queue; removing any
-  other family changes almost nothing. Say the sentence on the panel: these are not parts that add up. Underneath,
+- **Why this score.** The panel first says it in a sentence: the score leans on **return timing**; with a typical
+  customer's values there it would be 51.7 instead of 100.0 and the case would leave the queue, and the other four
+  groups have little or no effect. With Model detail on, the table underneath shows all five families, each as the
+  score the customer would have without that family. Say the sentence on the panel: these are not parts that add up. Underneath,
   **Analyst rules that would have fired**: two of the five legacy rules fire here (return rate above the training
   90th percentile, refund ratio above it). The claim and link rules do not.
 - **Claims, timing and composition.** The raw counts: 4 of 13 item-return lines late in their window, what was
@@ -363,7 +369,7 @@ Now the decision, three ways:
 Press **Download case summary** at the top of the case: a plain-text hand-off with the evidence, every return
 line with its status and refund, and the notes, for whoever acts on the decision.
 
-Finish with **If the threshold moved**: drag the slider to show how many customers the queue would hold at any
+Finish with **If the threshold moved** (Model detail): drag the slider to show how many customers the queue would hold at any
 score, and that the page tells you the budget this would cost. It changes nothing on the server.
 
 ### 4.4 A ring: W5401-C08645 (13 to 16 minutes)

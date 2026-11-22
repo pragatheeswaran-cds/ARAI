@@ -28,7 +28,7 @@
       "detail": ""
     },
     {
-      "check": "header carries run, bundle and cutoff",
+      "check": "header carries the snapshot cutoff",
       "ok": true,
       "detail": ""
     },
@@ -83,6 +83,21 @@
       "detail": "50"
     },
     {
+      "check": "every queue row is one line and the table fits the page without scrolling sideways",
+      "ok": true,
+      "detail": "39.5"
+    },
+    {
+      "check": "the analyst view leaves out the return-rate rule and the run's identifiers",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "header carries run, bundle and cutoff with model detail on",
+      "ok": true,
+      "detail": ""
+    },
+    {
       "check": "queue shows the return-rate rule rank beside the model rank",
       "ok": true,
       "detail": ""
@@ -95,7 +110,7 @@
     {
       "check": "comparison filter lists rule-only selections",
       "ok": true,
-      "detail": "\tCASE-02250\nrank 292\n\tW5401-C02250copy\ncleared heavy returner \u00b7 below the review threshold \u00b7 no claims matched by a link"
+      "detail": "\t292\tCASE-02250\tW5401-C02250\ncleared heavy returner \u00b7 below the review threshold \u00b7 no claims matched by a linked account"
     },
     {
       "check": "search by identifier finds the customer",
@@ -118,12 +133,22 @@
       "detail": ""
     },
     {
-      "check": "case shows the served tier, recommendation and status with their caveats",
+      "check": "case shows the served tier, next step and status with their caveats",
       "ok": true,
       "detail": ""
     },
     {
       "check": "case breaks the score down without parts that add up",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the analyst view of a case says in words what the score rests on, without the model's internals",
+      "ok": true,
+      "detail": "Back to Risk Queue\nARAI / INVESTIGATION DETAILS\nInvestigation Details\n\nCASE-03245 / customer W5401-C03245 copy. Observed"
+    },
+    {
+      "check": "the analyst view of a case says evidence, not verdict",
       "ok": true,
       "detail": ""
     },
@@ -358,6 +383,6 @@
       "detail": "[]"
     }
   ],
-  "passed": 71,
+  "passed": 76,
   "failed": 0
 }

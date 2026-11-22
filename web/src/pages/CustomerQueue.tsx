@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiError, api, newKey, queueExportUrl, type BulkReviewResult, type Customer, type CustomerFilters } from "../api";
 import { useSession, useWorkspace } from "../App";
 import { CustomerTable, SCORE_HELP, TAGS, tagLabel, type Selection } from "../components/CustomerTable";
-import { Callout, ErrorBox, PageTitle, Panel, Stat, label, number, percent, useLoad } from "../components/ui";
+import { Callout, ErrorBox, PageTitle, Panel, Stat, label, number, percent, useLoad, useModelDetail } from "../components/ui";
 import { GATE_HELP, GATE_LABEL, HISTORY_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, snapshotDate } from "../derive";
 
 const COMPARISONS: Record<CustomerFilters["comparison"], string> = {
@@ -140,6 +140,7 @@ export function CustomerQueue() {
   };
   const [params, setParams] = useSearchParams();
   const comparison = (params.get("comparison") ?? "all") as CustomerFilters["comparison"];
+  const [detail] = useModelDetail(); // the comparison with the return-rate rule is model detail (AM-80)
   // the queue opens on the review set; a comparison view, a community, a cleared view or a state filter needs every customer
   const view = params.get("show") ?? (comparison !== "all" || params.get("community_id") || params.get("state") ? "all" : "review");
   const filters: CustomerFilters = {
@@ -308,7 +309,7 @@ export function CustomerQueue() {
             </select>
           </label>
           <label title={GATE_HELP}>
-            Recommendation
+            Next step
             <select value={filters.gate} onChange={(e) => set("gate", e.target.value)}>
               <option value="all">Any</option>
               {(Object.keys(GATE_LABEL) as (keyof typeof GATE_LABEL)[]).map((gate) => (
@@ -337,7 +338,7 @@ export function CustomerQueue() {
               <option value="unresolved">Unresolved</option>
             </select>
           </label>
-          {!fallback && (
+          {!fallback && (detail || comparison !== "all") && (
             <label>
               Model and return-rate rule
               <select
@@ -400,7 +401,7 @@ export function CustomerQueue() {
           </div>
         )}
         {shown.length > 0 && (
-          <CustomerTable runId={runId} customers={shown} fallback={fallback} run={run} grouped={grouped} selection={canReview ? selection : undefined} />
+          <CustomerTable runId={runId} customers={shown} fallback={fallback} run={run} grouped={grouped} selection={canReview ? selection : undefined} showRule={comparison !== "all"} />
         )}
         {cursor && (
           <p>
@@ -411,8 +412,10 @@ export function CustomerQueue() {
         )}
       </Panel>
       <Callout>
-        {SCORE_HELP} Rank is the position in this batch. Tier is anchored to the queue and the recommendation is a stated rule over the run's
+        One line per case: point at a pattern, an amount, a return rate or a status for the numbers behind it, and open the case for the evidence.{" "}
+        {SCORE_HELP} Rank is the position in this batch. Tier is anchored to the queue and the next step is a stated rule over the run's
         results, not a model output. Customers with fewer than three mature sale lines are not ranked; their evidence can still be opened.
+        {!detail && " Switch on Model detail (top right) to compare with the return-rate rule."}
       </Callout>
     </>
   );

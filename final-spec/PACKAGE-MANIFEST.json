@@ -1,6 +1,6 @@
 {
   "package": "ARAI component development specification",
-  "version": "4.3",
+  "version": "4.4",
   "created": "2026-09-26",
   "amended": "2026-11-22",
   "files_sha256": {
@@ -21,7 +21,7 @@
     "components/10-artifacts-and-versioning.md": "c73490e0fd9cb9b0548a694c4ef0baf156268558a4c56bdd033acd21066d1c90",
     "components/11-inference-service.md": "9bc6b5a766ad3dfe4db475c90e0a194928c3359ffe95734c55d7d08d5508410a",
     "components/12-fastapi-and-api-contract.md": "e61523261f64ed7bf50ce80c73d142c242c4d0f48b006509476bd5570c17cd77",
-    "components/13-react-vite-ui.md": "3757081f7f95f6b0f01bd22b9c141ca1fb5b71dd2787de6dbbaaa04ad58d76e3",
+    "components/13-react-vite-ui.md": "71d160240e42a42dad8f74d8b02d70ea21b967069916d8696de564f520e5884f",
     "components/14-storage-and-audit.md": "fdf631467cfd5626b5c6ecbe4ed1b47ab7b0a73f688b25dd92b3febc64ea453a",
     "components/15-security-deployment-portability.md": "f46c7feaa01f55ed713b3486364e29de366a3e0cae2fe2d3e1fff729a15a38f3",
     "components/16-testing-and-delivery.md": "eab88dc1ce853e202e6813fec46605b05cd95a3b9bb6b47182ded97778b75001",
@@ -34,8 +34,8 @@
     "contracts/openapi.yaml": "5cb6d766371305c32ddbfc9e73882ce9367f3cbbffe63a452540a5a06133d1d1",
     "contracts/private-truth.yaml": "389b4d2b801133d42f8f0d465f6787de73d6881eb687b82ebb445ea5b5f2c2a5",
     "contracts/reason-groups.yaml": "372b4ae553f35acf62a4f16eccb4e7df9c5de824c17f731534453be4e3d999d6",
-    "DECISIONS.md": "6ae4de18191d824369feb72d028f9b48ae3be13e39ce09421ec9f0a8e561dcab",
-    "README.md": "b7b142f2c0e8dc974b8459a82302f407e305a4886ae670e95d94534dfd1d0d74",
+    "DECISIONS.md": "529e89a7ea53235a0fa84fc607b28c7bd02e8fb3e39eec27377c9dcb155480bf",
+    "README.md": "cf6082f06511ffebb18b3fee308a0d3bae922fc661599b28f7d136c00464e32a",
     "reference/ARAI-original.pdf": "0ce327a112597913647db7934d5d92c1b3906c54059846e9b8738b449552d0a9",
     "reference/source-provenance.json": "b0170968a977d49180d9d11c1681b862d846798a8ba0dd9e99ef4b7cb0a0a0ac",
     "tools/verify_package.py": "a944af132bf2f0f79b5685af85ce92a8237e554180e9946a411bb4b921106736",

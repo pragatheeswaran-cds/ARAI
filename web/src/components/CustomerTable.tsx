@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import type { Customer, PrimarySignal, Run } from "../api";
 import { CLEARED_REASON, GATE_HELP, GATE_LABEL, OUTCOME_LABEL, STATE_LABEL, TIER_HELP, TIER_LABEL, caseId, clearedHeavyReturner, earlierDecisionNote, groupByCommunity, historyNote, notObserved, rawRate } from "../derive";
-import { Badge, CopyId, label, number, percent, rupees } from "./ui";
+import { Badge, label, number, percent, rupees, useModelDetail } from "./ui";
 
 export const SCORE_HELP =
   "Position of this customer's score among the frozen training scores (0-100). It is not a probability of abuse and not the rank in this batch.";
@@ -26,14 +26,23 @@ export function signalTooltip(signal: PrimarySignal): string {
   return `${signal.label}: ${value}${of} / tag ${signal.tag}${family}`;
 }
 
+/** The same observations in two or three words, for a queue row that stays on one line; the chip's tooltip has the full phrase. */
+const SHORT_LABELS: Record<string, string> = {
+  repeat_claims: "Repeat claims",
+  linked_claims: "Linked claims",
+  late_returns: "Late returns",
+  returns_above_expected: "Above expected",
+  supported_links: "Shared identifiers",
+};
+
 /** Up to three plain-language chips, in the order the score breakdown ranks their families. */
-export function Chips({ signals }: { signals: PrimarySignal[] }) {
-  if (!signals.length) return <span className="muted">none of the listed observations</span>;
+export function Chips({ signals, short = false }: { signals: PrimarySignal[]; short?: boolean }) {
+  if (!signals.length) return <span className="muted">{short ? "none listed" : "none of the listed observations"}</span>;
   return (
     <>
       {signals.map((signal) => (
         <span key={signal.tag} className={`chip family-${signal.family ?? "none"}`} title={signalTooltip(signal)}>
-          {signal.label}
+          {short ? SHORT_LABELS[signal.tag] ?? signal.label : signal.label}
         </span>
       ))}
     </>
@@ -72,17 +81,27 @@ export function reviewBadge(customer: Customer) {
 
 /** Row selection for bulk actions: the chosen customers and how to change them. */
 export type Selection = { chosen: Set<string>; toggle: (customerId: string) => void; setAll: (customerIds: string[], on: boolean) => void };
-type Props = { runId: string; customers: Customer[]; fallback: boolean; compact?: boolean; run?: Run | null; grouped?: boolean; selection?: Selection };
+type Props = { runId: string; customers: Customer[]; fallback: boolean; compact?: boolean; run?: Run | null; grouped?: boolean; selection?: Selection; showRule?: boolean };
 
-/** The queue table. Under baseline fallback the model and the rule are the same ranking, so the comparison column is hidden.
+/** Everything the one-line status cell leaves out, for its tooltip. */
+function statusTooltip(c: Customer): string | undefined {
+  const parts = [workflowNote(c), earlierDecisionNote(c), historyNote(c), c.latest_disposition ? `latest note: ${label(c.latest_disposition)}` : "no note yet"];
+  return parts.filter(Boolean).join(" / ") || undefined;
+}
+
+/** The queue table: one line per case (AM-80). What a row leaves out is in its tooltips and on the case page.
+ *  The return-rate rule's rank is model detail: it shows with `showRule` (a list that compares the two rankings) or when
+ *  the reader has switched model detail on, and never under baseline fallback, where the model and the rule are one ranking.
  *  With `grouped`, members of one community sit under their first member so a ring reads as one block. */
-export function CustomerTable({ runId, customers, fallback, compact = false, run = null, grouped = false, selection }: Props) {
+export function CustomerTable({ runId, customers, fallback, compact = false, run = null, grouped = false, selection, showRule = false }: Props) {
+  const [detail] = useModelDetail();
+  const rule = !fallback && !compact && (showRule || detail);
   const selectable = customers.filter((c) => c.selected_for_review).map((c) => c.customer_id);
   const allChosen = !!selection && selectable.length > 0 && selectable.every((id) => selection.chosen.has(id));
   const rows = grouped ? groupByCommunity(customers).flatMap((g) => [{ c: g.lead, member: false }, ...g.members.map((c) => ({ c, member: true }))]) : customers.map((c) => ({ c, member: false }));
   return (
     <div className="tablewrap">
-      <table>
+      <table className="dense">
         <thead>
           <tr>
             {selection && (
@@ -90,20 +109,25 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
                 <input type="checkbox" aria-label="Select all listed cases" checked={allChosen} onChange={(e) => selection.setAll(selectable, e.target.checked)} />
               </th>
             )}
+            <th scope="col" title="Position in this snapshot's ranking; 1 is the first case to read">
+              Rank
+            </th>
             <th scope="col" title="A case is one customer in this run; the number is the customer's own">
               Case ID
             </th>
             <th scope="col">Customer ID</th>
             <th scope="col" title={SCORE_HELP}>
-              {fallback ? "Return-rate percentile" : "Risk Score"} <span aria-hidden="true">(?)</span>
+              {fallback ? "Return-rate percentile" : "Score"}
             </th>
             <th scope="col" title={TIER_HELP}>
-              Risk Level
+              Level
             </th>
-            <th scope="col">Pattern(s)</th>
+            <th scope="col" title="Up to three observations, the one the score leans on most first. Point at one for its numbers.">
+              Pattern(s)
+            </th>
             {!compact && (
-              <th scope="col" title="Refunds paid on refunded return lines, and the part of it on transaction claims">
-                Refunded
+              <th scope="col" title="Refunds paid on refunded return lines. An asterisk marks an amount partly paid on transaction claims; point at it for the part.">
+                Refunded (INR)
               </th>
             )}
             <th scope="col" title="Units requested for return on mature sale lines (rejected requests count, withdrawn ones do not) over the units bought on them">
@@ -115,19 +139,18 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
               </th>
             )}
             {!compact && (
-              <th scope="col" title="Where the review stands in this snapshot, and where the customer stood in earlier snapshots of the same world">
+              <th scope="col" title="Where the review stands in this snapshot. Point at it for who opened or decided it, earlier snapshots and the latest note.">
                 Status
               </th>
             )}
             <th scope="col" title={GATE_HELP}>
-              Recommendation
+              Next step
             </th>
-            {!fallback && !compact && (
+            {rule && (
               <th scope="col" title="Rank of the same customer when customers are ordered by raw return rate alone">
                 Return-rate rule
               </th>
             )}
-            {!compact && <th scope="col">Latest note</th>}
           </tr>
         </thead>
         <tbody>
@@ -135,6 +158,8 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
             const s = c.support_counts;
             const rate = rawRate(c);
             const cleared = run ? clearedHeavyReturner(c, run) : false;
+            const why = c.cleared_reason ? `${CLEARED_REASON[c.cleared_reason]}${c.absent_signals?.length ? ` · ${notObserved(c)}` : ""}` : undefined;
+            const decided = earlierDecisionNote(c);
             return (
               <tr key={c.customer_id} className={member ? "member" : undefined}>
                 {selection && (
@@ -144,42 +169,42 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
                     )}
                   </td>
                 )}
-                <td>
-                  <strong className="nowrap">{caseId(c.customer_id)}</strong>
-                  {c.rank ? <small>rank {number(c.rank)}</small> : <small>Not ranked: fewer than 3 mature sale lines</small>}
+                <td className="rank" title={c.rank ? undefined : "Not ranked: fewer than 3 mature sale lines"}>
+                  {c.rank ? number(c.rank) : <span className="muted">n/a</span>}
                 </td>
                 <td>
+                  <strong>{caseId(c.customer_id)}</strong>
+                </td>
+                <td title={why ? `Not selected: ${why}` : undefined}>
                   <Link className="link" to={`/runs/${runId}/customers/${c.customer_id}`}>
                     {c.customer_id}
                   </Link>
-                  <CopyId id={c.customer_id} showId={false} />
-                  {!c.rank && <Badge text="insufficient history" tone="gray" />}
-                  {c.cleared_reason && (
-                    <small>
-                      {cleared ? "cleared heavy returner · " : ""}
-                      {CLEARED_REASON[c.cleared_reason]}
-                      {c.absent_signals?.length ? ` · ${notObserved(c)}` : ""}
-                    </small>
+                  {!c.rank && (
+                    <>
+                      {" "}
+                      <Badge text="insufficient history" tone="gray" title="Not ranked: fewer than 3 mature sale lines" />
+                    </>
                   )}
+                  {cleared && why && <small>cleared heavy returner · {why}</small>}
                 </td>
                 <td>{c.risk_score === null ? "n/a" : c.risk_score.toFixed(1)}</td>
                 <td>
                   <TierBadge tier={c.tier} />
                 </td>
-                <td>
-                  <Chips signals={c.primary_signals} />
+                <td className="patterns">
+                  <Chips signals={c.primary_signals} short />
                 </td>
                 {!compact && (
-                  <td>
-                    {c.refunded_inr !== null && c.refunded_inr !== undefined ? rupees(c.refunded_inr) : <span className="muted">n/a</span>}
-                    {c.claim_refunded_inr ? <small>{rupees(c.claim_refunded_inr)} on claims</small> : null}
+                  <td title={c.claim_refunded_inr ? `${rupees(c.claim_refunded_inr)} of it on transaction claims` : undefined}>
+                    {c.refunded_inr !== null && c.refunded_inr !== undefined ? number(c.refunded_inr) : <span className="muted">n/a</span>}
+                    {c.claim_refunded_inr ? <abbr title={`${rupees(c.claim_refunded_inr)} of it on transaction claims`}> *</abbr> : null}
                   </td>
                 )}
-                <td>
-                  {rate !== null ? percent(rate, 0) : <span className="muted">n/a</span>}
-                  <small>
-                    {s.mature_requested_units} / {s.mature_purchased_units} units, {s.mature_sale_lines} lines
-                  </small>
+                <td title={`${s.mature_requested_units} of ${s.mature_purchased_units} units on ${s.mature_sale_lines} mature sale lines`}>
+                  {rate !== null ? percent(rate, 0) : <span className="muted">n/a</span>}{" "}
+                  <span className="muted">
+                    {s.mature_requested_units}/{s.mature_purchased_units}
+                  </span>
                 </td>
                 {!compact && (
                   <td>
@@ -194,21 +219,24 @@ export function CustomerTable({ runId, customers, fallback, compact = false, run
                   </td>
                 )}
                 {!compact && (
-                  <td>
-                    <StateBadge customer={c} />
+                  <td title={statusTooltip(c)}>
+                    <StateBadge customer={c} compact />
+                    {decided && (
+                      <>
+                        {" "}
+                        <Badge text={`earlier: ${label(c.earlier_decision?.outcome ?? "decided")}`} tone="gray" title={decided} />
+                      </>
+                    )}
                   </td>
                 )}
                 <td>
                   <GateBadge gate={c.gate_outcome} />
                 </td>
-                {!fallback && !compact && (
+                {rule && (
                   <td>
                     {c.baseline_rank ? `Rank ${number(c.baseline_rank)}` : "n/a"}
-                    <small>{c.baseline_rank ? (c.baseline_selected ? "selected by the rule" : "not selected by the rule") : ""}</small>
+                    {c.baseline_rank ? <span className="muted"> {c.baseline_selected ? "selected by the rule" : "not selected by the rule"}</span> : null}
                   </td>
-                )}
-                {!compact && (
-                  <td>{c.latest_disposition ? <Badge text={c.latest_disposition} tone="green" /> : <span className="muted">no note</span>}</td>
                 )}
               </tr>
             );

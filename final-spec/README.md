@@ -34,6 +34,8 @@ Amendment 4.2 (2026-11-22) records the owner's decisions when the screens were r
 
 Amendment 4.3 (2026-11-22) records the owner's decision on linking accounts by contact details (AM-79). An experiment on a wider relationship graph (EXP-20261122-05) was specified on the owner's decisions E1 to E8 and reviewed before any world existed; the review measured that the wider graph changes one model feature for about ten customers in ten thousand, so the experiment could not have shown what the links add, and the owner withdrew it. Instead the links are evidence: where a snapshot carries a phone number and a mailbox, the inference service shows the links of five identifier types (any two shared), the groups and rings they form and the link measures, while every model input, score, rank and selection stays on the three order identifiers of EXP-20261005-04 (API contract 3.3.0). No contract of an experiment, no feature and no bundle changed.
 
+Amendment 4.4 (2026-11-22) records the analyst view of the screens (AM-80): the Risk Queue is one line per case, the case is worded for a returns analyst, and one switch, Model detail, shows the model's internals. It changes screens only: no contract, score, rule or experiment record is touched.
+
 ## Start on any system
 
 1. Copy/extract the **whole final-spec folder**.

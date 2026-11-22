@@ -54,6 +54,49 @@ export function useLoad<T>(loader: () => Promise<T>, deps: unknown[]): Loaded<T>
   return { ...state, reload };
 }
 
+// ---------------------------------------------------------------- analyst view and model detail (AM-80)
+const DETAIL_KEY = "arai.modelDetail";
+const DETAIL_EVENT = "arai-model-detail";
+let detailNow: boolean | null = null; // the choice made on this page; where nothing can be stored it lasts until the page is left
+function storedDetail(): boolean {
+  if (detailNow !== null) return detailNow;
+  try {
+    return window.localStorage.getItem(DETAIL_KEY) === "1";
+  } catch {
+    return false; // a private window: the analyst view, which needs nothing stored
+  }
+}
+/** Whether the screens show the model's internals (run and bundle identifiers, the score breakdown table, the threshold
+ *  slider, the return-rate rule's rank). Off by default: the analyst view. One choice for every screen, kept in this browser. */
+export function useModelDetail(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(storedDetail);
+  useEffect(() => {
+    const sync = () => setOn(storedDetail());
+    window.addEventListener(DETAIL_EVENT, sync);
+    return () => window.removeEventListener(DETAIL_EVENT, sync);
+  }, []);
+  const set = useCallback((next: boolean) => {
+    detailNow = next;
+    try {
+      window.localStorage.setItem(DETAIL_KEY, next ? "1" : "0");
+    } catch {
+      /* not stored: the choice lasts until the page is left */
+    }
+    setOn(next);
+    window.dispatchEvent(new Event(DETAIL_EVENT));
+  }, []);
+  return [on, set];
+}
+
+export function ModelDetailToggle() {
+  const [on, set] = useModelDetail();
+  return (
+    <label className="detail-toggle" title="Show how the model reached the score: run and bundle identifiers, the score breakdown, the threshold slider and the return-rate rule's rank">
+      <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} /> Model detail
+    </label>
+  );
+}
+
 // ---------------------------------------------------------------- building blocks
 export function PageTitle({ title, children }: { title: string; children?: ReactNode }) {
   useEffect(() => {

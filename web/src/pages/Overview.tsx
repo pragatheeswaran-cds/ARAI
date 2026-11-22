@@ -312,7 +312,7 @@ export function Overview() {
           </p>
           <h3>Selected by the model, not by the return-rate rule ({number(run.model_only_count)})</h3>
           {lists.data.modelOnly.length ? (
-            <CustomerTable runId={run.run_id} customers={lists.data.modelOnly} fallback={false} />
+            <CustomerTable runId={run.run_id} customers={lists.data.modelOnly} fallback={false} showRule />
           ) : (
             <p className="muted">None in this run.</p>
           )}
@@ -321,7 +321,7 @@ export function Overview() {
           </p>
           <h3>Selected by the return-rate rule, not by the model ({number(run.baseline_only_count)})</h3>
           {lists.data.baselineOnly.length ? (
-            <CustomerTable runId={run.run_id} customers={lists.data.baselineOnly} fallback={false} />
+            <CustomerTable runId={run.run_id} customers={lists.data.baselineOnly} fallback={false} showRule />
           ) : (
             <p className="muted">None in this run.</p>
           )}

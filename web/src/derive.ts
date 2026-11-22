@@ -76,6 +76,14 @@ export const GATE_LABEL: Record<GateOutcome, string> = { ESCALATE: "Escalate", H
 export const GATE_HELP =
   "A stated presentation rule over the run's results, not a model output. Escalate: selected and in a ring or with the wardrobing indicator elevated. Hold: selected otherwise. Warning: not selected but Medium or at or above the heavy-returner cutoff. Low: the rest.";
 
+/** What each next step asks of the reader, in a sentence (AM-80): why a High case can read Hold. */
+export const GATE_MEANING: Record<GateOutcome, string> = {
+  ESCALATE: "Selected for review, and in a ring pattern or with the wardrobing indicator elevated: read it first and consider the investigation team.",
+  HOLD: "Selected for review on the customer's own returns, with no ring pattern and no elevated wardrobing indicator: read the evidence before any further step.",
+  WARNING: "Not selected for review, but close to the cut or a heavy returner: nothing to do now, worth a look if it comes back.",
+  LOW: "Not selected for review.",
+};
+
 export const STATE_LABEL: Record<WorkflowState, string> = {
   new: "Open",
   in_review: "In Review",
