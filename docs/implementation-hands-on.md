@@ -44,9 +44,20 @@ cd web; npm install; npm run build; cd .. # the screens
 If `uv` is "not recognized", open a new terminal; `RUNBOOK.md` gives its full path.
 
 **The data is not in git.** Labs 1 to 3 need nothing more. From lab 4 on you need the experiment's data folder,
-`data\EXP-20261005-04\` (the worlds, the published model, the local database). Get it from the project owner as an
-archive and unpack it so that `data\EXP-20261005-04\artifacts\bundles` exists, or reproduce it from the seeds with
-the eleven commands in `RUNBOOK.md` section 1.3 (about 40 minutes).
+`data\EXP-20261005-04\` (the worlds, the published model, the local database). The project owner shares it as one
+archive, `ARAI-data-EXP-20261005-04-<date>.zip` (about 1 GB). Unpack it in the repository root, so that
+`data\EXP-20261005-04\artifacts\bundles` exists, and read the `README-ARAI-DATA.txt` that comes with it. Then check it:
+
+```powershell
+uv run --no-sync python scripts\verify_experiment.py --skip-earlier   # about three minutes; ends with ALL CHECKS PASSED
+```
+
+The archive includes the demo database with the twelve monthly snapshots of W5401 already scored, so `uv run arai
+local` shows the full demonstration at once on Windows. On macOS or Linux delete `data\EXP-20261005-04\postgres`
+after unpacking and load the snapshots yourself (`RUNBOOK.md` section 4.1, about fifteen minutes). Without the
+archive, the eleven commands in `RUNBOOK.md` section 1.3 reproduce the data from the seeds in about 40 minutes.
+
+The owner builds the archive with `uv run --no-sync python scripts\package_team_data.py` (with `arai local` stopped).
 
 Three rules. They are what makes the result worth presenting, so learn them before touching anything:
 
