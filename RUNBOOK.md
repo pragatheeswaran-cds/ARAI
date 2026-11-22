@@ -727,8 +727,17 @@ uv run arai register data\EXP-20261005-04\artifacts\worlds\W5601N10000\operation
 
 Score it from **Configuration**; the Customers page then shows each customer's email, phone and region, and the
 search finds a customer by any of them. Every email is at example.com and every phone number starts with 5, which no
-Indian mobile number does. None of the three is a model input. Linking accounts by a shared phone or mailbox is not
-done: it changes the features and needs a new experiment (`pendings.md`, item P1).
+Indian mobile number does. None of the three is a model input.
+
+**Links through a phone or a mailbox.** On a snapshot that carries contact details, the linked accounts, the groups,
+the rings and the Network Graph also use a shared phone number and a shared mailbox: any two shared identifier types
+out of five (address, device, payment method, phone, mailbox) link two accounts, so a shared phone alone links nobody
+and every link the three order identifiers gave is kept. This is evidence for the analyst only (decision AM-79). The
+model still reads the three order identifiers, so scores, ranks and the selection are the same with or without the
+contact columns; what can change is that a selected customer whose group becomes a ring is shown Critical. An
+experiment that would have put these links into the model was reviewed before any world existed and withdrawn,
+because the links change one model input for about ten customers in ten thousand
+(`records\2026-11-22-contact-links-design-review.md`).
 
 ## 5. Validate that it is working
 

@@ -46,6 +46,8 @@ Product / SKU Intelligence: rows are styles with their SKUs inside. Summary tile
 
 Investigations lists the cases the signed-in person has open. Network Graph lists the groups of linked accounts, rings first, and draws the chosen group: accounts on a circle (filled when selected for review), a line for each pair sharing identifiers and a heavier line where their claims matched; shapes and titles carry what colour shows. Audit Log lists the workflow events of the snapshot, newest first; sign-in events stay under People & access. Profile is read-only: name, roles, email, permissions, status, account created, last login and when the session ends, with a sentence saying where the identity is managed. The bell shows the count of unread notifications and marks them seen when opened.
 
+Contract 3.3.0 (AM-79): linked accounts, groups, the Network Graph and Customer Intelligence name phone and email among the shared identifier types; nothing else changes on the screens.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Typed API and revised clickable wireframe; original PDF visual reference.

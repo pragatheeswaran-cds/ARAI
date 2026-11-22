@@ -242,3 +242,22 @@ Asked one at a time after steps 1 to 5a were built. They complete decision 2 (em
 | E6 | On a pass | Publish experiment 5 in its own folder and serve it, with its own demo world (W6401) and database. On a fail, experiment 4 stays active. |
 | E7 | Who closes an escalated case | Leads only (the approver role), as built. This replaces "lead or admin" in decision 7. |
 | E8 | Merge to `main` | After experiment 5 has its result: the whole of `penpot-implementation` is merged and pushed. |
+
+### Decision E9 (2026-11-22): no experiment 5; the links are evidence
+
+The contract and code of experiment 5 were written and reviewed independently before any world existed
+(`records/2026-11-22-contact-links-design-review.md`). The review measured that the wider graph changes one model
+feature for about ten customers in ten thousand, so the experiment could not have shown what the links add. Asked
+how to proceed, the owner chose **"Show the links, keep the model"**.
+
+| Decision | Status after E9 |
+|---|---|
+| E1 run experiment 5 | Withdrawn. No world, contract or bundle of it exists |
+| E2 link rule | Kept, in the evidence layer: phone and mailbox are a fourth and fifth identifier type, any two shared make a link, every earlier link stays valid. The model's own graph stays the three order identifiers |
+| E3 seeds, E4 sixth gate leg, E5 stress worlds, E6 publish on a pass | Withdrawn with the experiment |
+| E7 leads only close an escalated case | Stands |
+| E8 merge to `main` | Stands: after this work, the branch is merged and pushed |
+
+What an analyst now sees where a snapshot carries contact details (AM-79, API contract 3.3.0): linked accounts,
+groups, rings, the Critical level and the Network Graph include links through a shared phone or mailbox. Scores,
+ranks and the selection are unchanged, and a test requires that.

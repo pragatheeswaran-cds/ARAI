@@ -81,7 +81,8 @@ export function NetworkGraph() {
   return (
     <>
       <PageTitle title="Network Graph">
-        Groups of accounts that share an address, a device or a payment method. Membership is evidence for a reviewer, not guilt.
+        Groups of accounts that share two or more of an address, a device, a payment method and, where the data carries them, a phone
+        number or a mailbox. Membership is evidence for a reviewer, not guilt, and no score reads the phone or the mailbox.
       </PageTitle>
       <LoadState state={groups} empty={!!groups.data && items.length === 0}>
         No account in this run shares identifiers with another one.
@@ -159,8 +160,8 @@ export function NetworkGraph() {
               </table>
             </div>
             <Callout>
-              A ring is a group whose claims matched or whose members sit in the queue together; a household shares an address and a device and
-              nothing else. Rings are listed first.
+              A ring is a group whose claims matched or whose members sit in the queue together; a group that shares an address and no payment
+              method is a household unless two claims match or two members are in the queue. Rings are listed first.
             </Callout>
           </Panel>
         </div>

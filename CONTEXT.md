@@ -74,3 +74,7 @@ Accounts joined by shared identifiers. A ring is a group whose claims matched or
 
 **Contact Details**:
 The region, email and phone of an account, optional in the data. They are shown to the analyst and are never model inputs.
+
+**Evidence Graph**:
+The links between accounts that an analyst is shown: any two shared identifier types out of address, device, payment method, phone number and mailbox. It is wider than the graph the model reads, which uses the three order identifiers only; it changes what is shown and never a score, a rank or a selection.
+_Avoid_: Saying the model uses phone or email

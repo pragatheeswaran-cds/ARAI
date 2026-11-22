@@ -34,6 +34,8 @@ Contract 3.1.0 (AM-77), additions only. GET /runs/{id}/insights: the stored aggr
 
 Contract 3.2.0 (AM-78), additions only: Customer.contact carries region, email and phone, each null where the snapshot lacks the column; the queue's search matches the customer identifier, the email or the phone.
 
+Contract 3.3.0 (AM-79), additions only: the shared identifier types of a neighbour and of a group's edge may also be phone and email.
+
 ## Inputs, outputs and dependencies
 
 - Inputs: Multipart CSV+manifest and typed JSON.

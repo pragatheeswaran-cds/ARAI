@@ -169,7 +169,7 @@ Click **Download case summary** on any case for a printable hand-off.
    returns, refunds, how long after delivery this customer returns, orders and returns by month, the reasons given,
    a comparison with the run, the categories returned and the accounts that share identifiers with this one. Email,
    phone and region read *not in this snapshot* for W5401, which was written before those columns existed; a world
-   generated now carries them (RUNBOOK section 4.2).
+   generated now carries them, and its linked accounts and rings also use a shared phone or mailbox (RUNBOOK section 4.2).
 2. Click **View Network Graph** (or open **Network Graph** in the sidebar). **You should see** the ring drawn: five
    accounts on a circle, the four in the queue filled, a line for each pair sharing identifiers and a heavier line
    where their claims matched. The list beside it holds every group of the run, rings first.

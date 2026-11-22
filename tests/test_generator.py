@@ -494,4 +494,18 @@ def test_groups_share_phones_and_mailboxes_as_the_private_record_says(world):
 def test_mailbox_aliases_reduce_to_one_key():
     from arai.generator.relationships import email_key
     assert email_key("G12AB+3@Example.com") == "g12ab@example.com" and email_key("c9@example.com") == "c9@example.com"
-    assert email_key(None) is None and email_key("not an address") is None
+    assert email_key(None) is None and email_key("not an address") is None and email_key("+x@example.com") is None
+
+
+def test_an_account_in_a_household_and_a_ring_is_recorded_with_what_it_carries_in_the_end():
+    """The private record must match the operational columns for every account, also the few in two groups."""
+    from arai.generator.relationships import email_key
+    world = generate_world(2002)
+    master = world.tables["customer_master"].set_index("customer_id")
+    record = world.truth["contact_truth"]
+    carried = pd.Series([master.loc[c, "phone"] if kind == "phone" else email_key(master.loc[c, "email"])
+                         for c, kind in zip(record["customer_id"], record["identifier_type"])], index=record.index)
+    assert ((carried == record["shared_value"]) == record["used_shared_value"]).all()
+    truth = world.truth["customer_truth"].dropna(subset=["household_id"])
+    regions = truth.assign(region=truth["customer_id"].map(master["region"])).groupby("household_id")["region"].nunique()
+    assert regions.max() == 1                                                        # a ring never moves a household member

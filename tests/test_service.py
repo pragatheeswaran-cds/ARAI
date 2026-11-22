@@ -2552,3 +2552,28 @@ def test_contact_details_are_served_searched_and_absent_for_an_older_snapshot(cl
     # the model never sees them: no contact column is a model input
     from arai.service.scoring import CONTACT_COLUMNS
     assert not set(CONTACT_COLUMNS) & set(client.get(f"{API}/runs/{run['run_id']}").json().get("feature_order") or [])
+
+def test_contact_links_change_what_is_shown_and_never_a_score_a_rank_or_a_selection(env, world):
+    """Decision AM-79: the model reads the graph of the three order identifiers; the analyst is shown the wider one."""
+    bundle = bundles.load_bundle(env["model_id"], env["root"])
+    manifest = {"world_id": world.world_id, "cutoff": world.context.s.cutoff.isoformat()}
+    with_contact = scoring.score_snapshot(world.tables, manifest, bundle)
+    tables = dict(world.tables, customer_master=world.tables["customer_master"].drop(columns=["region", "email", "phone"]))
+    without = scoring.score_snapshot(tables, manifest, bundle)
+    a, b = with_contact.customers.set_index("customer_id"), without.customers.set_index("customer_id")
+    for column in ("raw_score", "risk_score", "rank", "selected_for_review", "baseline_rank", "eligibility_status"):
+        pd.testing.assert_series_equal(a[column], b[column])
+    for name in bundle.feature_order:                                               # every model input is what it was
+        pd.testing.assert_series_equal(a[name], b[name])
+    pd.testing.assert_frame_equal(with_contact.attributions, without.attributions)
+    pd.testing.assert_frame_equal(with_contact.styles[["style_id", "state", "linked_claimers"]], without.styles[["style_id", "state", "linked_claimers"]])
+    # what is shown is wider: more links, and no link of the model's graph is lost
+    pairs = lambda output: set(zip(output.neighbors["customer_id"], output.neighbors["neighbor_id"]))
+    assert pairs(without) < pairs(with_contact)
+    new = with_contact.neighbors.set_index(["customer_id", "neighbor_id"]).loc[sorted(pairs(with_contact) - pairs(without))]
+    assert new["shared_types"].str.contains("phone|email").all()
+    assert with_contact.summary["contact_link_edges"] == (len(pairs(with_contact)) - len(pairs(without))) // 2 > 0
+    assert without.summary["contact_link_edges"] == 0 and with_contact.summary["graph_edges"] == len(pairs(with_contact)) // 2
+    assert (a["supported_neighbor_count"] >= b["supported_neighbor_count"]).all() and (a["supported_neighbor_count"] > b["supported_neighbor_count"]).any()
+    assert a["community_id"].notna().sum() > b["community_id"].notna().sum()
+    assert not {"supported_neighbor_count", "max_identifier_fanout"} & set(bundle.feature_order)

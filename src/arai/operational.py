@@ -52,5 +52,15 @@ def read_csv_world(directory: Path, spec_root: Path | None = None) -> tuple:
     return tables, manifest
 
 
+def email_key(email) -> str | None:
+    """The mailbox behind an address: lower case, without a +tag in the local part. Aliases of one mailbox share it
+    (data contract 1.2). None for a missing or malformed address."""
+    if not isinstance(email, str) or "@" not in email:
+        return None
+    local, _, domain = email.strip().lower().partition("@")
+    local = local.split("+", 1)[0]
+    return local + "@" + domain if local and domain else None
+
+
 def cutoff_date(manifest: dict):
     return pd.Timestamp(manifest["cutoff"][:10]).date()

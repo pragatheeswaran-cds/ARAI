@@ -8,11 +8,11 @@
 >
 > | # | Item | Waits on |
 > |---|---|---|
-> | P1 | Email and phone as ring signals: a shared phone or mailbox as a link in the relationship graph. It changes the features, so it needs a new experiment on new sealed worlds (experiment id, seeds, stated expectation, gate) | Decided 22 Nov (decisions E1 to E8 in `records/2026-11-21-penpot-coverage-checklist.md`): experiment EXP-20261122-05, to be run |
+> | P1 | Email and phone as ring signals: a shared phone or mailbox as a link in the relationship graph. It changes the features, so it needs a new experiment on new sealed worlds (experiment id, seeds, stated expectation, gate) | Closed 22 Nov (decision E9): an independent review showed the experiment could not test its own question, so the links are shown to analysts as evidence and the model is unchanged (AM-79). Left open: a paired control run, and new model features built on contact links, which would need an exploration and an experiment of their own |
 > | P2 | Rewrite `docs/demo-script.md` passages that tell the two-person approval story, if the demonstration is given again | The owner |
 > | P3 | Rerun `tests\e2e\walkthrough.py` against a loaded instance (twelve snapshots, `scripts\history_demo.py --load`) | A rehearsal |
 > | P4 | Decided 22 Nov: only the approver role (the lead) closes an escalated case | Done |
-> | P5 | Merge `penpot-implementation` into `main` | Decided 22 Nov: after experiment 5 has its result |
+> | P5 | Merge `penpot-implementation` into `main` | Decided 22 Nov: after the contact-links work |
 >
 > The rest of this file is the list of 17 Oct 2026, kept as written.
 

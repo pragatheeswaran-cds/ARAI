@@ -1025,7 +1025,7 @@ export interface components {
         };
         Neighbor: {
             customer_id: string;
-            shared_types: ("address" | "device" | "payment")[];
+            shared_types: ("address" | "device" | "payment" | "phone" | "email")[];
             shared_value_count: number;
             supported: boolean;
             max_value_fanout: number;
@@ -1143,7 +1143,7 @@ export interface components {
         CommunityEdge: {
             a: string;
             b: string;
-            types: ("address" | "device" | "payment")[];
+            types: ("address" | "device" | "payment" | "phone" | "email")[];
             coordinated_claim_matches: number;
         };
         Case: {

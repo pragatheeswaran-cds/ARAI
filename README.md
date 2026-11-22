@@ -8,8 +8,8 @@ It contains separate component requirements, acceptance criteria, bundled contra
 - [Decision provenance](final-spec/DECISIONS.md)
 - [Package verification](final-spec/verification/REPORT.md)
 
-The folder is at version 4.2 (amended 2026-11-22; see the amendment sections of the decision provenance).
-Copy the entire final-spec folder to another system; ARAI-final-spec-v4.0.zip is the last packaged archive (4.1 and 4.2
+The folder is at version 4.3 (amended 2026-11-22; see the amendment sections of the decision provenance).
+Copy the entire final-spec folder to another system; ARAI-final-spec-v4.0.zip is the last packaged archive (4.1 to 4.3
 amend the API contract, the data contract's optional columns and the component texts; no experiment changed).
 After any edit to final-spec, run `uv run python scripts/spec_package.py` to rebuild its register and hashes.
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.
@@ -27,7 +27,7 @@ since 21 Nov 2026 holds everything up to the deployment work, and adds the scree
 | Risk Queue | The cases of a run with their risk level (Critical, High, Medium, Low), patterns and status; open, clear or escalate one or many |
 | Investigations | The cases you have open |
 | Customers | Customer Intelligence: one customer's orders, returns, reasons, peers and linked accounts |
-| Network Graph | Groups of accounts that share an address, a device or a payment method |
+| Network Graph | Groups of accounts that share an address, a device or a payment method and, where the data carries them, a phone number or a mailbox |
 | Products / SKU | Styles with their risk level, return rate against the category, customer concentration and a rule-based reading |
 | Analytics | The evaluation of the model on simulated test worlds |
 | Configuration | Datasets and runs: register a snapshot and score it |

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from arai.generator.context import Context
+from arai.operational import email_key  # noqa: F401  (the mailbox key lives with the operational data; importable from here)
 from arai.rng import stream, token
 
 TYPES = ("address", "device", "payment")
@@ -142,14 +143,6 @@ def phone_number(value: int) -> str:
     return f"+91 {digits[:5]} {digits[5:]}"
 
 
-def email_key(email: str | None) -> str | None:
-    """The mailbox behind an address: lower case, without a +tag in the local part. Aliases of one mailbox share it."""
-    if not isinstance(email, str) or "@" not in email:
-        return None
-    local, _, domain = email.strip().lower().partition("@")
-    return local.split("+", 1)[0] + "@" + domain
-
-
 def build_contact(ctx: Context, groups: dict) -> tuple:
     """(contact, contact_truth): the region, email and phone of every account, and the private record of what was shared.
 
@@ -164,16 +157,21 @@ def build_contact(ctx: Context, groups: dict) -> tuple:
     email = np.array([f"c{token(seed, ids[i], 'email').lower()}@{EMAIL_DOMAIN}" for i in range(n)], dtype=object)
     recycled = np.flatnonzero(rng.random(n) < RECYCLED_PHONE_SHARE)
     if n > 1:
-        for i in recycled:                                  # a number that once belonged to another account
-            phone[i] = phone[int(rng.integers(0, n - 1)) if i else 1]
+        for i in recycled:                                  # a number that once belonged to another account, any but its own
+            donor = int(rng.integers(0, n - 1))
+            phone[i] = phone[donor + (donor >= i)]
+    in_household = {i for group in groups.values() if group["type"] == "household" for i in group["members"]}
     rows = []
     for group_id, group in groups.items():
         kind, members = group["type"], group["members"]
         if kind not in CONTACT_SHARE_PROBABILITY:
             continue
         group_rng = stream(seed, group_id, "contact")
-        if kind == "household" or group_rng.random() < COORDINATION_SAME_REGION:
+        if kind == "household":
             region[members] = region[members[0]]
+        elif group_rng.random() < COORDINATION_SAME_REGION:
+            movable = [i for i in members if i not in in_household]      # a ring member keeps the region of their household
+            region[movable] = region[members[0]]
         for identifier in CONTACT_TYPES:
             if group_rng.random() >= CONTACT_SHARE_PROBABILITY[kind][identifier]:
                 continue
@@ -190,4 +188,10 @@ def build_contact(ctx: Context, groups: dict) -> tuple:
                     email[i] = f"{local}+{position + 1}@{domain}"
                 rows.append((world, group_id, ids[i], identifier, kind, shared, used))
     contact = pd.DataFrame({"customer_id": ids, "region": region, "email": email, "phone": phone})
+    # an account in a household and in a ring can be offered two shared values of one type and carries the last one it
+    # took. The record says what each account carries in the end, not what it took along the way.
+    at = {customer: i for i, customer in enumerate(ids)}
+    rows = [(w, g, customer, identifier, kind, shared,
+             bool((phone[at[customer]] if identifier == "phone" else email_key(email[at[customer]])) == shared))
+            for w, g, customer, identifier, kind, shared, _ in rows]
     return contact, pd.DataFrame(rows, columns=CONTACT_TRUTH_COLUMNS)

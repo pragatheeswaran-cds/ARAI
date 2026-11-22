@@ -17,7 +17,7 @@ import pandas as pd
 from arai import bundles, contract, ranking
 from arai import features as F
 from arai.operational import cutoff_date
-from arai.service import attribution, insights
+from arai.service import attribution, insights, links
 
 SMALL_POPULATION = 500           # below this many eligible customers peer aggregates move noticeably (feature review)
 DRIFT_MIN_ELIGIBLE = 200         # below this the shares are too noisy to compare with training
@@ -114,11 +114,10 @@ def _cleared_reason(customers: pd.DataFrame) -> pd.Series:
     return reason
 
 
-def _neighbors(result: F.FeatureResult) -> pd.DataFrame:
-    """Both directions of every supported edge, with how many of the customer's claims the neighbour matches."""
+def _neighbors(result: F.FeatureResult, edges: pd.DataFrame) -> pd.DataFrame:
+    """Both directions of every edge of the evidence graph, with how many of the customer's claims the neighbour matches."""
     columns = ["customer_id", "neighbor_id", "shared_types", "shared_value_count", "supported", "max_value_fanout",
                "coordinated_claim_matches"]
-    edges = result.graph.edges
     if not len(edges):
         return pd.DataFrame(columns=columns)
     claims = result.requests[result.requests["is_claim"]]
@@ -155,15 +154,18 @@ def _louvain(component: nx.Graph) -> list:
 
 
 def community_kind(edges: list, selected: int, matched: int, share_positive: bool) -> str:
-    """The kind of a group of linked accounts (decision D3 as revised by AM-66), from observed evidence only.
+    """The kind of a group of linked accounts (decision D3 as revised by AM-66 and AM-79), from observed evidence only.
 
-    Where some edge shares a payment instrument, the first rule stands: `ring` on one coordinated claim match, two or
-    more members selected for review, or a member with a coordinated claim share above zero. Where every edge shares
-    only an address and a device, the shape of a household, one matching claim is not enough: family members at an
-    address where parcels go missing claim on the same order within days for honest reasons. Such a group is a `ring`
-    only with two or more coordinated claim matches or two or more members selected for review.
+    Where some edge is not the shape of a household, the first rule stands: `ring` on one coordinated claim match, two or
+    more members selected for review, or a member with a coordinated claim share above zero. An edge is not the shape of a
+    household when it shares a payment method, or when it shares no address: accounts at different addresses joined by a
+    phone, a mailbox or a device do not live together. Where every edge shares an address and no payment method, one
+    matching claim is not enough: family members at an address where parcels go missing claim on the same order within
+    days for honest reasons. Such a group is a `ring` only with two or more coordinated claim matches or two or more
+    members selected for review. On the three order identifiers an edge without an address always has a payment method,
+    so the rule is what AM-66 made it for every snapshot without contact details.
     """
-    if any("payment" in edge["types"] for edge in edges):
+    if any("payment" in edge["types"] or "address" not in edge["types"] for edge in edges):
         ring = matched >= 1 or selected >= 2 or share_positive
     else:
         ring = matched >= 2 or selected >= 2
@@ -388,13 +390,21 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
     master = tables["customer_master"].set_index("customer_id")
     for name in CONTACT_COLUMNS:                                # shown on the screens, never a model input (AM-78)
         customers[name] = customers["customer_id"].map(master[name]) if name in master else None
+    # the evidence graph (AM-79): the links an analyst is shown, wider than the model's graph where the snapshot carries a
+    # phone and a mailbox. The scores above were made before this line and nothing below changes them; the two link
+    # measures are evidence only (AM-26), and a bundle that took one as an input would keep the feature's own value.
+    evidence = links.build_graph(tables["sales_order"], tables["customer_master"])
+    measures = links.link_measures(evidence, tables["sales_order"], tables["customer_master"], pd.Index(customers["customer_id"]))
+    for name in measures.columns:
+        if name not in bundle.feature_order:
+            customers[name] = measures[name].to_numpy()
     customers["evidence_tags"] = _tags(customers)
     basket = _basket(result, pd.Index(customers["customer_id"]))
     for name in basket.columns:
         customers[name] = basket[name].to_numpy()
     customers["cleared_reason"] = _cleared_reason(customers)
-    neighbors = _neighbors(result)
-    communities, membership = _communities(world_id, result.graph.edges, neighbors, customers)
+    neighbors = _neighbors(result, evidence.edges)
+    communities, membership = _communities(world_id, evidence.edges, neighbors, customers)
     customers["community_id"] = customers["customer_id"].map(membership)
     # the score with each feature family at typical values (predict-side only), the chips' order and the rules that would have fired
     at_budget = (customers["rank"] == k).fillna(False).astype(bool)                 # the last customer inside the budget
@@ -440,7 +450,9 @@ def score_snapshot(tables: dict, manifest: dict, bundle: bundles.Bundle, on_stag
         "model_only_count": int((selected & ~baseline_selected).sum()),
         "baseline_only_count": int((baseline_selected & ~selected).sum()),
         "both_count": int((selected & baseline_selected).sum()),
-        "graph_edges": len(result.graph.edges), "identifier_values_dropped": int(result.graph.dropped_values),
+        "graph_edges": len(evidence.edges), "identifier_values_dropped": int(evidence.dropped_values),
+        # how many of the shown links the model's own graph (the three order identifiers) does not have (AM-79)
+        "contact_link_edges": len(evidence.edges) - len(result.graph.edges),
         "category_fallback_uses": int(result.fallback_uses), "warnings": warnings, "drift": drift_report,
         # the queue's edge and the eligible population it is cut from, for the queue header and the threshold slider
         "threshold_score": threshold,
