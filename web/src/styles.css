@@ -230,6 +230,15 @@ tr.current td { background: var(--page); }
 .role { display: inline-block; margin: 0 10px 6px 0; vertical-align: top; }
 td.row-actions { white-space: nowrap; }
 td.row-actions button { margin: 0 6px 6px 0; padding: 6px 10px; }
+.account-form { max-width: 420px; margin: 16px 0; }
+.account-form input { display: block; width: 100%; padding: 8px 10px; border: 1px solid #cbd9cf; border-radius: 6px; font: inherit; }
+.account-form label small { font-weight: 400; color: var(--muted); }
+.role-picks { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 10px; }
+.role-picks label { display: inline-flex; align-items: center; gap: 5px; margin: 0; }
+form.confirm label.inline { display: flex; align-items: center; gap: 6px; }
+form.confirm label.inline input { display: inline; width: auto; margin: 0; }
+form.confirm fieldset { border: 0; padding: 0; margin: 0 0 10px; }
+form.confirm legend { font-size: 12px; color: var(--muted); padding: 0; }
 form.confirm { border: 1px solid var(--line); border-radius: 7px; padding: 14px 18px; margin: 14px 0 0; background: #f8faf6; }
 form.confirm label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 form.confirm input { display: block; width: min(100%, 460px); margin-top: 4px; padding: 7px 9px; border: 1px solid #cbd9cf; border-radius: 6px; }

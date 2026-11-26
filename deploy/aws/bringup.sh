@@ -25,6 +25,15 @@ for required in APP_HOST LE_EMAIL DUCKDNS_DOMAINS POSTGRES_PASSWORD DUCKDNS_TOKE
   [ -n "${!required:-}" ] || { echo "missing parameter /arai/.../$required"; exit 2; }
 done
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"; AUTH_DEV_USERS="${AUTH_DEV_USERS:-}"
+# How people sign in (RUNBOOK 8.5): dev = the personas of the development login (AM-74), password = accounts with a
+# password kept by ARAI (AM-81), which needs the accounts to create and the admin's initial password.
+AUTH_MODE="${AUTH_MODE:-dev}"; AUTH_PASSWORD_USERS="${AUTH_PASSWORD_USERS:-}"; AUTH_INITIAL_PASSWORD="${AUTH_INITIAL_PASSWORD:-}"
+case "$AUTH_MODE" in
+  dev) ;;
+  password) [ -n "$AUTH_PASSWORD_USERS" ] && [ -n "$AUTH_INITIAL_PASSWORD" ] || {
+              echo "AUTH_MODE=password needs /arai/config/AUTH_PASSWORD_USERS and /arai/secret/AUTH_INITIAL_PASSWORD"; exit 2; } ;;
+  *) echo "/arai/config/AUTH_MODE must be dev or password on this VM (no Keycloak here, AM-74)"; exit 2 ;;
+esac
 
 # 2. The release: a git archive of the repository, uploaded by RUNBOOK 8.3.
 mkdir -p /opt/arai /var/www/certbot
@@ -77,7 +86,9 @@ cat > /etc/cron.d/arai-certbot <<EOF
 17 3 * * * root certbot renew --quiet --webroot -w /var/www/certbot --deploy-hook "cd $APP_DIR && $COMPOSE exec -T web nginx -s reload"
 EOF
 
-# 7. .env for Compose (RUNBOOK 3 and .env.example): the vm profile, the development login (AM-74), the secrets.
+# 7. .env for Compose (RUNBOOK 3 and .env.example): the vm profile, how people sign in (AM-74, AM-81), the secrets.
+#    The initial password is single-quoted for Compose, so it may hold any character but a single quote.
+case "$AUTH_INITIAL_PASSWORD" in *"'"*) echo "/arai/secret/AUTH_INITIAL_PASSWORD holds a single quote; choose another"; exit 2 ;; esac
 umask 077
 cat > /opt/arai/.env <<EOF
 # written by bringup.sh $(date -Is); edit Parameter Store, not this file
@@ -85,9 +96,11 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 APP_PROFILE=vm
 ARAI_ARTIFACTS=/data/artifacts
 UI_ORIGINS=https://${APP_HOST}
-AUTH_MODE=dev
+AUTH_MODE=${AUTH_MODE}
 AUTH_DEV_ON_VM=1
 AUTH_DEV_USERS=${AUTH_DEV_USERS}
+AUTH_PASSWORD_USERS=${AUTH_PASSWORD_USERS}
+AUTH_INITIAL_PASSWORD='${AUTH_INITIAL_PASSWORD}'
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 APP_HOST=${APP_HOST}
 EOF

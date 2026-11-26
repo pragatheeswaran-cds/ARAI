@@ -36,6 +36,8 @@ Amendment 4.3 (2026-11-22) records the owner's decision on linking accounts by c
 
 Amendment 4.4 (2026-11-22) records the analyst view of the screens (AM-80): the Risk Queue is one line per case, the case is worded for a returns analyst, and one switch, Model detail, shows the model's internals. It changes screens only: no contract, score, rule or experiment record is touched.
 
+Amendment 4.5 (2026-11-27) records the owner's decision to sign people in with their own accounts where Keycloak is not available (AM-81): a third sign-in mode, AUTH_MODE=password, with accounts, roles and salted password hashes kept by ARAI and managed by an admin in People & access (API contract 3.4.0, schema version 16). The development login and Keycloak single sign-on are unchanged, and no score, rule or experiment record is touched.
+
 ## Start on any system
 
 1. Copy/extract the **whole final-spec folder**.

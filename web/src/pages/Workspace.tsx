@@ -6,6 +6,7 @@ import { useSession, useWorkspace } from "../App";
 import { CustomerTable, TierBadge } from "../components/CustomerTable";
 import { Badge, Callout, LoadState, PageTitle, Panel, Row, ist, label, number, percent, useLoad } from "../components/ui";
 import { caseId } from "../derive";
+import { ChangePassword } from "./Account";
 
 // ---------------------------------------------------------------- investigations
 export function Investigations() {
@@ -250,7 +251,9 @@ export function Profile() {
   const { me } = useSession();
   return (
     <>
-      <PageTitle title="Profile">Your account as ARAI knows it. It is read from your sign-in and cannot be edited here.</PageTitle>
+      <PageTitle title="Profile">
+        {me.auth_mode === "password" ? "Your account as ARAI knows it. You can change your password here." : "Your account as ARAI knows it. It is read from your sign-in and cannot be edited here."}
+      </PageTitle>
       <div className="grid even">
         <Panel title={me.display_name} aside={<Badge text={me.status} tone={me.status === "active" ? "green" : "amber"} />}>
           <Row name="Role">{me.roles.map(label).join(", ")}</Row>
@@ -266,10 +269,17 @@ export function Profile() {
           </Row>
         </Panel>
       </div>
+      {me.auth_mode === "password" && (
+        <Panel title="Change password">
+          <ChangePassword />
+        </Panel>
+      )}
       <Callout>
         {me.auth_mode === "oidc"
           ? "Your name, email, password and groups are managed in your organisation's single sign-on (Keycloak). Change them there; ARAI reads them at each sign-in."
-          : "This instance uses the development login: people and their roles come from its configuration, and there is no password to change."}
+          : me.auth_mode === "password"
+            ? "Your account is kept in ARAI. An administrator sets your name and roles and can give you a new password; only you know the one you choose here."
+            : "This instance uses the development login: people and their roles come from its configuration, and there is no password to change."}
       </Callout>
     </>
   );

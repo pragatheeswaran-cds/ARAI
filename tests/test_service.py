@@ -2581,3 +2581,347 @@ def test_contact_links_change_what_is_shown_and_never_a_score_a_rank_or_a_select
     assert (a["supported_neighbor_count"] >= b["supported_neighbor_count"]).all() and (a["supported_neighbor_count"] > b["supported_neighbor_count"]).any()
     assert a["community_id"].notna().sum() > b["community_id"].notna().sum()
     assert not {"supported_neighbor_count", "max_identifier_fanout"} & set(bundle.feature_order)
+
+
+# ------------------------------------------------------------------ accounts with a password (AM-81, contract 3.4.0)
+FIRST_PASSWORD = "first-password-of-all"
+PASSWORD_USERS = (("Admin", ("admin",)), ("Asha", ("reviewer", "approver")), ("Priya", ("viewer",)))
+# the passwords the three people chose for themselves (none contains its account's name)
+OWN = {"Admin": "the first one chosen", "Asha": "the second one chosen", "Priya": "the third one chosen"}
+
+
+class PasswordClient(TestClient):
+    """A test client signed in with a user name and a password; every POST and DELETE carries the session's CSRF token."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.csrf = None
+
+    def sign_in(self, username: str, password: str | None = None) -> "PasswordClient":
+        response = super().request("POST", f"{API}/auth/password-login", json={"username": username, "password": password or OWN[username]})
+        assert response.status_code == 200, response.text
+        self.csrf = response.json()["csrf_token"]
+        return self
+
+    def request(self, method, url, **kwargs):
+        if method.upper() in ("POST", "DELETE") and self.csrf:
+            kwargs["headers"] = {"X-CSRF-Token": self.csrf, **(kwargs.get("headers") or {})}
+        return super().request(method, url, **kwargs)
+
+
+def password_config(env, **over) -> ServiceConfig:
+    return ServiceConfig(**{"database_url": env["config"].database_url, "artifact_root": env["root"], "auth_mode": "password",
+                            "password_users": PASSWORD_USERS, "initial_password": FIRST_PASSWORD, **over})
+
+
+@pytest.fixture
+def fresh_accounts(env):
+    """An instance just started with its configured accounts: nobody has signed in yet."""
+    config = password_config(env)
+    with TestClient(create_app(config)) as anonymous:
+        yield {"app": anonymous.app, "anonymous": anonymous, "config": config, "store": Store(config.database_url)}
+
+
+@pytest.fixture
+def accounts(fresh_accounts):
+    """The same instance once the three people have their own passwords (set here directly, as the API tests elsewhere do it)."""
+    service = fresh_accounts["app"].state.service
+    with fresh_accounts["store"].transaction() as db:
+        ids = {r["display_name"]: r["id"] for r in db.execute("SELECT id, display_name FROM users WHERE issuer = 'local'")}
+    for name, password in OWN.items():
+        service.auth.reset_password(ids[name], password)
+    with fresh_accounts["store"].transaction() as db:
+        db.execute("UPDATE password_credentials SET must_change = false")
+        db.execute("DELETE FROM auth_events")
+    return {**fresh_accounts, "ids": ids}
+
+
+def _login(accounts, username, password=None):
+    return TestClient(accounts["app"]).post(f"{API}/auth/password-login",
+                                            json={"username": username, "password": OWN.get(username.capitalize(), "x") if password is None else password})
+
+
+def test_the_initial_password_opens_only_the_admin_who_must_replace_it_and_gives_the_others_theirs(fresh_accounts):
+    """Knowing the initial password never lets one person sign in as another: it opens the admin account alone, once."""
+    for name in ("Asha", "Priya"):                                                      # no usable password until the admin gives one
+        refused = _login(fresh_accounts, name, FIRST_PASSWORD)
+        assert refused.status_code == 401 and refused.json()["error_code"] == "invalid_credentials"
+    admin = PasswordClient(fresh_accounts["app"]).sign_in("Admin", FIRST_PASSWORD)
+    assert admin.get(f"{API}/me").json()["must_change_password"] is True
+    for method, route, body in (("get", "/runs", None), ("get", "/admin/users", None),
+                                ("post", "/admin/users", {"username": "kabir", "roles": ["admin"], "password": "a temporary password"}),
+                                ("post", "/runs/run-x/cancel", None), ("get", "/notifications", None)):
+        blocked = admin.request(method.upper(), f"{API}{route}", json=body)
+        assert blocked.status_code == 403 and blocked.json()["error_code"] == "password_change_required", (route, blocked.text)
+    assert admin.post(f"{API}/me/password", json={"current_password": FIRST_PASSWORD, "new_password": OWN["Admin"]}).status_code == 204
+    assert _login(fresh_accounts, "Admin", FIRST_PASSWORD).status_code == 401           # the initial password is spent
+    people = {u["display_name"]: u for u in admin.get(f"{API}/admin/users").json()["items"]}
+    assert all(people[name]["must_change_password"] for name in ("Asha", "Priya")) and not people["Admin"]["must_change_password"]
+    assert people["Asha"]["roles"] == [{"role": "approver", "source": "local"}, {"role": "reviewer", "source": "local"}]
+    given = admin.post(f"{API}/admin/users/{people['Asha']['user_id']}/password", json={"password": "passed on by phone"})
+    assert given.status_code == 200, given.text
+    asha = PasswordClient(fresh_accounts["app"]).sign_in("Asha", "passed on by phone")
+    assert asha.get(f"{API}/runs").json()["error_code"] == "password_change_required"
+    assert asha.post(f"{API}/me/password", json={"current_password": "passed on by phone", "new_password": OWN["Asha"]}).status_code == 204
+    assert asha.get(f"{API}/runs").status_code == 200
+    with fresh_accounts["store"].transaction() as db:
+        events = json.dumps([r["detail"] for r in db.execute("SELECT detail FROM auth_events")])
+    assert not any(secret in events for secret in (FIRST_PASSWORD, "passed on by phone", *OWN.values()))
+
+
+def test_a_person_signs_in_with_their_user_name_and_password_and_nothing_else_gets_in(accounts):
+    anonymous = accounts["anonymous"]
+    mode = anonymous.get(f"{API}/auth/mode")
+    conforms("AuthMode", mode.json())
+    assert mode.json() == {"auth_mode": "password"}
+    assert anonymous.get(f"{API}/auth/dev-users").status_code == 404                     # no list of people to choose from
+    assert anonymous.post(f"{API}/auth/dev-login", json={"user": "Admin"}).status_code == 404
+    assert anonymous.get(f"{API}/auth/login", follow_redirects=False).status_code == 404
+    signed = _login(accounts, "asha")                                                   # user names compare without regard to case
+    assert signed.status_code == 200, signed.text
+    conforms("Me", signed.json())
+    me = signed.json()
+    assert me["display_name"] == "Asha" and me["roles"] == ["approver", "reviewer"] and me["auth_mode"] == "password"
+    assert me["must_change_password"] is False
+    cookie = signed.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=lax" in cookie
+    # a name without an account and a wrong password are answered alike, and the body never says which
+    wrong, unknown = _login(accounts, "Asha", "not-the-password"), _login(accounts, "Mallory", OWN["Asha"])
+    for refused in (wrong, unknown):
+        assert refused.status_code == 401 and "set-cookie" not in refused.headers
+        conforms("Error", refused.json())
+    assert wrong.json()["error_code"] == unknown.json()["error_code"] == "invalid_credentials"
+    assert wrong.json()["message"] == unknown.json()["message"]
+    assert _login(accounts, "Asha", "").status_code == 422 and _login(accounts, "Asha", "x" * 201).status_code == 422
+    assert _login(accounts, "Asha", OWN["Priya"]).status_code == 401                     # another person's password is no use
+    # only a hash is stored, salted per account, and no event carries a password
+    with accounts["store"].transaction() as db:
+        hashes = [r["password_hash"] for r in db.execute("SELECT password_hash FROM password_credentials")]
+        events = json.dumps([r["detail"] for r in db.execute("SELECT detail FROM auth_events")])
+        throttled = json.dumps([dict(r) for r in db.execute("SELECT subject_hash FROM sign_in_throttle")])
+    assert len(hashes) == len(set(hashes)) == 3 and all(h.startswith("scrypt$") for h in hashes)
+    assert not any(secret in text for secret in (*OWN.values(), "not-the-password") for text in (events, " ".join(hashes)))
+    assert "mallory" not in throttled.lower() and "asha" not in throttled.lower()        # the names that were typed are kept as hashes
+    # roles decide as with every other sign-in
+    asha, priya = PasswordClient(accounts["app"]).sign_in("Asha"), PasswordClient(accounts["app"]).sign_in("Priya")
+    assert asha.get(f"{API}/runs").status_code == 200 and asha.get(f"{API}/admin/users").status_code == 403
+    assert priya.get(f"{API}/runs/run-x/customers/export").status_code == 403
+
+
+def test_starting_again_leaves_existing_accounts_alone_and_the_settings_are_checked(accounts, env):
+    again = password_config(env, password_users=(*PASSWORD_USERS, ("Kabir", ("reviewer",)), ("Root", ("admin",))),
+                            initial_password="another-initial-password")
+    with TestClient(create_app(again)) as restarted:
+        def login(name, password):
+            return TestClient(restarted.app).post(f"{API}/auth/password-login", json={"username": name, "password": password})
+        assert login("Admin", OWN["Admin"]).status_code == 200 and login("Admin", "another-initial-password").status_code == 401
+        assert login("Asha", OWN["Asha"]).json()["must_change_password"] is False       # neither password nor state is reset
+        assert login("Kabir", "another-initial-password").status_code == 401            # a new name without the admin role: no usable password
+        root = login("Root", "another-initial-password")                                # a new admin: the way back in when the admin's password is lost
+        assert root.status_code == 200 and root.json()["must_change_password"] is True
+    base = {"database_url": env["config"].database_url, "artifact_root": env["root"], "auth_mode": "password"}
+    with pytest.raises(RuntimeError, match="AUTH_INITIAL_PASSWORD"):
+        create_app(ServiceConfig(**base, password_users=PASSWORD_USERS))
+    with pytest.raises(RuntimeError, match="12 to 200 characters"):
+        create_app(ServiceConfig(**base, password_users=PASSWORD_USERS, initial_password="short"))
+    with pytest.raises(ValueError, match="password user"):
+        ServiceConfig(**base, password_users=(("has space", ("admin",)),), initial_password=FIRST_PASSWORD)
+    with pytest.raises(ValueError, match="AUTH_MODE must be"):
+        ServiceConfig(**{**base, "auth_mode": "magic"})
+    vm = password_config(env, profile="vm")
+    assert vm.mode == "password" and FIRST_PASSWORD not in repr(vm)                      # allowed on the vm profile; never printed
+    with TestClient(create_app(vm)) as served:
+        secure = served.post(f"{API}/auth/password-login", json={"username": "Asha", "password": OWN["Asha"]})
+        assert "secure" in secure.headers["set-cookie"].lower()
+
+
+def test_ten_wrong_passwords_lock_a_name_for_five_minutes_whether_or_not_it_is_an_account(accounts):
+    from arai.service import auth
+    for _ in range(auth.MAX_FAILED_SIGN_INS - 1):
+        assert _login(accounts, "Asha", "wrong-password-1").status_code == 401
+    assert _login(accounts, "Asha").status_code == 200                                   # a success in time starts the count again
+    # a name with an account and a name without one behave alike, attempt for attempt, so a lock tells nobody which names exist
+    for name in ("Asha", "Mallory"):
+        answers = [_login(accounts, name, "wrong-password-2") for _ in range(auth.MAX_FAILED_SIGN_INS + 2)]
+        assert [a.status_code for a in answers] == [401] * auth.MAX_FAILED_SIGN_INS + [429, 429], name
+        assert answers[-1].json()["error_code"] == "too_many_attempts"
+        conforms("Error", answers[-1].json())
+    assert _login(accounts, "Asha", "x").json()["message"] == _login(accounts, "Mallory", "x").json()["message"]
+    assert _login(accounts, "Asha").status_code == 429                                   # the right password, refused all the same
+    assert _login(accounts, "Priya").status_code == 200                                  # one name's lock is not another's
+    admin = PasswordClient(accounts["app"]).sign_in("Admin")
+    people = {u["display_name"]: u for u in admin.get(f"{API}/admin/users").json()["items"]}
+    assert people["Asha"]["locked"] is True and people["Priya"]["locked"] is False
+    refusals = admin.get(f"{API}/admin/auth-events", params={"kind": "refused", "user_id": accounts["ids"]["Asha"], "limit": 100}).json()["items"]
+    assert sum(e["detail"].get("reason") == "too_many_attempts" for e in refusals) == 4
+    assert sum("locked_minutes" in e["detail"] for e in refusals) == 1
+    with accounts["store"].transaction() as db:
+        db.execute("UPDATE sign_in_throttle SET locked_until = now() - interval '1 second'")
+    assert _login(accounts, "Asha").status_code == 200                                   # over after the five minutes
+    # a new password from the admin lifts a lock at once
+    for _ in range(auth.MAX_FAILED_SIGN_INS):
+        _login(accounts, "Priya", "wrong-password-3")
+    assert _login(accounts, "Priya").status_code == 429
+    assert admin.post(f"{API}/admin/users/{accounts['ids']['Priya']}/password", json={"password": "passed on by phone"}).json()["locked"] is False
+    assert _login(accounts, "Priya", "passed on by phone").status_code == 200
+    # rows nobody touched for a day are removed at the next sign-in
+    with accounts["store"].transaction() as db:
+        db.execute("UPDATE sign_in_throttle SET updated_at = now() - interval '2 days'")
+    _login(accounts, "Asha")
+    with accounts["store"].transaction() as db:
+        assert db.execute("SELECT count(*) AS n FROM sign_in_throttle").fetchone()["n"] == 0
+
+
+def test_guessing_the_current_password_from_an_open_session_counts_and_ends_the_session(accounts):
+    from arai.service import auth
+    asha = PasswordClient(accounts["app"]).sign_in("Asha")
+    guess = {"current_password": "a guess at the password", "new_password": "something else entirely"}
+    answers = [asha.post(f"{API}/me/password", json=guess) for _ in range(auth.MAX_FAILED_SIGN_INS)]
+    assert {a.status_code for a in answers} == {403} and answers[0].json()["error_code"] == "wrong_password"
+    gone = asha.get(f"{API}/me")                                                         # the guess that locked the name ended the session
+    assert gone.status_code == 401 and "Too many wrong passwords" in gone.json()["message"]
+    assert _login(accounts, "Asha").status_code == 429                                   # and signing in again waits out the lock
+    with accounts["store"].transaction() as db:
+        db.execute("UPDATE sign_in_throttle SET locked_until = now() - interval '1 second'")
+    again = PasswordClient(accounts["app"]).sign_in("Asha")                              # the password itself was never changed
+    assert again.post(f"{API}/me/password", json={**guess, "current_password": OWN["Asha"]}).status_code == 204
+
+
+def test_an_admin_creates_people_resets_passwords_and_sets_roles(accounts):
+    admin = PasswordClient(accounts["app"]).sign_in("Admin")
+    asha = PasswordClient(accounts["app"]).sign_in("Asha")
+    new = {"username": "kabir.s", "display_name": "Kabir", "roles": ["reviewer"], "password": "a temporary password"}
+    assert asha.post(f"{API}/admin/users", json=new).status_code == 403                  # admins only
+    assert TestClient(accounts["app"], cookies=admin.cookies).post(f"{API}/admin/users", json=new).json()["error_code"] == "csrf_required"
+    created = admin.post(f"{API}/admin/users", json=new)
+    assert created.status_code == 201, created.text
+    conforms("AdminUser", created.json())
+    kabir = created.json()
+    assert kabir["sign_in"] == "password" and kabir["roles"] == [{"role": "reviewer", "source": "local"}]
+    assert kabir["must_change_password"] is True and kabir["locked"] is False
+    assert admin.post(f"{API}/admin/users", json={**new, "username": "KABIR.S"}).json()["error_code"] == "user_exists"
+    for bad, code in (({"username": "x y"}, "invalid_username"), ({"password": "short"}, "weak_password"),
+                      ({"password": "other is my name"}, "weak_password"), ({"password": "aaaaaaaaaaaaaaaa"}, "weak_password")):
+        refused = admin.post(f"{API}/admin/users", json={**new, "username": "other", **bad})
+        assert refused.status_code == 422 and refused.json()["error_code"] == code, refused.text
+    assert admin.post(f"{API}/admin/users", json={**new, "username": "other", "roles": ["owner"]}).status_code == 422
+    assert admin.post(f"{API}/admin/users", json={**new, "username": "other", "roles": []}).status_code == 422
+    short = admin.post(f"{API}/admin/users", json={**new, "username": "jo", "display_name": "J"})      # a one-letter name rules no password out
+    assert short.status_code == 201, short.text
+    # the first sign-in: nothing is served until the person has chosen their own password
+    first = PasswordClient(accounts["app"]).sign_in("kabir.s", "a temporary password")
+    me = first.get(f"{API}/me")
+    assert me.status_code == 200 and me.json()["must_change_password"] is True
+    blocked = first.get(f"{API}/runs")
+    assert blocked.status_code == 403 and blocked.json()["error_code"] == "password_change_required"
+    conforms("Error", blocked.json())
+    assert first.post(f"{API}/runs/run-x/customers/bulk-reviews", json={}).json()["error_code"] == "password_change_required"
+    change = {"current_password": "a temporary password", "new_password": "chosen by the person"}
+    assert first.post(f"{API}/me/password", json={**change, "current_password": "not it at all"}).json()["error_code"] == "wrong_password"
+    assert first.post(f"{API}/me/password", json={**change, "new_password": "a temporary password"}).json()["error_code"] == "weak_password"
+    assert first.post(f"{API}/me/password", json={**change, "new_password": "short"}).status_code == 422
+    other_session = PasswordClient(accounts["app"]).sign_in("kabir.s", "a temporary password")
+    assert first.post(f"{API}/me/password", json=change).status_code == 204
+    assert first.get(f"{API}/runs").status_code == 200 and first.get(f"{API}/me").json()["must_change_password"] is False
+    ended = other_session.get(f"{API}/me")                                               # the person's other sessions end
+    assert ended.status_code == 401 and "password was changed" in ended.json()["message"]
+    assert _login(accounts, "kabir.s", "a temporary password").status_code == 401 and _login(accounts, "kabir.s", "chosen by the person").status_code == 200
+    # roles: set by an admin, in force at the next request, and one admin always remains
+    target = f"{API}/admin/users/{kabir['user_id']}"
+    assert first.post(f"{API}/runs/run-x/customers/bulk-reviews", json={}).status_code == 422       # a reviewer may; the body is what is wrong
+    viewer = admin.post(f"{target}/roles", json={"roles": ["viewer"]})
+    conforms("AdminUser", viewer.json())
+    assert viewer.json()["roles"] == [{"role": "viewer", "source": "local"}]
+    assert first.post(f"{API}/runs/run-x/customers/bulk-reviews", json={}).status_code == 403
+    assert asha.post(f"{target}/roles", json={"roles": ["admin"]}).status_code == 403
+    assert admin.post(f"{target}/roles", json={"roles": []}).status_code == 422
+    admin_id = accounts["ids"]["Admin"]
+    assert admin.post(f"{API}/admin/users/{admin_id}/roles", json={"roles": ["viewer"]}).json()["error_code"] == "cannot_demote_self"
+    assert admin.post(f"{target}/roles", json={"roles": ["admin", "reviewer"]}).status_code == 200
+    second_admin = PasswordClient(accounts["app"]).sign_in("kabir.s", "chosen by the person")
+    assert second_admin.post(f"{API}/admin/users/{admin_id}/roles", json={"roles": ["viewer"]}).status_code == 200
+    assert second_admin.post(f"{target}/roles", json={"roles": ["reviewer"]}).json()["error_code"] == "cannot_demote_self"
+    assert admin.get(f"{API}/admin/users").status_code == 403                            # the first admin is a viewer now
+    # a reset: the admin passes on a new password, the person's sessions end and they must choose their own again
+    asha_id = accounts["ids"]["Asha"]
+    assert second_admin.post(f"{API}/admin/users/{kabir['user_id']}/password", json={"password": "another one for me"}).json()["error_code"] == "use_change_password"
+    assert second_admin.post(f"{API}/admin/users/{asha_id}/password", json={"password": "short"}).json()["error_code"] == "weak_password"
+    reset = second_admin.post(f"{API}/admin/users/{asha_id}/password", json={"password": "passed on by phone"})
+    assert reset.status_code == 200 and reset.json()["must_change_password"] is True and reset.json()["open_sessions"] == 0
+    assert "administrator ended" in asha.get(f"{API}/me").json()["message"]
+    assert _login(accounts, "Asha").status_code == 401
+    assert _login(accounts, "Asha", "passed on by phone").json()["must_change_password"] is True
+    assert second_admin.post(f"{API}/admin/users/usr-nobody/password", json={"password": "passed on by phone"}).status_code == 404
+    # a disabled account is told so only with the right password
+    assert second_admin.post(f"{API}/admin/users/{asha_id}/disable").status_code == 200
+    assert _login(accounts, "Asha", "passed on by phone").json()["error_code"] == "user_disabled"
+    assert _login(accounts, "Asha", "a wrong password").json()["error_code"] == "invalid_credentials"
+    # the log says who did what and never carries a password
+    log = second_admin.get(f"{API}/admin/auth-events", params={"limit": 100}).json()
+    conforms("AuthEventPage", log)
+    kinds = {e["kind"] for e in log["items"]}
+    assert {"user_created", "password_changed", "password_reset", "role_change"} <= kinds
+    created_event = next(e for e in log["items"] if e["kind"] == "user_created" and e["user_id"] == kabir["user_id"])
+    assert created_event["detail"] == {"by": admin_id, "by_name": "Admin", "roles": ["reviewer"]}
+    text = json.dumps(log)
+    assert not any(secret in text for secret in ("temporary password", "chosen by the person", "passed on by phone", *OWN.values()))
+
+
+def test_one_active_admin_always_remains(accounts):
+    """Through the routes the acting admin is always a second admin, so the rule is checked where it is enforced."""
+    from arai.service import auth
+    service, ids = accounts["app"].state.service.auth, accounts["ids"]
+    with pytest.raises(auth.AccountError, match="only active admin") as refused:
+        service.disable(ids["Admin"])
+    assert refused.value.code == "last_admin"
+    with pytest.raises(auth.AccountError, match="only active admin"):
+        service.set_roles(ids["Admin"], ["viewer"])
+    assert PasswordClient(accounts["app"]).sign_in("Admin").get(f"{API}/admin/users").status_code == 200     # nothing was changed
+    service.set_roles(ids["Asha"], ["admin"])
+    service.disable(ids["Asha"])                                                         # a second admin may go: one remains
+    with pytest.raises(auth.AccountError):
+        service.disable(ids["Admin"])                                                    # a disabled admin does not count as one
+    service.enable(ids["Asha"])
+    service.disable(ids["Admin"])
+    assert _login(accounts, "Admin").json()["error_code"] == "user_disabled"
+
+
+def test_personas_become_accounts_of_the_same_name_and_their_old_sessions_are_not_served(client, env, written):
+    """The demonstration VM moves from personas to accounts: what Asha wrote stays Asha's, and nobody keeps a persona's session."""
+    asha_dev = client.as_user("Asha").get(f"{API}/me").json()
+    tester_cookies = client.cookies                                                      # Tester: an admin persona nobody makes an account for
+    with TestClient(create_app(password_config(env))) as served:
+        service = served.app.state.service.auth
+        leftover = TestClient(served.app, cookies=tester_cookies)                        # the persona's cookie, shown to the new instance
+        refused = leftover.get(f"{API}/admin/users")
+        assert refused.status_code == 401 and "user name and a password" in refused.json()["message"]
+        assert leftover.post(f"{API}/admin/users", headers={"X-CSRF-Token": client.csrf},
+                             json={"username": "mallory", "roles": ["admin"], "password": "a temporary password"}).status_code == 401
+        admin = PasswordClient(served.app).sign_in("Admin", FIRST_PASSWORD)
+        assert admin.post(f"{API}/me/password", json={"current_password": FIRST_PASSWORD, "new_password": OWN["Admin"]}).status_code == 204
+        people = {u["display_name"]: u for u in admin.get(f"{API}/admin/users").json()["items"]}
+        assert people["Asha"]["user_id"] == asha_dev["user_id"]                          # the same person, now with an account
+        assert people["Asha"]["sign_in"] == "password" and people["Asha"]["roles"][0]["source"] == "local"
+        assert people["Tester"]["sign_in"] == "development_login"
+        assert admin.post(f"{API}/admin/users/{people['Tester']['user_id']}/roles", json={"roles": ["viewer"]}).json()["error_code"] == "roles_not_editable"
+        assert admin.post(f"{API}/admin/users/{people['Tester']['user_id']}/password", json={"password": "passed on by phone"}).json()["error_code"] == "no_password"
+        # an admin making an account with a persona's name adopts it in the same way
+        made = admin.post(f"{API}/admin/users", json={"username": "Tester", "roles": ["viewer"], "password": "a temporary password"})
+        assert made.status_code == 201 and made.json()["user_id"] == people["Tester"]["user_id"] and made.json()["sign_in"] == "password"
+        assert made.json()["roles"] == [{"role": "viewer", "source": "local"}]           # the persona's admin role does not come along
+        assert service.users(people["Asha"]["user_id"])[0]["must_change"] is True
+    assert client.as_user("Asha").get(f"{API}/me").status_code == 401                    # the persona's session ended with the move
+
+
+def test_the_password_routes_are_off_where_people_sign_in_another_way(client):
+    assert client.get(f"{API}/auth/mode").json() == {"auth_mode": "dev"}
+    assert TestClient(client.app).post(f"{API}/auth/password-login", json={"username": "Tester", "password": FIRST_PASSWORD}).status_code == 404
+    assert client.post(f"{API}/me/password", json={"current_password": "x", "new_password": "y" * 12}).status_code == 404
+    assert client.post(f"{API}/admin/users", json={"username": "kabir", "roles": ["viewer"], "password": FIRST_PASSWORD}).status_code == 404
+    me = client.get(f"{API}/me").json()
+    conforms("Me", me)
+    assert me["must_change_password"] is False
+    assert client.post(f"{API}/admin/users/{me['user_id']}/roles", json={"roles": ["admin"]}).status_code == 404
+    assert client.post(f"{API}/admin/users/{me['user_id']}/password", json={"password": FIRST_PASSWORD}).status_code == 404
+    user = client.get(f"{API}/admin/users").json()["items"][0]
+    assert user["must_change_password"] is False and user["locked"] is False

@@ -6,6 +6,7 @@ import { datasetName, latestSnapshotRun } from "./derive";
 import { CustomerCase } from "./pages/CustomerCase";
 import { CustomerProfile, CustomerSearch } from "./pages/CustomerProfile";
 import { AuditLog, Investigations, NetworkGraph, Profile } from "./pages/Workspace";
+import { ChangePassword, PasswordSignIn } from "./pages/Account";
 import { CustomerQueue } from "./pages/CustomerQueue";
 import { Datasets } from "./pages/Datasets";
 import { Evaluation } from "./pages/Evaluation";
@@ -51,12 +52,15 @@ export function signInMessage(code: string): string {
   }
 }
 
-/** The sign-in page: the development login's people (laptops and demos), or Keycloak single sign-on (AM-70). */
+/** The sign-in page: the development login's people (laptops and demos), Keycloak single sign-on (AM-70), or a user
+ *  name and a password (AM-81). The instance says which (contract 3.4.0); before that contract, a missing development
+ *  login meant single sign-on. */
 function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
-  const users = useLoad(() => api.devUsers(), []);
+  const mode = useLoad(() => api.authMode().then((answer) => answer.auth_mode), []);
+  const users = useLoad(() => (mode.data === "dev" ? api.devUsers() : Promise.resolve(null)), [mode.data]);
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const sso = users.error instanceof ApiError && users.error.status === 404;
+  const sso = mode.data === "oidc";
   // a refused Keycloak answer comes back as ?signin_error=<code>: read it once, then take it off the address
   const [refused] = useState(() => new URLSearchParams(window.location.search).get("signin_error"));
   const here = new URL(window.location.href);
@@ -87,7 +91,13 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
             {signInMessage(refused)}
           </p>
         )}
-        {sso ? (
+        {mode.loading ? (
+          <p className="muted">Loading...</p>
+        ) : mode.error ? (
+          <ErrorBox error={mode.error} retry={mode.reload} />
+        ) : mode.data === "password" ? (
+          <PasswordSignIn onSignedIn={onSignedIn} />
+        ) : sso ? (
           <>
             <p className="small">Sign in with your organisation account. Your roles come from your Keycloak groups.</p>
             <p>
@@ -429,6 +439,14 @@ export default function App() {
     );
   }
   const me = session.me;
+  const refresh = () =>
+    api.me().then(
+      (fresh) => {
+        setCsrfToken(fresh.csrf_token);
+        setSession({ me: fresh, checked: true });
+      },
+      () => setSession({ me: null, checked: true }),
+    );
   const signOut = () => {
     api.logout().finally(() => {
       setCsrfToken(null);
@@ -437,6 +455,26 @@ export default function App() {
       else setSession({ me: null, checked: true });
     });
   };
+  if (me.must_change_password) {
+    // AM-81: a password an admin set is replaced by the person's own before anything else is served
+    return (
+      <>
+        <div className="strip">SYNTHETIC DATA ONLY / Simulated customers and returns / No real person or production accuracy claim</div>
+        <main id="main" className="signin">
+          <div className="brand">ARAI.</div>
+          <PageTitle title="Choose your password">
+            Signed in as {me.display_name}. The password you signed in with was given to you; choose your own before you continue.
+          </PageTitle>
+          <ChangePassword forced onChanged={() => void refresh()} />
+          <p>
+            <button type="button" className="quiet" onClick={signOut}>
+              Sign out
+            </button>
+          </p>
+        </main>
+      </>
+    );
+  }
   return (
     <SessionContext.Provider value={{ me, can: (permission) => me.permissions.includes(permission as Me["permissions"][number]), signOut }}>
       <Workbench />

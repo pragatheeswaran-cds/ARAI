@@ -1,7 +1,8 @@
 <#
 OPS-AC-05 smoke checks against the AWS demonstration VM (final-spec component 15; docs/design/aws-deployment.md 3.6).
 Run from any machine (the UI is public since D-044 was amended, AM-73; the development login replaces Keycloak, AM-74;
-no shared login since AM-75):
+no shared login since AM-75; since AM-81 the VM may sign people in with accounts and passwords instead of the personas,
+and the script checks whichever the instance reports):
   .\scripts\ops_ac_05.ps1 -AppHost arai-demo.duckdns.org
 Writes reports\ops-ac-05\<date>\result.json. Two checks need a person and are listed as MANUAL in the result:
 a sign-in as the viewer persona followed by a role refusal (403 on a review) and the idle session expiry.
@@ -37,9 +38,21 @@ $checks += @{ id = "health-open-no-shared-login"; pass = ($r.status -eq 200); ob
 $r = Head "https://$AppHost/api/v1/me"
 $checks += @{ id = "no-session-401"; pass = ($r.status -eq 401); observed = "$($r.status)" }
 
-# 4. The development login is on, with the personas and their roles (AM-74)
+# 4. How people sign in. Accounts with a password (AM-81): no list of people is published and a guessed password is
+#    refused. Otherwise the development login is on, with the personas and their roles (AM-74).
+$mode = Head "https://$AppHost/api/v1/auth/mode"
 $r = Head "https://$AppHost/api/v1/auth/dev-users" $auth
-$checks += @{ id = "dev-login-personas"; pass = ($r.status -eq 200 -and $r.body -match '"Admin"' -and $r.body -match '"viewer"'); observed = "$($r.status) $($r.body.Substring(0, [Math]::Min(80, $r.body.Length)))" }
+if ($mode.status -eq 200 -and $mode.body -match '"password"') {
+  $checks += @{ id = "password-sign-in-no-personas"; pass = ($r.status -eq 404); observed = "mode password; dev-users $($r.status)" }
+  $req = [System.Net.HttpWebRequest]::Create("https://$AppHost/api/v1/auth/password-login"); $req.Method = "POST"; $req.ContentType = "application/json"; $req.Timeout = 20000
+  $bytes = [Text.Encoding]::UTF8.GetBytes('{"username":"ops-ac-05-nobody","password":"ops-ac-05-not-the-password"}'); $req.ContentLength = $bytes.Length
+  $s = $req.GetRequestStream(); $s.Write($bytes, 0, $bytes.Length); $s.Close()
+  try { $resp = $req.GetResponse() } catch [System.Net.WebException] { $resp = $_.Exception.Response; if ($null -eq $resp) { throw } }
+  $code = [int]$resp.StatusCode; $cookie = $resp.Headers["Set-Cookie"]; $resp.Close()
+  $checks += @{ id = "wrong-password-refused"; pass = ($code -eq 401 -and -not $cookie); observed = "$code, session cookie set=$([bool]$cookie)" }
+} else {
+  $checks += @{ id = "dev-login-personas"; pass = ($r.status -eq 200 -and $r.body -match '"Admin"' -and $r.body -match '"viewer"'); observed = "$($r.status) $($r.body.Substring(0, [Math]::Min(80, $r.body.Length)))" }
+}
 
 # 5. The database port is not public
 $ip = [System.Net.Dns]::GetHostAddresses($AppHost)[0].IPAddressToString
@@ -51,7 +64,7 @@ $statuses = @(); 1..12 | ForEach-Object { $statuses += (Head "https://$AppHost/a
 $checks += @{ id = "auth-rate-limit"; pass = ($statuses -contains 429); observed = ($statuses -join ",") }
 
 $manual = @(
-  @{ id = "viewer-role-refusal"; pass = $null; observed = "MANUAL: sign in as Priya (viewer), open a case, attempt a review: 403; screenshot to $out" },
+  @{ id = "viewer-role-refusal"; pass = $null; observed = "MANUAL: sign in as Priya (viewer; with her password where the instance uses accounts), open a case, attempt a review: 403; screenshot to $out" },
   @{ id = "session-expiry"; pass = $null; observed = "MANUAL: leave the UI idle past SESSION_IDLE_MINUTES (60); the next request signs out; screenshot to $out" }
 )
 $result = @{ executed_at = (Get-Date -Format "o"); app_host = $AppHost; checks = $checks + $manual }

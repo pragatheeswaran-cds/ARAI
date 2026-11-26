@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/auth/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Contract 3.4.0 (AM-81). How people sign in on this instance, so the sign-in page shows the right form. dev is the development login, oidc is Keycloak single sign-on, password is accounts with a password kept by ARAI. */
+        get: operations["getAuthMode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 3.4.0 (AM-81). Sign in to an account with a password (AUTH_MODE=password). Sets the session cookie arai_session like the other sign-ins and returns the signed-in user with the CSRF token. A user name that has no account and a wrong password get the same answer (401 invalid_credentials) after the same work. Ten wrong passwords in a row lock the user name for five minutes (429 too_many_attempts, whatever the password), counted by the name that was typed whether or not it has an account, so neither the answer nor the lock says which names are accounts. A disabled account is told so only when the password is right (403 user_disabled). An account has a password its person did not choose when an admin set it or when it is the configured admin's initial one. When must_change_password is true in the answer, every route except GET /me, POST /me/password and POST /auth/logout answers 403 password_change_required until the person has chosen their own password. 404 on an instance that signs in another way. */
+        post: operations["passwordLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/dev-users": {
         parameters: {
             query?: never;
@@ -106,6 +140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 3.4.0 (AM-81). The signed-in person replaces their own password, proving the current one. The new password has 12 to 200 characters, differs from the current one and does not contain the account's name (422 weak_password, with the reason in words). The person's other sessions end; this one stays. 403 wrong_password when the current password is not right; a wrong current password counts toward the same lock as a wrong sign-in, the one that reaches the limit also ends this session, and while the name is locked the route answers 429 too_many_attempts. 404 on an instance that signs in another way. */
+        post: operations["changeMyPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/users": {
         parameters: {
             query?: never;
@@ -113,10 +164,45 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Contract 2.0.0 (AM-71). Admin only. Everyone who has signed in (at most 1000, by name), with each role and where it comes from (keycloak_group, bootstrap, dev), status, open sessions and last activity. Roles are read-only in ARAI; they change in Keycloak or the development list and apply at the next sign-in. */
+        /** @description Contract 2.0.0 (AM-71). Admin only. Everyone who has signed in or has an account (at most 1000, by name), with each role and where it comes from (keycloak_group, bootstrap, dev, local), status, open sessions and last activity. Roles that come from Keycloak or the development list are read-only in ARAI and apply at the next sign-in; roles of an account with a password (source local) are set by an admin here (contract 3.4.0, AM-81). */
         get: operations["listUsers"];
         put?: never;
-        post?: never;
+        /** @description Contract 3.4.0 (AM-81). Admin only, AUTH_MODE=password. A new account with a user name, roles and a first password that the admin passes on; the person must choose their own at the first sign-in. User names compare without regard to case (409 user_exists). A persona of the development login with the same name becomes this account, so the notes and decisions recorded under it stay with the person. Logged as user_created. */
+        post: operations["createUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{user_id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 3.4.0 (AM-81). Admin only, AUTH_MODE=password. Gives a person a new password for the admin to pass on. Every session of the person ends, a lock from wrong passwords is lifted, and the person must choose their own password at the next sign-in. Logged as password_reset with the admin; never the password. An admin changes their own password with POST /me/password (409 use_change_password). */
+        post: operations["resetUserPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{user_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract 3.4.0 (AM-81). Admin only, AUTH_MODE=password. Replaces the roles of an account with a password; they apply at the person's next request. Roles that come from Keycloak or the development list are not edited in ARAI (409 roles_not_editable). An admin cannot take the admin role from their own account (409 cannot_demote_self) and one active admin always remains (409 last_admin). Logged as role_change with the admin. */
+        post: operations["setUserRoles"];
         delete?: never;
         options?: never;
         head?: never;
@@ -132,7 +218,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Contract 2.0.0 (AM-71). Admin only. Ends every open session of the person now, stops their bearer tokens and refuses their next sign-in (403 user_disabled, or /?signin_error=user_disabled) until enabled. Logged with the admin and the optional reason. 409 cannot_disable_self for the admin's own account. */
+        /** @description Contract 2.0.0 (AM-71). Admin only. Ends every open session of the person now, stops their bearer tokens and refuses their next sign-in (403 user_disabled, or /?signin_error=user_disabled) until enabled. Logged with the admin and the optional reason. 409 cannot_disable_self for the admin's own account; where ARAI keeps the accounts (contract 3.4.0), 409 last_admin for the only active admin. */
         post: operations["disableUser"];
         delete?: never;
         options?: never;
@@ -601,6 +687,8 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Me: {
+            /** @description Contract 3.4.0 (AM-81). True while the account's password is not one the person chose; until the person has chosen their own (POST /me/password) every other route answers 403 password_change_required. Always false with the development login and single sign-on. */
+            must_change_password: boolean;
             /**
              * @description Contract 3.1.0 (AM-77), for the Profile page.
              * @enum {string}
@@ -617,7 +705,7 @@ export interface components {
             /** @description read (every screen), export (CSV and case summary), review (notes, open, request approval), decide (approve, reject), manage (datasets and runs), administer (people and access, contract 2.0.0). Admin manages and does not review. */
             permissions: ("read" | "export" | "review" | "decide" | "manage" | "administer")[];
             /** @enum {string} */
-            auth_mode: "dev" | "oidc";
+            auth_mode: "dev" | "oidc" | "password";
             /** @description Send as the X-CSRF-Token header on every POST and DELETE of this session. Empty for a request authenticated by a bearer token, which needs none. */
             csrf_token: string;
             /**
@@ -628,6 +716,35 @@ export interface components {
             idle_minutes: number;
             /** @description Contract 1.17.0 (AM-70). Keycloak's end-session address; the UI goes there after signing out so the Keycloak session ends too. Null with the development login. */
             sso_logout_url: string | null;
+        };
+        AuthMode: {
+            /** @enum {string} */
+            auth_mode: "dev" | "oidc" | "password";
+        };
+        PasswordLoginRequest: {
+            /** @description Compared without regard to case. */
+            username: string;
+            password: string;
+        };
+        ChangePasswordRequest: {
+            current_password: string;
+            /** @description 12 to 200 characters, different from the current password, without the account's name. A password that is not accepted is answered 422 weak_password with the reason in words. */
+            new_password: string;
+        };
+        CreateUserRequest: {
+            /** @description 2 to 50 letters, digits, dots, dashes or underscores, starting with a letter or a digit. */
+            username: string;
+            /** @description The name shown on notes and decisions; the user name when absent. */
+            display_name?: string | null;
+            roles: ("viewer" | "reviewer" | "approver" | "admin")[];
+            /** @description The first password, which the person must replace at the first sign-in. Same rules as a new password of POST /me/password. */
+            password: string;
+        };
+        ResetPasswordRequest: {
+            password: string;
+        };
+        SetRolesRequest: {
+            roles: ("viewer" | "reviewer" | "approver" | "admin")[];
         };
         DevUsers: {
             /** @enum {string} */
@@ -642,14 +759,18 @@ export interface components {
             reason?: string;
         };
         AdminUser: {
+            /** @description Contract 3.4.0 (AM-81). The account's password is not one the person chose (an admin set it, it is the configured admin's initial one, or the account has none yet). False for a person who signs in another way. */
+            must_change_password: boolean;
+            /** @description Contract 3.4.0 (AM-81). Sign-in under this account's user name is refused for some minutes after too many wrong passwords; a new password from an admin lifts it. */
+            locked: boolean;
             user_id: string;
             display_name: string;
             email: string | null;
             /** @enum {string} */
-            sign_in: "keycloak" | "development_login";
+            sign_in: "keycloak" | "development_login" | "password";
             /** @enum {string} */
             status: "active" | "disabled";
-            /** @description Read at the person's last sign-in. keycloak_group is a mapped Keycloak group, bootstrap is ARAI_BOOTSTRAP_ADMINS, dev is the development list. */
+            /** @description Read at the person's last sign-in. keycloak_group is a mapped Keycloak group, bootstrap is ARAI_BOOTSTRAP_ADMINS, dev is the development list. local is set by an admin on an account with a password (contract 3.4.0) and applies at once. */
             roles: {
                 /** @enum {string} */
                 role: "viewer" | "reviewer" | "approver" | "admin";
@@ -672,7 +793,7 @@ export interface components {
             /** Format: date-time */
             at: string;
             /** @enum {string} */
-            kind: "sign_in" | "sign_out" | "session_ended" | "refused" | "export" | "role_change" | "user_disabled" | "user_enabled" | "sessions_ended";
+            kind: "sign_in" | "sign_out" | "session_ended" | "refused" | "export" | "role_change" | "user_disabled" | "user_enabled" | "sessions_ended" | "user_created" | "password_changed" | "password_reset";
             user_id: string | null;
             display_name: string | null;
             request_id: string | null;
@@ -1598,6 +1719,95 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getAuthMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthMode"];
+                };
+            };
+        };
+    };
+    passwordLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description The user name or the password is not right (invalid_credentials) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The account is disabled by an admin (user_disabled) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Accounts with a password are off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The body does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user name is locked after too many wrong passwords (too_many_attempts) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listDevUsers: {
         parameters: {
             query?: never;
@@ -1795,6 +2005,82 @@ export interface operations {
             };
         };
     };
+    changeMyPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Changed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The current password is not right (wrong_password), or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Accounts with a password are off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The account has no password in ARAI (no_password) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The new password is not accepted (weak_password), or the body does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user name is locked after too many wrong passwords (too_many_attempts) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listUsers: {
         parameters: {
             query?: never;
@@ -1824,6 +2110,217 @@ export interface operations {
             };
             /** @description Not an admin, or a POST without the session's X-CSRF-Token */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Accounts with a password are off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description There is already an account with this user name (user_exists) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The user name, the roles or the password are not accepted (invalid_username, invalid_roles, weak_password), or the body does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resetUserPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown user, or accounts with a password are off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The account has no password in ARAI (no_password), or it is the admin's own (use_change_password) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The password is not accepted (weak_password), or the body does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setUserRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRolesRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Not signed in (no live session) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not an admin, or a POST without the session's X-CSRF-Token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown user, or accounts with a password are off on this instance */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The roles are not ARAI's to change (roles_not_editable), or the change would leave no admin (cannot_demote_self, last_admin) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The body does not match the contract */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1884,7 +2381,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description An admin cannot disable their own account */
+            /** @description An admin cannot disable their own account (cannot_disable_self), nor the only active admin (last_admin) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2005,7 +2502,7 @@ export interface operations {
         parameters: {
             query?: {
                 user_id?: string;
-                kind?: "sign_in" | "sign_out" | "session_ended" | "refused" | "export" | "role_change" | "user_disabled" | "user_enabled" | "sessions_ended";
+                kind?: "sign_in" | "sign_out" | "session_ended" | "refused" | "export" | "role_change" | "user_disabled" | "user_enabled" | "sessions_ended" | "user_created" | "password_changed" | "password_reset";
                 /** @description The next_cursor of the page before. */
                 cursor?: string;
                 limit?: number;

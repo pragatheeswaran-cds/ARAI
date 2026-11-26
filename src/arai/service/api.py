@@ -30,7 +30,7 @@ from arai import bundles
 from arai.operational import TABLES
 from arai.paths import SPEC_ROOT
 from arai.service import auth, datasets, scoring, views, worker
-from arai.service.config import ServiceConfig, from_env
+from arai.service.config import PASSWORD_MAX_LENGTH, ServiceConfig, from_env
 from arai.service.oidc import OidcError
 from arai.service.store import Conflict, NotFound, Store, request_hash
 
@@ -104,15 +104,61 @@ class DevLoginRequest(BaseModel):
     _clean = field_validator("user")(_no_nul)
 
 
+# accounts with a password (contract 3.4.0, AM-81). Lengths are bounded here so that no request makes the server hash a
+# megabyte; what makes a password acceptable is decided in auth.password_problem and answered in words (422 weak_password).
+class PasswordLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    _clean = field_validator("username", "password")(_no_nul)
+
+
+class ChangePasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    current_password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    new_password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    _clean = field_validator("current_password", "new_password")(_no_nul)
+
+
+Role = Literal["viewer", "reviewer", "approver", "admin"]
+
+
+class CreateUserRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(min_length=2, max_length=50)
+    display_name: str | None = Field(None, max_length=100)
+    roles: list[Role] = Field(min_length=1, max_length=4)
+    password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    _clean = field_validator("username", "display_name", "password")(_no_nul)
+
+
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    _clean = field_validator("password")(_no_nul)
+
+
+class SetRolesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    roles: list[Role] = Field(min_length=1, max_length=4)
+
+
 SESSION_ENDED = {
     "idle": "Your session ended after a period without activity. Sign in again.",
     "max_age": "Your session reached its maximum length. Sign in again.",
     "disabled": "This account is disabled. Ask an administrator.",
     "ended_by_admin": "An administrator ended your session. Sign in again.",
+    "password_changed": "Your password was changed in another session. Sign in again.",
+    "sign_in_changed": "This site now signs people in with a user name and a password. Sign in again.",
+    "too_many_attempts": "Too many wrong passwords. Sign in again.",
 }
 NEEDED_ROLE = {"read": "viewer", "export": "reviewer", "review": "reviewer", "decide": "approver", "manage": "admin", "administer": "admin"}
 AUTH_EVENT_KINDS = ("sign_in", "sign_out", "session_ended", "refused", "export", "role_change", "user_disabled", "user_enabled",
-                    "sessions_ended")
+                    "sessions_ended", "user_created", "password_changed", "password_reset")
+SIGN_IN_KIND = {auth.DEV_ISSUER: "development_login", auth.LOCAL_ISSUER: "password"}
+# an account action that cannot be done as asked (auth.AccountError) -> the status it is answered with
+ACCOUNT_ERROR_STATUS = {"user_exists": 409, "last_admin": 409, "roles_not_editable": 409, "no_password": 409, "wrong_password": 403,
+                        "too_many_attempts": 429}
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -121,7 +167,8 @@ def _iso(value: datetime | None) -> str | None:
 
 def admin_user_body(row: dict) -> dict:
     return {"user_id": row["id"], "display_name": row["display_name"], "email": row["email"],
-            "sign_in": "development_login" if row["issuer"] == auth.DEV_ISSUER else "keycloak", "status": row["status"],
+            "sign_in": SIGN_IN_KIND.get(row["issuer"], "keycloak"), "status": row["status"],
+            "must_change_password": bool(row["must_change"]), "locked": bool(row["locked"]),
             "roles": [{"role": r["role"], "source": r["source"]} for r in row["roles"]], "open_sessions": int(row["open_sessions"]),
             "created_at": _iso(row["created_at"]), "last_sign_in_at": _iso(row["last_sign_in_at"]), "last_seen_at": _iso(row["last_seen_at"])}
 
@@ -244,11 +291,16 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
     config = config or from_env()
     if config.oidc_problems():
         raise RuntimeError("AUTH_MODE=oidc needs " + ", ".join(config.oidc_problems()))
+    if config.password_problems():
+        raise RuntimeError("AUTH_MODE=password needs " + ", ".join(config.password_problems()))
     service = Service(config)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         service.store.migrate()
+        created = service.auth.seed_password_users()                # AM-81: the configured accounts that do not exist yet
+        if created:
+            log.info("created %d account(s) with the initial password: %s", len(created), ", ".join(created))
         service.sync_active()
         stop = None
         if with_worker:                                   # local profile: the one worker lives in this process
@@ -344,11 +396,21 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
         if request.method in ("POST", "DELETE") and not auth.Auth.csrf_ok(token, request.headers.get(auth.CSRF_HEADER)):
             service.auth.log("refused", user.id, request.state.request_id, {"status": 403, "reason": "csrf", "path": path})
             raise ApiError(403, "csrf_required", "The request lacks this session's X-CSRF-Token header.")
+        if user.must_change_password and (request.method, path) not in auth.PASSWORD_CHANGE_ROUTES:
+            # AM-81: a password an admin set is replaced by the person's own before anything else is served
+            raise ApiError(403, "password_change_required", "Choose your own password first.")
         if needed != auth.SIGNED_IN and not user.can(needed):
             service.auth.log("refused", user.id, request.state.request_id, {"status": 403, "permission": needed, "path": path})
             raise ApiError(403, "forbidden", f"This needs the {NEEDED_ROLE[needed]} role.")
         request.state.user = user
         return user
+
+    def account_error(error: auth.AccountError) -> ApiError:
+        return ApiError(ACCOUNT_ERROR_STATUS.get(error.code, 422), error.code, error.message)
+
+    def password_mode_only() -> None:
+        if config.mode != "password":
+            raise ApiError(404, "not_found", "Accounts with a password are off on this instance.")
 
     def me_body(user, token: str | None) -> dict:
         known = (service.auth.users(user.id) or [{}])[0]                 # the account as People & access shows it (contract 3.1.0)
@@ -357,6 +419,7 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                 "last_sign_in_at": _iso(known.get("last_sign_in_at")),
                 "permissions": sorted(user.permissions), "auth_mode": config.mode, "csrf_token": auth.csrf_for(token) if token else "",
                 "session_expires_at": _iso(user.expires_at), "idle_minutes": config.session_idle_minutes,
+                "must_change_password": user.must_change_password,
                 # contract 1.17.0: where signing out also ends the Keycloak session (null with the development login)
                 "sso_logout_url": service.auth.oidc.logout_url() if service.auth.oidc else None}
 
@@ -378,6 +441,36 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
                 "worker_seconds_since_seen": service.store.worker_seconds_since_seen()}
 
     # ------------------------------------------------------------------ sign-in (AM-69)
+    @api.get("/auth/mode")
+    def auth_mode():
+        """How people sign in on this instance, so the sign-in page shows the right form (contract 3.4.0)."""
+        return {"auth_mode": config.mode}
+
+    @api.post("/auth/password-login")
+    def password_login(body: PasswordLoginRequest, request: Request, response: Response):
+        password_mode_only()
+        try:
+            user, token = service.auth.sign_in_password(body.username, body.password, request.state.request_id)
+        except auth.SignInRefused as refused:
+            if refused.code == "user_disabled":
+                raise ApiError(403, "user_disabled", "This account is disabled. Ask an administrator.") from None
+            if refused.code == "too_many_attempts":
+                raise ApiError(429, "too_many_attempts", f"Too many wrong passwords. Try again in {auth.LOCK_MINUTES} minutes, or ask "
+                                                         "an administrator for a new password.") from None
+            raise ApiError(401, "invalid_credentials", "The user name or the password is not right.") from None
+        response.set_cookie(auth.SESSION_COOKIE, token, max_age=config.session_max_hours * 3600, path="/", httponly=True,
+                            samesite="lax", secure=config.profile == "vm")
+        return me_body(user, token)
+
+    @api.post("/me/password", status_code=204)
+    def change_password(body: ChangePasswordRequest, request: Request):
+        password_mode_only()
+        try:
+            service.auth.change_own_password(request.state.user, body.current_password, body.new_password, request.state.request_id)
+        except auth.AccountError as error:
+            raise account_error(error) from None
+        return Response(status_code=204)
+
     @api.get("/auth/dev-users")
     def dev_users():
         if config.mode != "dev":
@@ -446,15 +539,53 @@ def create_app(config: ServiceConfig | None = None, with_worker: bool = False, s
 
     @api.get("/admin/users")
     def admin_users():
-        """Everyone who has signed in. Roles are read-only here: they come from Keycloak groups or the development list."""
+        """Everyone who has signed in or has an account. Roles of an account with a password are set here (AM-81); the
+        others are read-only: they come from Keycloak groups or the development list."""
         return {"items": [admin_user_body(r) for r in service.auth.users()]}
+
+    @api.post("/admin/users", status_code=201)
+    def admin_create_user(body: CreateUserRequest, request: Request):
+        password_mode_only()
+        try:
+            user_id = service.auth.create_account(body.username, body.display_name, body.roles, body.password, request.state.user,
+                                                  request.state.request_id)
+        except auth.AccountError as error:
+            raise account_error(error) from None
+        return admin_user(user_id)
+
+    @api.post("/admin/users/{user_id}/password")
+    def admin_reset_password(request: Request, user_id: str, body: ResetPasswordRequest):
+        password_mode_only()
+        admin_user(user_id)
+        if user_id == request.state.user.id:
+            raise ApiError(409, "use_change_password", "Change your own password from your Profile, with the current one.")
+        try:
+            service.auth.reset_password(user_id, body.password, request.state.user, request.state.request_id)
+        except auth.AccountError as error:
+            raise account_error(error) from None
+        return admin_user(user_id)
+
+    @api.post("/admin/users/{user_id}/roles")
+    def admin_set_roles(request: Request, user_id: str, body: SetRolesRequest):
+        password_mode_only()
+        admin_user(user_id)
+        if user_id == request.state.user.id and "admin" not in body.roles:
+            raise ApiError(409, "cannot_demote_self", "An admin cannot take the admin role from their own account.")
+        try:
+            service.auth.set_roles(user_id, body.roles, request.state.user, request.state.request_id)
+        except auth.AccountError as error:
+            raise account_error(error) from None
+        return admin_user(user_id)
 
     @api.post("/admin/users/{user_id}/disable")
     def admin_disable(request: Request, user_id: str, body: AdminActionRequest | None = None):
         admin_user(user_id)
         if user_id == request.state.user.id:
             raise ApiError(409, "cannot_disable_self", "An admin cannot disable their own account.")
-        service.auth.disable(user_id, request.state.user, request.state.request_id, body.reason if body else None)
+        try:
+            service.auth.disable(user_id, request.state.user, request.state.request_id, body.reason if body else None)
+        except auth.AccountError as error:
+            raise account_error(error) from None
         return admin_user(user_id)
 
     @api.post("/admin/users/{user_id}/enable")

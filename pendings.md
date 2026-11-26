@@ -17,6 +17,7 @@
 > | P7 | Which world the demonstration uses | Decided 22 Nov: W5401 stays. It predates the contact columns, so it shows none; a world generated now shows them (RUNBOOK 4.2) |
 > | P8 | Slide deck in `docs/demo-deck/` still shows the earlier screens and the two-person approval story | Decided 22 Nov: left until a presentation is scheduled |
 > | P9 | Update the demonstration VM to the new screens | Done 26 Nov: the VM runs `main` at `d88667e` (contract 3.3.0); W5401 and its twelve snapshots were cleared, loaded and scored again with the three August outcomes (RUNBOOK 8.10, as run). The October release is tag `deployed-aws-2026-10-21` |
+> | P15 | Sign in with a user name and a password in place of the list of personas (AM-81, contract 3.4.0): accounts, roles and password hashes kept by ARAI, managed by an admin in People & access | Built 27 Nov; see RUNBOOK 2.8 and 8.5 |
 > | P10 | Branches on GitHub whose work `main` contains | Decided 22 Nov: all kept as markers; `main` is the one to use |
 > | P11 | Owner sign-off on the acceptance register, and SEL-AC-05 (items 2.3 and 2.4 below) | The owner |
 > | P12 | Analyst view (AM-80): a one-line queue row, a case worded for a returns analyst, the model's internals behind the Model detail switch | Done 22 Nov |

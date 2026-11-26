@@ -8,8 +8,8 @@ It contains separate component requirements, acceptance criteria, bundled contra
 - [Decision provenance](final-spec/DECISIONS.md)
 - [Package verification](final-spec/verification/REPORT.md)
 
-The folder is at version 4.3 (amended 2026-11-22; see the amendment sections of the decision provenance).
-Copy the entire final-spec folder to another system; ARAI-final-spec-v4.0.zip is the last packaged archive (4.1 to 4.3
+The folder is at version 4.5 (amended 2026-11-27; see the amendment sections of the decision provenance).
+Copy the entire final-spec folder to another system; ARAI-final-spec-v4.0.zip is the last packaged archive (4.1 to 4.5
 amend the API contract, the data contract's optional columns and the component texts; no experiment changed).
 After any edit to final-spec, run `uv run python scripts/spec_package.py` to rebuild its register and hashes.
 ARAI-final-spec-v1.0.zip is the unamended 1.0 baseline, kept as a record.

@@ -62,6 +62,26 @@ server {
         proxy_read_timeout 300s;
         proxy_request_buffering off;
     }
+    # The page is revalidated at every visit, so a new release shows at once; its scripts and styles carry a hash of
+    # their content in their names and are kept by the browser for a year.
+    location = /index.html {
+        root /usr/share/nginx/html;
+        add_header Cache-Control "no-cache" always;
+        # add_header in a location replaces the server's headers, so they are repeated here
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Referrer-Policy same-origin always;
+    }
+    location /assets/ {
+        root /usr/share/nginx/html;
+        try_files $uri =404;               # a missing file is a 404, never the page under a script's name
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Referrer-Policy same-origin always;
+    }
     location / {
         root /usr/share/nginx/html;
         try_files $uri /index.html;        # client-side routes

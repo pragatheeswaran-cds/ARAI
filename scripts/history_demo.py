@@ -25,12 +25,18 @@ and is not uploaded twice; one already scored is not scored again. So on a lapto
     uv run --no-sync python scripts/history_demo.py                     # only the outcomes (instance on port 8000)
     uv run --no-sync python scripts/history_demo.py --base-url http://127.0.0.1:8010 --as-of 2026-08-09
 Against the demonstration VM, --base-url https://arai-demo.duckdns.org (RUNBOOK 8.4); it has no shared login (AM-75).
+
+Where people sign in with a password (AUTH_MODE=password, AM-81) the script signs in the same way: the people it acts
+as (Admin, Asha, Meera, Ravi) must have accounts with a password of their own choosing, read from the environment,
+never from the command line: ARAI_PASSWORD_<NAME> for each (for example ARAI_PASSWORD_ASHA), or ARAI_PASSWORD for any
+name without one of its own.
 """
 from __future__ import annotations
 
 import argparse
 import http.cookiejar
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -68,15 +74,40 @@ STORY = [
 
 
 class Session:
-    """One person signed in through the development login (contract 1.16.0, AM-69): its own cookie and CSRF token. The
-    server takes every action's author from this session, never from a name in the request."""
+    """One person signed in (contract 1.16.0, AM-69): its own cookie and CSRF token. The server takes every action's
+    author from this session, never from a name in the request. The instance says how people sign in: the development
+    login's personas, or a user name and a password (AM-81) read from the environment."""
 
     def __init__(self, base: str, user: str):
         self.url, self.user = base, user
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         self.csrf = None
-        me = call(self, "/auth/dev-login", {"user": user})
+        if auth_mode(self) == "password":
+            password = os.environ.get("ARAI_PASSWORD_" + user.upper()) or os.environ.get("ARAI_PASSWORD")
+            if not password:
+                sys.exit(f"{base} signs in with passwords: set ARAI_PASSWORD (or ARAI_PASSWORD_{user.upper()}) in the environment")
+            me = call(self, "/auth/password-login", {"username": user, "password": password})
+            if me.get("must_change_password"):
+                sys.exit(f"{user} must choose their own password first: sign in once in the browser, then run this again")
+        else:
+            me = call(self, "/auth/dev-login", {"user": user})
         self.csrf = me["csrf_token"]
+
+
+_modes: dict = {}
+
+
+def auth_mode(who: Session) -> str:
+    """dev, oidc or password; an instance older than contract 3.4.0 has no such route and is the development login."""
+    if who.url not in _modes:
+        try:
+            with who.opener.open(who.url + "/api/v1/auth/mode", timeout=60) as response:
+                _modes[who.url] = json.loads(response.read())["auth_mode"]
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                sys.exit(f"{who.url}/api/v1/auth/mode answered {error.code}; try again in a minute")
+            _modes[who.url] = "dev"
+    return _modes[who.url]
 
 
 _sessions: dict = {}

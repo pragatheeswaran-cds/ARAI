@@ -1,13 +1,84 @@
 openapi: 3.0.3
 info:
   title: ARAI development API
-  version: 3.3.0
-  description: Local profile has no app authentication. VM reverse proxy requires
-    Basic/shared auth for UI and all API routes; 401 may be proxy-generated. Structured
-    application errors follow Error; proxy auth response may be plain text.
+  version: 3.4.0
+  description: Every route but health, the contract and the sign-in routes needs a signed-in session (cookie
+    arai_session; POST and DELETE also need the X-CSRF-Token of the session). People sign in through the development
+    login, Keycloak single sign-on or an account with a password, as GET /auth/mode says. There is no proxy login
+    (AM-75). Errors follow Error; a reverse proxy's rate limit may answer 429 or 503 in plain text.
 servers:
 - url: /api/v1
 paths:
+  /auth/mode:
+    get:
+      operationId: getAuthMode
+      security: []
+      description: Contract 3.4.0 (AM-81). How people sign in on this instance, so the sign-in page shows the right form.
+        dev is the development login, oidc is Keycloak single sign-on, password is accounts with a password kept by ARAI.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthMode'
+  /auth/password-login:
+    post:
+      operationId: passwordLogin
+      security: []
+      description: Contract 3.4.0 (AM-81). Sign in to an account with a password (AUTH_MODE=password). Sets the session
+        cookie arai_session like the other sign-ins and returns the signed-in user with the CSRF token. A user name that
+        has no account and a wrong password get the same answer (401 invalid_credentials) after the same work. Ten wrong
+        passwords in a row lock the user name for five minutes (429 too_many_attempts, whatever the password), counted
+        by the name that was typed whether or not it has an account, so neither the answer nor the lock says which
+        names are accounts. A disabled account is told so only when the password is right (403 user_disabled). An
+        account has a password its person did not choose when an admin set it or when it is the configured admin's
+        initial one. When must_change_password is true in the answer,
+        every route except GET /me, POST /me/password and POST /auth/logout answers 403 password_change_required until
+        the person has chosen their own password. 404 on an instance that signs in another way.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginRequest'
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401':
+          description: The user name or the password is not right (invalid_credentials)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The account is disabled by an admin (user_disabled)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Accounts with a password are off on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The body does not match the contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: The user name is locked after too many wrong passwords (too_many_attempts)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /auth/dev-users:
     get:
       operationId: listDevUsers
@@ -160,12 +231,67 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/password:
+    post:
+      operationId: changeMyPassword
+      description: Contract 3.4.0 (AM-81). The signed-in person replaces their own password, proving the current one. The
+        new password has 12 to 200 characters, differs from the current one and does not contain the account's name
+        (422 weak_password, with the reason in words). The person's other sessions end; this one stays. 403
+        wrong_password when the current password is not right; a wrong current password counts toward the same lock as
+        a wrong sign-in, the one that reaches the limit also ends this session, and while the name is locked the route
+        answers 429 too_many_attempts. 404 on an instance that signs in another way.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Changed
+        '401':
+          description: Not signed in (no live session)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The current password is not right (wrong_password), or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Accounts with a password are off on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The account has no password in ARAI (no_password)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The new password is not accepted (weak_password), or the body does not match the contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: The user name is locked after too many wrong passwords (too_many_attempts)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /admin/users:
     get:
       operationId: listUsers
-      description: Contract 2.0.0 (AM-71). Admin only. Everyone who has signed in (at most 1000, by name), with each role
-        and where it comes from (keycloak_group, bootstrap, dev), status, open sessions and last activity. Roles are
-        read-only in ARAI; they change in Keycloak or the development list and apply at the next sign-in.
+      description: Contract 2.0.0 (AM-71). Admin only. Everyone who has signed in or has an account (at most 1000, by
+        name), with each role and where it comes from (keycloak_group, bootstrap, dev, local), status, open sessions and
+        last activity. Roles that come from Keycloak or the development list are read-only in ARAI and apply at the next
+        sign-in; roles of an account with a password (source local) are set by an admin here (contract 3.4.0, AM-81).
       responses:
         '200':
           description: Success
@@ -185,12 +311,178 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    post:
+      operationId: createUser
+      description: Contract 3.4.0 (AM-81). Admin only, AUTH_MODE=password. A new account with a user name, roles and a
+        first password that the admin passes on; the person must choose their own at the first sign-in. User names
+        compare without regard to case (409 user_exists). A persona of the development login with the same name becomes
+        this account, so the notes and decisions recorded under it stay with the person. Logged as user_created.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUser'
+        '401':
+          description: Not signed in (no live session)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not an admin, or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Accounts with a password are off on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: There is already an account with this user name (user_exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The user name, the roles or the password are not accepted (invalid_username, invalid_roles,
+            weak_password), or the body does not match the contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/users/{user_id}/password:
+    post:
+      operationId: resetUserPassword
+      description: Contract 3.4.0 (AM-81). Admin only, AUTH_MODE=password. Gives a person a new password for the admin to
+        pass on. Every session of the person ends, a lock from wrong passwords is lifted, and the person must choose
+        their own password at the next sign-in. Logged as password_reset with the admin; never the password. An admin
+        changes their own password with POST /me/password (409 use_change_password).
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUser'
+        '401':
+          description: Not signed in (no live session)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not an admin, or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown user, or accounts with a password are off on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The account has no password in ARAI (no_password), or it is the admin's own (use_change_password)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The password is not accepted (weak_password), or the body does not match the contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/users/{user_id}/roles:
+    post:
+      operationId: setUserRoles
+      description: Contract 3.4.0 (AM-81). Admin only, AUTH_MODE=password. Replaces the roles of an account with a
+        password; they apply at the person's next request. Roles that come from Keycloak or the development list are
+        not edited in ARAI (409 roles_not_editable). An admin cannot take the admin role from their own account (409
+        cannot_demote_self) and one active admin always remains (409 last_admin). Logged as role_change with the admin.
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetRolesRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUser'
+        '401':
+          description: Not signed in (no live session)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not an admin, or a POST without the session's X-CSRF-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown user, or accounts with a password are off on this instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The roles are not ARAI's to change (roles_not_editable), or the change would leave no admin
+            (cannot_demote_self, last_admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The body does not match the contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /admin/users/{user_id}/disable:
     post:
       operationId: disableUser
       description: Contract 2.0.0 (AM-71). Admin only. Ends every open session of the person now, stops their bearer tokens
         and refuses their next sign-in (403 user_disabled, or /?signin_error=user_disabled) until enabled. Logged with the
-        admin and the optional reason. 409 cannot_disable_self for the admin's own account.
+        admin and the optional reason. 409 cannot_disable_self for the admin's own account; where ARAI keeps the accounts
+        (contract 3.4.0), 409 last_admin for the only active admin.
       parameters:
       - name: user_id
         in: path
@@ -230,7 +522,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: An admin cannot disable their own account
+          description: An admin cannot disable their own account (cannot_disable_self), nor the only active admin (last_admin)
           content:
             application/json:
               schema:
@@ -348,6 +640,9 @@ paths:
           - user_disabled
           - user_enabled
           - sessions_ended
+          - user_created
+          - password_changed
+          - password_reset
       - name: cursor
         in: query
         required: false
@@ -2322,7 +2617,13 @@ components:
       - status
       - created_at
       - last_sign_in_at
+      - must_change_password
       properties:
+        must_change_password:
+          type: boolean
+          description: Contract 3.4.0 (AM-81). True while the account's password is not one the person chose; until the person
+            has chosen their own (POST /me/password) every other route answers 403 password_change_required. Always
+            false with the development login and single sign-on.
         status:
           type: string
           enum: [active, disabled]
@@ -2368,6 +2669,7 @@ components:
           enum:
           - dev
           - oidc
+          - password
         csrf_token:
           type: string
           description: Send as the X-CSRF-Token header on every POST and DELETE of this session. Empty for a request
@@ -2386,6 +2688,113 @@ components:
           nullable: true
           description: Contract 1.17.0 (AM-70). Keycloak's end-session address; the UI goes there after signing out so the
             Keycloak session ends too. Null with the development login.
+    AuthMode:
+      type: object
+      additionalProperties: false
+      required:
+      - auth_mode
+      properties:
+        auth_mode:
+          type: string
+          enum:
+          - dev
+          - oidc
+          - password
+    PasswordLoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - username
+      - password
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Compared without regard to case.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 200
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - current_password
+      - new_password
+      properties:
+        current_password:
+          type: string
+          minLength: 1
+          maxLength: 200
+        new_password:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 12 to 200 characters, different from the current password, without the account's name. A password
+            that is not accepted is answered 422 weak_password with the reason in words.
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - username
+      - roles
+      - password
+      properties:
+        username:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: 2 to 50 letters, digits, dots, dashes or underscores, starting with a letter or a digit.
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: The name shown on notes and decisions; the user name when absent.
+        roles:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            type: string
+            enum:
+            - viewer
+            - reviewer
+            - approver
+            - admin
+        password:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The first password, which the person must replace at the first sign-in. Same rules as a new
+            password of POST /me/password.
+    ResetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - password
+      properties:
+        password:
+          type: string
+          minLength: 1
+          maxLength: 200
+    SetRolesRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - roles
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            type: string
+            enum:
+            - viewer
+            - reviewer
+            - approver
+            - admin
     DevUsers:
       type: object
       additionalProperties: false
@@ -2433,7 +2842,17 @@ components:
       - created_at
       - last_sign_in_at
       - last_seen_at
+      - must_change_password
+      - locked
       properties:
+        must_change_password:
+          type: boolean
+          description: Contract 3.4.0 (AM-81). The account's password is not one the person chose (an admin set it, it is
+            the configured admin's initial one, or the account has none yet). False for a person who signs in another way.
+        locked:
+          type: boolean
+          description: Contract 3.4.0 (AM-81). Sign-in under this account's user name is refused for some minutes after
+            too many wrong passwords; a new password from an admin lifts it.
         user_id:
           type: string
         display_name:
@@ -2446,6 +2865,7 @@ components:
           enum:
           - keycloak
           - development_login
+          - password
         status:
           type: string
           enum:
@@ -2454,7 +2874,8 @@ components:
         roles:
           type: array
           description: Read at the person's last sign-in. keycloak_group is a mapped Keycloak group, bootstrap is
-            ARAI_BOOTSTRAP_ADMINS, dev is the development list.
+            ARAI_BOOTSTRAP_ADMINS, dev is the development list. local is set by an admin on an account with a password
+            (contract 3.4.0) and applies at once.
           items:
             type: object
             additionalProperties: false

@@ -518,7 +518,8 @@ On the vm profile a bearer request is checked by ARAI itself; there is no shared
 Since API contract 2.0.0 (decision AM-71) an admin sees **People & access** in the navigation (sign in as Admin on a
 laptop). It lists everyone who has signed in, each role with where it comes from (Keycloak group, bootstrap admin or
 the development list), status, last sign-in, last activity and open sessions. **Roles are not edited here**: they come
-from Keycloak groups (or `AUTH_DEV_USERS` on a laptop) and are read at every sign-in.
+from Keycloak groups (or `AUTH_DEV_USERS` on a laptop) and are read at every sign-in. The exception is an instance with
+accounts and passwords (section 2.8), where the admin adds people, sets their roles and gives new passwords here.
 
 | Action | What it does |
 |---|---|
@@ -533,6 +534,40 @@ person. The same is available to scripts as `GET /api/v1/admin/users` and `GET /
 Contract 2.0.0 also removed two typed-name fields that 1.16.0 already ignored: a review that still sends
 `reviewer_name`, or a queue request with `exclude_reviewer`, now gets a 422 that names the field (use the signed-in
 session, and `exclude_mine=true`).
+
+### 2.8 Signing in with accounts and passwords (no Keycloak)
+
+Since API contract 3.4.0 (decision AM-81) an instance can sign people in with a user name and a password that ARAI
+keeps itself. Use it where Keycloak is not available and people should still sign in as themselves; the demonstration
+VM runs this way (section 8.5). The sign-in page shows a user name and a password field and no list of people.
+
+```powershell
+# a laptop: three accounts; the initial password (12 characters or more) is the admin's, for the first sign-in only
+$env:AUTH_MODE = "password"
+$env:AUTH_PASSWORD_USERS = "Admin=admin;Asha=reviewer,approver;Priya=viewer"
+$env:AUTH_INITIAL_PASSWORD = "<an initial password>"
+uv run arai local                                  # open http://127.0.0.1:8000, sign in as Admin, choose your own password
+```
+
+Then, as Admin, open People & access and give Asha and Priya a password each (**New password**); each of them chooses
+their own at the first sign-in.
+
+| What | How |
+|---|---|
+| The first accounts | `AUTH_PASSWORD_USERS` (the format of `AUTH_DEV_USERS`) with `AUTH_INITIAL_PASSWORD`. They are created at start **only when they do not exist yet**; a restart never resets a password or a role. The initial password opens **only the accounts with the admin role**, and the admin must replace it at the first sign-in; the other accounts cannot sign in until an admin gives each a password. A persona of the development login with the same name becomes the account and keeps its notes and decisions |
+| Add a person | People & access, **Add a person**: user name, the name shown on notes, roles, a first password. Pass the password on; the person must choose their own at the first sign-in |
+| A forgotten password, or a locked account | People & access, **New password** on the person's row. Their sessions end, the lock is lifted, and they choose their own again at the next sign-in |
+| Change roles | People & access, **Roles**. In force at the person's next request. An admin cannot take the admin role from their own account, and one active admin always remains |
+| Change your own password | Profile (the person icon), **Change password**: the current one, then the new one twice. Your other sessions are signed out |
+| Rules for a password | 12 to 200 characters, not containing the account's name, different from the current one. No composition rule |
+| Wrong passwords | The same answer for a name without an account and a wrong password. Ten wrong passwords in a row lock the name for five minutes (also from the Change password form, which then signs that session out). Anyone can cause such a lock by guessing; it passes by itself, and **New password** lifts it at once |
+| Sessions from before | A session of the development login is not served once the instance signs in with passwords: everyone signs in again |
+| The admin's password is lost and nobody else is admin | Add a new name with the admin role to `AUTH_PASSWORD_USERS` and restart: it is created with `AUTH_INITIAL_PASSWORD`. Sign in with it (it must choose its own password first), give the old account a new password, then disable the new account. The last active admin can be neither disabled nor demoted |
+
+Only a salted hash of each password is stored; a password is never shown again, logged or sent back. There is no
+e-mail reset, no self-registration and no second factor: an admin passes passwords on. A script signs in the same way
+(`POST /api/v1/auth/password-login` with `{"username": ..., "password": ...}`, then the session cookie and the
+`X-CSRF-Token` of the answer); `scripts\history_demo.py` reads each person's password from `ARAI_PASSWORD_<NAME>`.
 
 ---
 
@@ -924,6 +959,9 @@ A value that must be empty is written as `-`.
 | DUCKDNS_DOMAINS | config | the subdomain without `.duckdns.org`, e.g. `arai-demo` |
 | LE_EMAIL | config | Let's Encrypt expiry notices |
 | AUTH_DEV_USERS | config | optional: the personas and roles of the development login, `Asha=reviewer,approver;Admin=admin` (section 8.5); the six defaults when absent |
+| AUTH_MODE | config | optional: `dev` (the personas, the default) or `password` (accounts with a password, AM-81; section 8.5) |
+| AUTH_PASSWORD_USERS | config | with `AUTH_MODE=password`: the accounts created when they do not exist yet, in the format of AUTH_DEV_USERS |
+| AUTH_INITIAL_PASSWORD | secret | with `AUTH_MODE=password`: the initial password of the listed admin accounts, replaced at their first sign-in; 12 characters or more, no single quote |
 | POSTGRES_PASSWORD | secret | generated once at setup |
 | DUCKDNS_TOKEN | secret | from duckdns.org after signing in |
 | ANTHROPIC_API_KEY | secret | optional; without it every memo is unavailable by design |
@@ -981,7 +1019,21 @@ uv run --no-sync python scripts\history_demo.py --load --base-url https://arai-d
 
 ### 8.5 People
 
-The VM runs the development login (AM-74): the sign-in page lists personas and anyone picks one; there are no
+Since 27 Nov 2026 the VM signs people in with **accounts and passwords** (AM-81, section 2.8): `/arai/config/AUTH_MODE`
+is `password`, `/arai/config/AUTH_PASSWORD_USERS` names the six people below, and `/arai/secret/AUTH_INITIAL_PASSWORD`
+is the password **Admin** starts with (it opens no other account). Read it with
+`aws ssm get-parameter --name /arai/secret/AUTH_INITIAL_PASSWORD --with-decryption --query Parameter.Value --output text`,
+sign in as Admin and choose your own password; the initial one is then spent. The other five accounts cannot sign in
+until Admin gives each a password in People & access (**New password**), which the person replaces at the first
+sign-in. Admin also adds people and sets roles there; everyone can change their own password from Profile. An account
+that exists is never changed by a bring-up, so editing the parameters afterwards only adds new names. To load the
+demonstration through the API, the script signs in as Admin, Asha, Meera and Ravi with their own passwords, read from
+the environment (`$env:ARAI_PASSWORD_ADMIN`, `$env:ARAI_PASSWORD_ASHA`, `$env:ARAI_PASSWORD_MEERA`, `$env:ARAI_PASSWORD_RAVI`), then
+`uv run --no-sync python scripts\history_demo.py --load --base-url https://arai-demo.duckdns.org`.
+To go back to the personas, set `/arai/config/AUTH_MODE` to `dev` and re-run bring-up; the accounts stay in the
+database, unused.
+
+Before that, and still when `AUTH_MODE` is `dev` or absent, the VM runs the development login (AM-74): the sign-in page lists personas and anyone picks one; there are no
 passwords at all (the shared login was removed on 21 Oct 2026, AM-75). The defaults are the six of section 2.5 (Asha, Ravi and Meera review and
 close escalated cases, Arjun reviews, Priya views, Admin administers). Other names or roles: set `AUTH_DEV_USERS` and re-run
 bring-up. Anyone who reaches the URL can act as any persona, including Admin; the data on the VM is synthetic (section 8.4).

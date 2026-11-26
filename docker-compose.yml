@@ -34,7 +34,9 @@ services:
       UI_ORIGINS: ${UI_ORIGINS:-http://localhost:8080}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}      # worker only; without it every investigation memo is unavailable by design
       ARAI_MEMO_MODEL: ${ARAI_MEMO_MODEL:-}
-      AUTH_MODE: ${AUTH_MODE:-}                      # dev (local profile only) or oidc; empty: dev on local, oidc on vm
+      AUTH_MODE: ${AUTH_MODE:-}                      # dev (local profile only), oidc or password; empty: dev on local, oidc on vm
+      AUTH_PASSWORD_USERS: ${AUTH_PASSWORD_USERS:-}  # AUTH_MODE=password (AM-81): the accounts created at start when absent
+      AUTH_INITIAL_PASSWORD: ${AUTH_INITIAL_PASSWORD:-}   # and their first password; afterwards an admin manages people
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
@@ -52,7 +54,9 @@ services:
     build: .
     restart: unless-stopped
     command: ["uv", "run", "--no-sync", "arai", "worker"]
-    environment: *service_env
+    environment:
+      <<: *service_env
+      AUTH_INITIAL_PASSWORD: ""                      # only the API creates accounts; the worker never needs the password
     volumes:
       - ${ARAI_ARTIFACTS:-./data/EXP-20261005-04/artifacts}:/data/artifacts
     depends_on:

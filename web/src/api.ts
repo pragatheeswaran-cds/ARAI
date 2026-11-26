@@ -35,6 +35,8 @@ export type Page<T> = { items: T[]; next_cursor: string | null };
 export type Disposition = Review["disposition"];
 export type Me = S["Me"];
 export type DevUsers = S["DevUsers"];
+export type AuthMode = S["AuthMode"]["auth_mode"];
+export type Role = S["SetRolesRequest"]["roles"][number];
 export type AdminUser = S["AdminUser"];
 export type AuthEvent = S["AuthEvent"];
 export type AuthEventKind = AuthEvent["kind"];
@@ -139,7 +141,14 @@ export function stylesExportUrl(runId: string, state: string): string {
 
 export const api = {
   me: () => request<Me>("/me"),
+  authMode: () => request<S["AuthMode"]>("/auth/mode"),
   devUsers: () => request<DevUsers>("/auth/dev-users"),
+  // accounts with a password (contract 3.4.0, AM-81)
+  passwordLogin: (username: string, password: string) => request<Me>("/auth/password-login", json({ username, password })),
+  changePassword: (current_password: string, new_password: string) => request<null>("/me/password", json({ current_password, new_password })),
+  adminCreateUser: (body: S["CreateUserRequest"]) => request<AdminUser>("/admin/users", json(body)),
+  adminResetPassword: (userId: string, password: string) => request<AdminUser>(`/admin/users/${encodeURIComponent(userId)}/password`, json({ password })),
+  adminSetRoles: (userId: string, roles: Role[]) => request<AdminUser>(`/admin/users/${encodeURIComponent(userId)}/roles`, json({ roles })),
   devLogin: (user: string) => request<Me>("/auth/dev-login", json({ user })),
   logout: () => request<null>("/auth/logout", { method: "POST" }),
   health: () => request<Health>("/health"),

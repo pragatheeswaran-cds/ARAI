@@ -103,6 +103,44 @@ server **refuses to start** with `AUTH_MODE=dev` when `APP_PROFILE=vm`, unless `
 public demonstration VM (AM-74, docs/design/aws-deployment.md section 6; no shared login since AM-75). The demo keeps working without an identity
 provider, and the second-reviewer rule can be demonstrated truthfully by signing in as two different people.
 
+### 3.2a Accounts with a password (added 27 Nov 2026, AM-81)
+
+`AUTH_MODE=password` is a third way to sign in, for a deployment that cannot run Keycloak (the 2 GB demonstration VM)
+but where each person should sign in as themselves. It was not part of the October design; the owner chose it on
+27 Nov 2026 over Keycloak on a larger instance and over putting the shared login back.
+
+- **What is stored:** an account is a `users` row with issuer `local` and the user name, compared without regard to
+  case, as subject. Its roles are `user_roles` rows with source `local`. The password is in `password_credentials` as a
+  salted scrypt hash (`hashlib.scrypt` of the standard library, n 16384, r 8, p 1, 16-byte salt, parameters kept with
+  the hash so they can be raised later). No home-made cryptography and no new dependency.
+- **Sign-in:** `POST /auth/password-login`. A name without an account and a wrong password get the same answer after
+  the same work (a hash is computed either way). Ten wrong passwords in a row lock the name for five minutes. The count
+  is kept by a hash of the name that was typed (`sign_in_throttle`), whether or not it has an account, so a lock does
+  not tell which names exist. The lock is short on purpose: anyone can lock a name by guessing, and five minutes is
+  what that costs the person. nginx on the VM adds ten sign-in requests a minute per address. A disabled account is
+  told so only with the right password. A wrong current password when changing a password counts toward the same
+  lock, and the one that reaches the limit ends that session.
+- **Sessions of another sign-in:** in this mode a session that was opened by the development login or Keycloak is not
+  served, so switching an instance over leaves no persona signed in.
+- **Who manages people:** an admin, in People & access: add a person with roles and a first password, set roles, give
+  a new password. A password the person did not choose must be replaced at the next sign-in; until then the session
+  is served only its own profile, the change and the sign-out. One active admin always remains: neither a role change
+  nor a disable may remove the last one.
+- **Passwords people choose:** 12 to 200 characters, not containing the account's name, different from the current
+  one. Length is the rule; there is no composition rule and no forced rotation. Changing it ends the person's other
+  sessions.
+- **The first accounts:** `AUTH_PASSWORD_USERS` and `AUTH_INITIAL_PASSWORD` create the listed accounts at start when
+  they do not exist yet. An existing account is never touched, so a restart cannot reset a password. The initial
+  password opens only the listed accounts with the admin role, and must be replaced at their first sign-in; the other
+  listed accounts have no usable password until an admin gives them one. So the initial password is the operator's
+  alone, and knowing it never lets one person sign in as another. A persona of the
+  development login with the same name becomes the account and keeps its notes and decisions.
+- **Not provided:** e-mail reset, self-registration, a second factor, password history. A deployment that needs them
+  uses Keycloak (section 3.1), which this mode does not replace.
+
+Everything downstream of the sign-in (the session cookie, the CSRF token, role checks, expiry, the sign-in log) is the
+same code as for the other two modes.
+
 ### 3.3 Roles and permissions
 
 Four roles, cumulative from left to right except admin, which is separate:

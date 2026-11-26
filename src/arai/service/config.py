@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,6 +16,9 @@ DEFAULT_DEV_USERS = (("Asha", ("reviewer", "approver")), ("Ravi", ("reviewer", "
 ROLES = ("viewer", "reviewer", "approver", "admin")
 # Keycloak groups to ARAI roles (AM-69, owner's decision: roles live in Keycloak groups)
 DEFAULT_ROLE_MAP = (("arai-viewers", "viewer"), ("arai-reviewers", "reviewer"), ("arai-approvers", "approver"), ("arai-admins", "admin"))
+# accounts with a password (AUTH_MODE=password, AM-81)
+PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH = 12, 200
+USERNAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{1,49}$"
 
 
 @dataclass(frozen=True)
@@ -27,7 +31,8 @@ class ServiceConfig:
     poll_seconds: float = 2.0
     anthropic_api_key: str | None = None            # memos are drafted only when set; without it every memo is unavailable by design
     memo_model: str | None = None                   # the model memos are drafted with (default in memo.py)
-    # who is signed in (AM-69): dev = the development login (laptops, demos), oidc = Keycloak single sign-on (step 2)
+    # who is signed in (AM-69): dev = the development login (laptops, demos), oidc = Keycloak single sign-on (step 2),
+    # password = accounts with a password kept by ARAI (AM-81)
     auth_mode: str | None = None                    # default: dev for the local profile, oidc for the vm profile
     dev_on_vm: bool = False                         # AM-74: the development login on the vm profile, for a public demonstration;
                                                     # personas, not verified people (no shared login since AM-75)
@@ -45,18 +50,26 @@ class ServiceConfig:
     oidc_role_map: tuple = DEFAULT_ROLE_MAP
     bootstrap_admins: tuple = ()                    # e-mail addresses given admin before any group exists
     oidc_allow_http: bool = False                   # a plain-http issuer, only for a local test Keycloak
+    # accounts with a password (AUTH_MODE=password, AM-81): the accounts created at start when they do not exist yet, each
+    # with the initial password; afterwards people, roles and passwords live in the database and an admin manages them
+    password_users: tuple = ()
+    initial_password: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
         if self.profile not in ("local", "vm"):
             raise ValueError("APP_PROFILE must be local or vm")
-        if self.mode not in ("dev", "oidc"):
-            raise ValueError("AUTH_MODE must be dev or oidc")
+        if self.mode not in ("dev", "oidc", "password"):
+            raise ValueError("AUTH_MODE must be dev, oidc or password")
         if self.mode == "dev" and self.profile == "vm" and not self.dev_on_vm:
             raise ValueError("AUTH_MODE=dev is the development login and is refused with APP_PROFILE=vm; use oidc, "
                              "or AUTH_DEV_ON_VM=1 for a public demonstration (AM-74)")
         for name, roles in self.dev_users:
             if not name or not roles or set(roles) - set(ROLES):
                 raise ValueError(f"development user {name!r}: roles must be among {ROLES}")
+        for name, roles in self.password_users:
+            if not re.fullmatch(USERNAME_PATTERN, name or "") or not roles or set(roles) - set(ROLES):
+                raise ValueError(f"password user {name!r}: a user name of 2 to 50 letters, digits, dot, dash or underscore, "
+                                 f"with roles among {ROLES}")
         if self.session_idle_minutes < 1 or self.session_max_hours < 1:
             raise ValueError("session limits must be positive")
         if {role for _, role in self.oidc_role_map} - set(ROLES):
@@ -72,6 +85,16 @@ class ServiceConfig:
         if self.oidc_issuer and not self.oidc_issuer.startswith("https://") and not self.oidc_allow_http:
             missing.append("an https OIDC_ISSUER (or OIDC_ALLOW_HTTP=1 for a local test Keycloak)")
         return missing
+
+    def password_problems(self) -> list:
+        """What the password sign-in still needs; empty when AUTH_MODE=password can start (checked when the app is created)."""
+        if self.mode != "password" or not self.password_users:
+            return []
+        if not self.initial_password:
+            return ["AUTH_INITIAL_PASSWORD (the first password of the accounts in AUTH_PASSWORD_USERS)"]
+        if not PASSWORD_MIN_LENGTH <= len(self.initial_password) <= PASSWORD_MAX_LENGTH:
+            return [f"an AUTH_INITIAL_PASSWORD of {PASSWORD_MIN_LENGTH} to {PASSWORD_MAX_LENGTH} characters"]
+        return []
 
     @property
     def mode(self) -> str:
@@ -101,7 +124,9 @@ def from_env() -> ServiceConfig:
                          oidc_role_claim=os.environ.get("AUTH_ROLE_CLAIM", "groups"),
                          oidc_role_map=parse_role_map(os.environ["AUTH_ROLE_MAP"]) if os.environ.get("AUTH_ROLE_MAP") else DEFAULT_ROLE_MAP,
                          bootstrap_admins=tuple(e.strip().casefold() for e in os.environ.get("ARAI_BOOTSTRAP_ADMINS", "").split(",") if e.strip()),
-                         oidc_allow_http=os.environ.get("OIDC_ALLOW_HTTP", "") in ("1", "true", "yes"))
+                         oidc_allow_http=os.environ.get("OIDC_ALLOW_HTTP", "") in ("1", "true", "yes"),
+                         password_users=parse_dev_users(os.environ["AUTH_PASSWORD_USERS"]) if os.environ.get("AUTH_PASSWORD_USERS") else (),
+                         initial_password=os.environ.get("AUTH_INITIAL_PASSWORD") or None)
 
 
 def parse_role_map(text: str) -> tuple:
@@ -110,7 +135,7 @@ def parse_role_map(text: str) -> tuple:
 
 
 def parse_dev_users(text: str) -> tuple:
-    """AUTH_DEV_USERS: "Asha=reviewer;Ravi=reviewer,approver;Admin=admin"."""
+    """AUTH_DEV_USERS and AUTH_PASSWORD_USERS: "Asha=reviewer;Ravi=reviewer,approver;Admin=admin"."""
     users = []
     for entry in filter(None, (e.strip() for e in text.split(";"))):
         name, _, roles = entry.partition("=")
