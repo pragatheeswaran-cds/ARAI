@@ -16,7 +16,7 @@
 > | P6 | Making the model itself use contact links (a paired control run, or new features built on them) | Decided 22 Nov: left as it is. The links stay evidence for the analyst |
 > | P7 | Which world the demonstration uses | Decided 22 Nov: W5401 stays. It predates the contact columns, so it shows none; a world generated now shows them (RUNBOOK 4.2) |
 > | P8 | Slide deck in `docs/demo-deck/` still shows the earlier screens and the two-person approval story | Decided 22 Nov: left until a presentation is scheduled |
-> | P9 | Update the demonstration VM to the new screens | Decided 22 Nov: the steps are written (RUNBOOK 8.10) and not yet run; the owner runs them |
+> | P9 | Update the demonstration VM to the new screens | Done 26 Nov: the VM runs `main` at `d88667e` (contract 3.3.0); W5401 and its twelve snapshots were cleared, loaded and scored again with the three August outcomes (RUNBOOK 8.10, as run). The October release is tag `deployed-aws-2026-10-21` |
 > | P10 | Branches on GitHub whose work `main` contains | Decided 22 Nov: all kept as markers; `main` is the one to use |
 > | P11 | Owner sign-off on the acceptance register, and SEL-AC-05 (items 2.3 and 2.4 below) | The owner |
 > | P12 | Analyst view (AM-80): a one-line queue row, a case worded for a returns analyst, the model's internals behind the Model detail switch | Done 22 Nov |

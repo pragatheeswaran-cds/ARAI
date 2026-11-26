@@ -1037,47 +1037,57 @@ with the same parameters and a bring-up restores the dump and syncs the artifact
 `aws cloudformation delete-stack --stack-name arai-demo`, then empty and delete the bucket by hand and delete the
 `/arai` parameters.
 
-### 8.10 Update the VM to the screens of November 2026 (not yet done)
+### 8.10 Update the VM to a new release (last done on 26 Nov 2026)
 
-The VM was brought up in October and still serves the earlier screens and the two-person approval workflow. `main`
-now holds the screens of the Penpot design, the workflow Open, In Review, Escalated, Closed, and API contract 3.3.0
-(decisions AM-76 to AM-79). Updating the VM is a new release and a bring-up, then a reload of the demonstration data
-so that the dashboard has its trends. These steps were written from sections 8.3 to 8.6 and the deployment files; they
-have **not** been run against the VM. Run them from the repository root on `main`, with your AWS access.
+The VM was brought up in October with the earlier screens and the two-person approval workflow (commit `3abbc7e`,
+tag `deployed-aws-2026-10-21`). On 26 Nov 2026 it was updated to `main` at `d88667e`: the screens of the Penpot
+design, the workflow Open, In Review, Escalated, Closed, the analyst view and API contract 3.3.0 (decisions AM-76 to
+AM-80). An update is a backup, a new release and a bring-up, then, when the stored results of earlier runs lack what
+the new screens show, a reload of the demonstration data. These are the steps as they were run, from the repository
+root on `main`, with a profile for account 819717422656 (`aws login --profile arai --region ap-south-1`, then
+`$env:AWS_PROFILE = "arai"; $env:AWS_DEFAULT_REGION = "ap-south-1"`).
 
 ```powershell
 # 0. what will be released: the committed tree of main
 git checkout main; git pull; git status --short        # nothing to commit, apart from untracked files
-
-# 1. the release (as 8.3, step 2)
-git archive --format=tar.gz -o $env:TEMP\arai.tar.gz HEAD
-aws s3 cp $env:TEMP\arai.tar.gz s3://arai-819717422656-ap-south-1/release/arai.tar.gz
-
-# 2. bring-up (as 8.3, step 3): rebuilds the images with the new UI and restarts the stack. The API applies schema
-#    versions 14 and 15 when it starts; both only add (two more review kinds, one column), so nothing is lost.
+$bucket = "s3://arai-819717422656-ap-south-1"
 $id = aws cloudformation describe-stacks --stack-name arai-demo --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text
-aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai bringup" --parameters file://deploy\aws\bringup-command.json --query Command.CommandId --output text
-aws ssm start-session --target $id                      # then: sudo tail -f /var/log/arai-bringup.log
 
-# 3. check before touching any data
+# 1. before anything changes: keep the release that is running under its commit id, and take a database backup now
+aws s3 cp $bucket/release/arai.tar.gz $env:TEMPrai-running.tar.gz
+git get-tar-commit-id < $env:TEMPrai-running.tar.gz     # in Git Bash: gzip -dc arai-running.tar.gz | git get-tar-commit-id
+aws s3 cp $bucket/release/arai.tar.gz $bucket/release/arai-<commit>.tar.gz
+aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai backup before update" --parameters 'commands=["BUCKET=arai-819717422656-ap-south-1 APP_DIR=/opt/arai/app /opt/arai/backup.sh"]'
+
+# 2. the release (as 8.3, step 2)
+git archive --format=tar.gz -o $env:TEMPrai.tar.gz HEAD
+aws s3 cp $env:TEMPrai.tar.gz $bucket/release/arai.tar.gz
+
+# 3. bring-up (as 8.3, step 3): rebuilds the images with the new UI and restarts api, worker and web (about four
+#    minutes on the t3.small; the site answers 502 for some seconds). The API applies the new schema versions when it
+#    starts; 14 and 15 only add (two more review kinds, one column), so nothing is lost.
+aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai bringup" --parameters file://deploywsringup-command.json --query Command.CommandId --output text
+aws ssm get-command-invocation --command-id <id> --instance-id $id --query Status     # Success; the log is /var/log/arai-bringup.log
+
+# 4. check before touching any data
 curl.exe -s https://arai-demo.duckdns.org/api/v1/health                      # alive, scoring_ready, promoted_model_ready true
 curl.exe -s https://arai-demo.duckdns.org/api/v1/openapi.json | Select-String '"version": ?"3.3.0"'
 ```
 
 Open https://arai-demo.duckdns.org: the dark top bar and the sidebar with Dashboard, Risk Queue, Investigations and
-the rest should show. The runs scored in October are still there and still readable, with two limits: their
-Dashboard says the trends are missing (they were scored before the daily figures were stored), and their reviews are
-those of the earlier workflow, shown as Escalated or Closed.
+the rest should show. Runs scored by an earlier release stay readable, with two limits: their Dashboard says the
+trends are missing (they were scored before the daily figures were stored), and their reviews are those of the
+earlier workflow, shown as Escalated or Closed.
 
 To give the VM the full demonstration (trends, the product aggregates, and the August outcomes written under the new
-workflow), clear the demonstration state and load it again. This removes the notes, runs and datasets on the VM;
-models, people and sessions stay (section 8.6). Look first with `--dry-run`.
+workflow), clear the demonstration world and load it again. This removes the notes, runs and datasets of W5401 on the
+VM; other worlds, models, people and sessions stay (section 8.6). Look first with `--dry-run`.
 
 ```bash
-# on the VM (SSM shell)
+# on the VM (SSM shell, or the same lines through aws ssm send-command)
 cd /opt/arai/app
-sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml exec -T api uv run --no-sync python - --all --dry-run < scripts/db_clear.py
-sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml exec -T api uv run --no-sync python - --all --yes < scripts/db_clear.py
+sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml exec -T api uv run --no-sync python - --all --world W5401 --dry-run < scripts/db_clear.py
+sudo docker compose -f docker-compose.yml -f deploy/aws/compose.vm.yml exec -T api uv run --no-sync python - --all --world W5401 --yes < scripts/db_clear.py
 ```
 
 ```powershell
@@ -1087,5 +1097,9 @@ uv run --no-sync python scripts\history_demo.py --load --base-url https://arai-d
 ```
 
 Afterwards the Dashboard should show W5401 with 5,676 customers scored, 284 in the queue (86 Critical, 198 High) and
-the panel "Since the previous snapshot of W5401 (09 Aug 2026)". If the bring-up fails, the previous release is not
-kept on the VM: publish the earlier commit again as the release (`git archive ... 2edaa4e`) and repeat step 2.
+the panel "Since the previous snapshot of W5401 (09 Aug 2026)".
+
+Going back: the previous release is not kept on the VM, which is why step 1 keeps it in the bucket. Copy
+`release/arai-<commit>.tar.gz` over `release/arai.tar.gz` and repeat step 3 (the October release is
+`release/arai-3abbc7e.tar.gz`). An earlier release does not undo schema versions; if it cannot run on the newer
+schema, restore the database backup of step 1 as section 8.6 describes.
