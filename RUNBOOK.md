@@ -1033,6 +1033,48 @@ the environment (`$env:ARAI_PASSWORD_ADMIN`, `$env:ARAI_PASSWORD_ASHA`, `$env:AR
 To go back to the personas, set `/arai/config/AUTH_MODE` to `dev` and re-run bring-up; the accounts stay in the
 database, unused.
 
+**Admin's password on the VM.** Nobody can read a password back: only a hash is stored. What can be read is the
+initial password, and it works only until Admin's first sign-in. All commands need a profile for account 819717422656
+(`aws login --profile arai --region ap-south-1`, then `$env:AWS_PROFILE = "arai"; $env:AWS_DEFAULT_REGION = "ap-south-1"`).
+
+*Admin has never signed in:* the initial password is Admin's password.
+
+```powershell
+aws ssm get-parameter --name /arai/secret/AUTH_INITIAL_PASSWORD --with-decryption --query Parameter.Value --output text
+```
+
+Sign in at https://arai-demo.duckdns.org as `Admin` with it and choose your own (12 characters or more). Keep the new
+one in a password manager; from then on the initial password opens nothing.
+
+*Admin has signed in before and the password is lost* (and no other admin can give a new one in People & access): add a
+second admin account for the time of the repair. A bring-up creates the names that do not exist yet and leaves every
+existing account, password and role as it is.
+
+```powershell
+# 1. read the list of accounts, and add a new name with the admin role at its end
+aws ssm get-parameter --name /arai/config/AUTH_PASSWORD_USERS --query Parameter.Value --output text
+aws ssm put-parameter --name /arai/config/AUTH_PASSWORD_USERS --type String --overwrite --value "<the list as read>;Recovery=admin"
+
+# 2. bring-up (as 8.3, step 3; about four minutes, the site answers 502 for some seconds)
+$id = aws cloudformation describe-stacks --stack-name arai-demo --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text
+aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai bringup" --parameters file://deploy\aws\bringup-command.json --query Command.CommandId --output text
+aws ssm get-command-invocation --command-id <id> --instance-id $id --query Status     # Success
+
+# 3. the password Recovery starts with
+aws ssm get-parameter --name /arai/secret/AUTH_INITIAL_PASSWORD --with-decryption --query Parameter.Value --output text
+```
+
+4. Sign in as `Recovery` with that password and choose another when asked.
+5. People & access, **New password** on Admin's row: type a first password for Admin. Admin's sessions end and a lock
+   on the name is lifted.
+6. Sign out, sign in as `Admin` with that first password and choose your own.
+7. As Admin, People & access, **Disable** on Recovery's row (an admin cannot disable their own account, so this is done
+   from Admin's).
+8. Put the list of step 1 back without `Recovery=admin` (`aws ssm put-parameter ... --overwrite`). No bring-up is
+   needed: the parameter is read only when accounts are created, and a disabled account stays disabled.
+
+Any other person's lost password needs none of this: Admin gives a new one in People & access (section 2.8).
+
 Before that, and still when `AUTH_MODE` is `dev` or absent, the VM runs the development login (AM-74): the sign-in page lists personas and anyone picks one; there are no
 passwords at all (the shared login was removed on 21 Oct 2026, AM-75). The defaults are the six of section 2.5 (Asha, Ravi and Meera review and
 close escalated cases, Arjun reviews, Priya views, Admin administers). Other names or roles: set `AUTH_DEV_USERS` and re-run
@@ -1106,19 +1148,19 @@ $bucket = "s3://arai-819717422656-ap-south-1"
 $id = aws cloudformation describe-stacks --stack-name arai-demo --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text
 
 # 1. before anything changes: keep the release that is running under its commit id, and take a database backup now
-aws s3 cp $bucket/release/arai.tar.gz $env:TEMPrai-running.tar.gz
-git get-tar-commit-id < $env:TEMPrai-running.tar.gz     # in Git Bash: gzip -dc arai-running.tar.gz | git get-tar-commit-id
+aws s3 cp $bucket/release/arai.tar.gz $env:TEMP\arai-running.tar.gz
+git get-tar-commit-id < $env:TEMP\arai-running.tar.gz     # in Git Bash: gzip -dc arai-running.tar.gz | git get-tar-commit-id
 aws s3 cp $bucket/release/arai.tar.gz $bucket/release/arai-<commit>.tar.gz
 aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai backup before update" --parameters 'commands=["BUCKET=arai-819717422656-ap-south-1 APP_DIR=/opt/arai/app /opt/arai/backup.sh"]'
 
 # 2. the release (as 8.3, step 2)
-git archive --format=tar.gz -o $env:TEMPrai.tar.gz HEAD
-aws s3 cp $env:TEMPrai.tar.gz $bucket/release/arai.tar.gz
+git archive --format=tar.gz -o $env:TEMP\arai.tar.gz HEAD
+aws s3 cp $env:TEMP\arai.tar.gz $bucket/release/arai.tar.gz
 
 # 3. bring-up (as 8.3, step 3): rebuilds the images with the new UI and restarts api, worker and web (about four
 #    minutes on the t3.small; the site answers 502 for some seconds). The API applies the new schema versions when it
 #    starts; 14 and 15 only add (two more review kinds, one column), so nothing is lost.
-aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai bringup" --parameters file://deploywsringup-command.json --query Command.CommandId --output text
+aws ssm send-command --instance-ids $id --document-name AWS-RunShellScript --comment "arai bringup" --parameters file://deploy\aws\bringup-command.json --query Command.CommandId --output text
 aws ssm get-command-invocation --command-id <id> --instance-id $id --query Status     # Success; the log is /var/log/arai-bringup.log
 
 # 4. check before touching any data
