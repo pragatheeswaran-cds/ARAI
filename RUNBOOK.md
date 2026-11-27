@@ -248,6 +248,7 @@ uv run arai generate --seed 9001 --customers 10000       # the same simulator at
 Register it like any snapshot (section 4) to see it in the workbench.
 
 The earlier monthly snapshots of W5401 used by the history screens are written by `arai snapshot` (section 4.1).
+`docs\demo-dataset.md` gives the steps for the demonstration dataset alone, from these commands to the loaded Dashboard.
 
 Check that they are there:
 
